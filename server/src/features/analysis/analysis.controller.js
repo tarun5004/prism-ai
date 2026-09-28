@@ -22,7 +22,7 @@ async function createAnalysis(request, response) {
       findings: runRules(pullRequest)
     };
 
-    return response.status(201).json(saveAnalysis(analysis));
+    return response.status(201).json(await saveAnalysis(analysis));
   } catch (error) {
     const failedAnalysis = {
       id: String(nextAnalysisId++),
@@ -33,19 +33,19 @@ async function createAnalysis(request, response) {
       error: error.message
     };
 
-    saveAnalysis(failedAnalysis);
+    await saveAnalysis(failedAnalysis);
     return response.status(502).json(failedAnalysis);
   }
 }
 
 // Return recent beta analyses for the dashboard history list.
-function getAnalyses(request, response) {
-  response.json(listAnalyses());
+async function getAnalyses(request, response) {
+  response.json(await listAnalyses());
 }
 
 // Return one previously saved beta analysis.
-function getAnalysis(request, response) {
-  const analysis = findAnalysis(request.params.analysisId);
+async function getAnalysis(request, response) {
+  const analysis = await findAnalysis(request.params.analysisId);
 
   if (!analysis) {
     return response.status(404).json({ message: 'Analysis not found.' });
