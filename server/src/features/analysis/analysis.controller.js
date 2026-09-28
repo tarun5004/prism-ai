@@ -1,3 +1,4 @@
+import { runAiAnalysis } from '../ai/ai.service.js';
 import { fetchPullRequest } from '../pullRequest/pullRequest.service.js';
 import { findAnalysis, listAnalyses, saveAnalysis } from './analysis.repository.js';
 import { runRules } from './analysis.rules.js';
@@ -14,12 +15,15 @@ async function createAnalysis(request, response) {
 
   try {
     const pullRequest = await fetchPullRequest(pullRequestUrl);
+    const ruleFindings = runRules(pullRequest);
+    const aiResult = await runAiAnalysis(pullRequest);
     const analysis = {
       id: String(nextAnalysisId++),
       status: 'completed',
       createdAt: new Date().toISOString(),
       pullRequest,
-      findings: runRules(pullRequest)
+      findings: [...ruleFindings, ...aiResult.findings],
+      aiStatus: aiResult.status
     };
 
     return response.status(201).json(await saveAnalysis(analysis));
