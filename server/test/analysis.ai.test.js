@@ -55,12 +55,20 @@ test('schema retains AI execution details and location fields', async () => {
   assert.equal(saved.findings[0].lineNumber, 1);
 });
 
+test('schema retains diagnostic fields and drops unexpected raw error data', async () => {
+  const value = new Analysis({ id: 'diagnostic-schema-test', status: 'completed', createdAt: new Date().toISOString(), pullRequest: {}, aiDiagnostics: { durationMs: 1500, timeoutMs: 60000, attempts: 1, httpStatus: 503, networkCode: 'ECONNRESET', failureCategory: 'network', rawError: 'private details' } });
+  await value.validate();
+  assert.deepEqual(value.toObject().aiDiagnostics, { durationMs: 1500, timeoutMs: 60000, attempts: 1, httpStatus: 503, networkCode: 'ECONNRESET', failureCategory: 'network' });
+});
+
 test('controller saves AI findings alongside deterministic findings', async () => {
   mockRequests(false);
   const report = await createReport();
   assert.equal(report.aiStatus, 'completed');
   assert.equal(report.aiModel, 'gemini-3.8-flash');
   assert.equal(report.aiCoverage.analyzedFiles, 1);
+  assert.equal(report.aiDiagnostics.attempts, 1);
+  assert.ok(Number.isInteger(report.aiDiagnostics.durationMs));
   assert.ok(report.findings.some(finding => finding.source === 'rule'));
   assert.equal(report.findings.find(finding => finding.source === 'ai').evidence, 'return value / 2;');
   assert.deepEqual(await findAnalysis(report.id), report);
@@ -75,5 +83,7 @@ test('AI outage preserves rule findings and saves the safe failure state', async
   assert.ok(report.findings.length > 0);
   assert.ok(report.findings.every(finding => finding.source === 'rule'));
   assert.equal((await findAnalysis(report.id)).aiError, 'API_ERROR');
+  assert.equal((await findAnalysis(report.id)).aiDiagnostics.httpStatus, 503);
+  assert.equal(report.aiDiagnostics.failureCategory, 'provider');
   assert.ok(!JSON.stringify(report).includes('private provider data'));
 });

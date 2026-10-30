@@ -11,19 +11,39 @@ const findingFields = {
   evidence: { type: 'string' }
 };
 
-async function runAiAnalysis(pullRequest, { timeoutMs = 30000 } = {}) {
+const safeNetworkCodes = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+  'CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'ERR_TLS_CERT_ALTNAME_INVALID'
+]);
+
+async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS?.trim() || 60000) } = {}) {
+  const startedAt = performance.now();
   const { files, coverage } = prepareAiInput(pullRequest);
   const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
-  const result = (status, findings = [], error) => ({ status, findings, coverage, model, ...(error ? { error } : {}) });
+  const validTimeout = Number.isInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 120000;
+  const diagnostics = { attempts: 0, ...(validTimeout ? { timeoutMs } : {}) };
+  const result = (status, findings = [], error) => {
+    const failureCategory = error === 'API_ERROR'
+      ? (diagnostics.networkCode ? 'network' : diagnostics.httpStatus ? 'provider' : 'request')
+      : { MISSING_API_KEY: 'configuration', NO_REVIEWABLE_DIFF: 'input', INVALID_TIMEOUT: 'configuration', TIMEOUT: 'timeout', INVALID_RESPONSE: 'response', INVALID_FINDINGS: 'validation' }[error];
+    return {
+      status, findings, coverage, model,
+      diagnostics: { ...diagnostics, durationMs: Math.round(performance.now() - startedAt), ...(failureCategory ? { failureCategory } : {}) },
+      ...(error ? { error } : {})
+    };
+  };
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) return result('skipped', [], 'MISSING_API_KEY');
   if (files.length === 0) return result('skipped', [], 'NO_REVIEWABLE_DIFF');
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120000) return result('unavailable', [], 'INVALID_TIMEOUT');
+  if (!validTimeout) return result('unavailable', [], 'INVALID_TIMEOUT');
   const signal = AbortSignal.timeout(timeoutMs);
   let response;
 
   try {
     const client = new GoogleGenAI({ apiKey, vertexai: false, httpOptions: { timeout: timeoutMs, retryOptions: { attempts: 1 } } });
+    diagnostics.attempts = 1;
     response = await client.models.generateContent({
       model,
       contents: JSON.stringify({ files }),
@@ -42,6 +62,11 @@ async function runAiAnalysis(pullRequest, { timeoutMs = 30000 } = {}) {
       }
     });
   } catch (error) {
+    // Allowlisted codes explain failures without saving SDK messages, URLs or headers.
+    if (Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599) diagnostics.httpStatus = error.status;
+    const networkErrors = [error, error?.cause, ...(Array.isArray(error?.cause?.errors) ? error.cause.errors : [])];
+    const networkCode = networkErrors.map(item => item?.code).find(code => safeNetworkCodes.has(code));
+    if (networkCode) diagnostics.networkCode = networkCode;
     return result('unavailable', [], signal.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError' ? 'TIMEOUT' : 'API_ERROR');
   }
 
