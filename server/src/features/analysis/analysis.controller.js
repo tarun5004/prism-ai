@@ -26,6 +26,7 @@ async function createAnalysis(request, response) {
       aiStatus: aiResult.status,
       aiModel: aiResult.model,
       aiCoverage: aiResult.coverage,
+      aiDiagnostics: aiResult.diagnostics,
       ...(aiResult.error ? { aiError: aiResult.error } : {})
     };
 

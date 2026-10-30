@@ -5,13 +5,14 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import * as aiService from '../src/features/ai/ai.service.js';
 
 const expected = { status: 'ok', provider: 'gemini', message: 'Connection successful' };
-const environmentKeys = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'AI_API_URL', 'AI_API_KEY'];
+const environmentKeys = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_API_URL', 'AI_API_KEY'];
 let originalEnvironment;
 
 beforeEach(() => {
   originalEnvironment = Object.fromEntries(environmentKeys.map((key) => [key, process.env[key]]));
   process.env.GEMINI_API_KEY = 'offline-test-key';
   delete process.env.GEMINI_MODEL;
+  delete process.env.GEMINI_TIMEOUT_MS;
   delete process.env.AI_API_URL;
   delete process.env.AI_API_KEY;
   // Offline tests must never fall through to a real provider request.
@@ -210,13 +211,86 @@ test('PR provider failure is sanitized and never retried', async () => {
   assert.equal(result.error, 'API_ERROR');
   assert.equal(globalThis.fetch.mock.callCount(), 1);
   assert.ok(!JSON.stringify(result).includes('private offline-test-key'));
+  assert.equal(result.diagnostics.httpStatus, 503);
+  assert.equal(result.diagnostics.failureCategory, 'provider');
+  assert.equal(result.diagnostics.attempts, 1);
 });
 
 test('PR request timeout returns an honest AI failure', async () => {
   globalThis.fetch.mock.mockImplementation(async (_url, { signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })));
   const keepAlive = setTimeout(() => {}, 1000);
-  try { assert.equal((await aiService.runAiAnalysis(reviewPr, { timeoutMs: 25 })).error, 'TIMEOUT'); }
+  try {
+    const result = await aiService.runAiAnalysis(reviewPr, { timeoutMs: 25 });
+    assert.equal(result.error, 'TIMEOUT');
+    assert.equal(result.diagnostics.failureCategory, 'timeout');
+    assert.equal(result.diagnostics.timeoutMs, 25);
+    assert.ok(result.diagnostics.durationMs >= 0);
+  }
   finally { clearTimeout(keepAlive); }
+});
+
+test('PR timeout defaults to 60 seconds and records safe duration', async () => {
+  respondWith('{"findings":[]}');
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.diagnostics.timeoutMs, 60000);
+  assert.equal(result.diagnostics.attempts, 1);
+  assert.ok(Number.isInteger(result.diagnostics.durationMs));
+  assert.ok(result.diagnostics.durationMs >= 0);
+  assert.equal(result.diagnostics.failureCategory, undefined);
+});
+
+test('PR timeout can be configured through the environment', async () => {
+  process.env.GEMINI_TIMEOUT_MS = '90000';
+  respondWith('{"findings":[]}');
+  assert.equal((await aiService.runAiAnalysis(reviewPr)).diagnostics.timeoutMs, 90000);
+});
+
+test('configured PR timeout actually aborts a stalled request', async () => {
+  process.env.GEMINI_TIMEOUT_MS = '25';
+  globalThis.fetch.mock.mockImplementation(async (_url, { signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })));
+  const keepAlive = setTimeout(() => {}, 1000);
+  try {
+    const result = await aiService.runAiAnalysis(reviewPr);
+    assert.equal(result.error, 'TIMEOUT');
+    assert.equal(result.diagnostics.timeoutMs, 25);
+    assert.equal(globalThis.fetch.mock.callCount(), 1);
+  } finally { clearTimeout(keepAlive); }
+});
+
+test('invalid timeout settings fail safely without a provider request', async () => {
+  for (const value of ['invalid', '0', '120001', '1.5']) {
+    process.env.GEMINI_TIMEOUT_MS = value;
+    const result = await aiService.runAiAnalysis(reviewPr);
+    assert.equal(result.error, 'INVALID_TIMEOUT');
+    assert.equal(result.diagnostics.attempts, 0);
+    assert.equal(result.diagnostics.timeoutMs, undefined);
+    assert.equal(result.diagnostics.failureCategory, 'configuration');
+  }
+  assert.equal(globalThis.fetch.mock.callCount(), 0);
+});
+
+test('network diagnostics retain only a known code from the error cause', async () => {
+  globalThis.fetch.mock.mockImplementation(async () => { throw new TypeError('private offline-test-key', { cause: Object.assign(new Error('sensitive details'), { code: 'ECONNRESET' }) }); });
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.error, 'API_ERROR');
+  assert.equal(result.diagnostics.networkCode, 'ECONNRESET');
+  assert.equal(result.diagnostics.failureCategory, 'network');
+  assert.ok(!JSON.stringify(result).includes('offline-test-key'));
+  assert.ok(!JSON.stringify(result).includes('sensitive details'));
+});
+
+test('network diagnostics recognize aggregated connection errors', async () => {
+  globalThis.fetch.mock.mockImplementation(async () => { throw new TypeError('fetch failed', { cause: new AggregateError([Object.assign(new Error(), { code: 'ENOTFOUND' })]) }); });
+  assert.equal((await aiService.runAiAnalysis(reviewPr)).diagnostics.networkCode, 'ENOTFOUND');
+});
+
+test('unknown error codes and raw error content are not persisted', async () => {
+  globalThis.fetch.mock.mockImplementation(async () => { throw Object.assign(new Error('private details'), { code: 'offline-test-key', status: '503' }); });
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.diagnostics.networkCode, undefined);
+  assert.equal(result.diagnostics.httpStatus, undefined);
+  assert.equal(result.diagnostics.failureCategory, 'request');
+  assert.ok(!JSON.stringify(result).includes('offline-test-key'));
 });
 
 test('rejects output cut off by the model token limit', async () => {
