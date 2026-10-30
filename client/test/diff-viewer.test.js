@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import { after, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { createServer } from 'vite';
+
+// Use the existing JSX transformer; no browser or external API is needed.
+const vite = await createServer({
+  root: fileURLToPath(new URL('../', import.meta.url)),
+  server: { middlewareMode: true },
+  appType: 'custom'
+});
+after(() => vite.close());
+const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx');
+
+test('numbers replacements and context using both hunk ranges', () => {
+  assert.equal(typeof viewer.parseUnifiedDiff, 'function');
+  const result = viewer.parseUnifiedDiff('@@ -10,3 +20,4 @@ function\n before\n-old\n+new\n+extra\n after');
+  assert.deepEqual(result.lines.slice(1), [
+    { kind: 'context', oldNumber: 10, newNumber: 20, text: 'before' },
+    { kind: 'deleted', oldNumber: 11, newNumber: null, text: 'old' },
+    { kind: 'added', oldNumber: null, newNumber: 21, text: 'new' },
+    { kind: 'added', oldNumber: null, newNumber: 22, text: 'extra' },
+    { kind: 'context', oldNumber: 12, newNumber: 23, text: 'after' }
+  ]);
+  assert.equal(result.incomplete, false);
+});
+
+test('resets counters for multiple hunks and omitted counts', () => {
+  const result = viewer.parseUnifiedDiff('@@ -1 +1 @@\n-old\n+new\n@@ -100 +200 @@\n-x\n+y');
+  assert.equal(result.lines[4].oldNumber, 100);
+  assert.equal(result.lines[5].newNumber, 200);
+  assert.equal(result.incomplete, false);
+});
+
+test('handles added and deleted files with zero-length ranges', () => {
+  const added = viewer.parseUnifiedDiff('@@ -0,0 +1,2 @@\n+one\n+two\n');
+  assert.deepEqual(added.lines.slice(1).map((line) => [line.oldNumber, line.newNumber]), [[null, 1], [null, 2]]);
+  const deleted = viewer.parseUnifiedDiff('@@ -1,2 +0,0 @@\n-one\n-two');
+  assert.deepEqual(deleted.lines.slice(1).map((line) => [line.oldNumber, line.newNumber]), [[1, null], [2, null]]);
+  assert.equal(added.incomplete || deleted.incomplete, false);
+});
+
+test('keeps metadata unnumbered without mistaking source prefixes for headers', () => {
+  const result = viewer.parseUnifiedDiff('--- a/file\n+++ b/file\n@@ -1 +1 @@\n---old\n\\ No newline at end of file\n+++new\n\\ No newline at end of file');
+  assert.equal(result.lines[0].oldNumber, null);
+  assert.equal(result.lines[1].newNumber, null);
+  assert.deepEqual(result.lines[3], { kind: 'deleted', oldNumber: 1, newNumber: null, text: '--old' });
+  assert.deepEqual(result.lines[5], { kind: 'added', oldNumber: null, newNumber: 1, text: '++new' });
+  assert.equal(result.incomplete, false);
+});
+
+test('flags incomplete hunks, including before a later complete hunk', () => {
+  assert.equal(viewer.parseUnifiedDiff('@@ -1,2 +1,2 @@\n one').incomplete, true);
+  assert.equal(viewer.parseUnifiedDiff('@@ -1,2 +1,2 @@\n one\n@@ -10 +10 @@\n two').incomplete, true);
+});
+
+test('never assigns guessed numbers after malformed or overlong hunk data', () => {
+  const overlong = viewer.parseUnifiedDiff('@@ -1 +1 @@\n valid\n extra\n+more');
+  assert.equal(overlong.incomplete, true);
+  assert.equal(overlong.lines[2].oldNumber, null);
+  assert.equal(overlong.lines[3].newNumber, null);
+  const malformed = viewer.parseUnifiedDiff('@@ broken @@\n+unknown');
+  assert.equal(malformed.incomplete, true);
+  assert.equal(malformed.lines[1].newNumber, null);
+});
+
+test('preserves whitespace, blank code lines and CRLF without inventing hunks', () => {
+  const result = viewer.parseUnifiedDiff('@@ -1 +1,2 @@\r\n \t  \r\n+\r\n');
+  assert.equal(result.lines[1].text, '\t  ');
+  assert.equal(result.lines[2].text, '');
+  assert.equal(result.incomplete, false);
+  assert.equal(viewer.parseUnifiedDiff('raw patch content').hasHunks, false);
+  assert.equal(viewer.parseUnifiedDiff('').lines.length, 0);
+});
