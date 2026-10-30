@@ -23,7 +23,10 @@ async function createAnalysis(request, response) {
       createdAt: new Date().toISOString(),
       pullRequest,
       findings: [...ruleFindings, ...aiResult.findings],
-      aiStatus: aiResult.status
+      aiStatus: aiResult.status,
+      aiModel: aiResult.model,
+      aiCoverage: aiResult.coverage,
+      ...(aiResult.error ? { aiError: aiResult.error } : {})
     };
 
     return response.status(201).json(await saveAnalysis(analysis));

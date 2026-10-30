@@ -7,6 +7,10 @@ const analysisSchema = new mongoose.Schema(
     createdAt: { type: String, required: true },
     pullRequest: { type: mongoose.Schema.Types.Mixed, required: true },
     findings: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    aiStatus: { type: String, enum: ['skipped', 'completed', 'partial', 'unavailable'] },
+    aiModel: { type: String },
+    aiError: { type: String },
+    aiCoverage: { type: mongoose.Schema.Types.Mixed },
     error: { type: String }
   },
   { versionKey: false }

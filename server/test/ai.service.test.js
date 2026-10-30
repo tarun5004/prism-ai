@@ -121,9 +121,109 @@ test('aborts a stalled request and reports a timeout', async () => {
   }
 });
 
-test('Gemini configuration does not activate the existing PR review pipeline', async () => {
-  assert.deepEqual(await aiService.runAiAnalysis({ changedFiles: [] }), { status: 'skipped', findings: [] });
+test('an empty PR does not trigger a Gemini review', async () => {
+  const result = await aiService.runAiAnalysis({ changedFiles: [] });
+  assert.equal(result.status, 'skipped');
   assert.equal(globalThis.fetch.mock.callCount(), 0);
+});
+
+const reviewPr = { title: 'Do not send metadata', changedFiles: [{ path: 'src/math.js', additions: 1, deletions: 1, patch: '@@ -1,2 +1,2 @@\n function double(value) {\n-  return value * 2;\n+  return value / 2;' }] };
+const validFinding = { title: 'Double now halves the input', severity: 'medium', filePath: 'src/math.js', lineNumber: 2, explanation: 'The changed expression divides instead of multiplying.', suggestedFix: 'Return value * 2 after confirming the intended behavior.', evidence: '  return value / 2;' };
+
+test('reviews bounded diff through Gemini and preserves report compatibility', async () => {
+  let request;
+  globalThis.fetch.mock.mockImplementation(async (url, options) => {
+    request = { url: String(url), body: JSON.parse(options.body) };
+    return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ findings: [validFinding] }) }] }, finishReason: 'STOP' }] });
+  });
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(result.findings[0], { ...validFinding, category: 'ai-review', confidence: 'low', affectedFiles: ['src/math.js'], recommendedAction: validFinding.suggestedFix, source: 'ai' });
+  assert.match(request.url, /models\/gemini-3\.8-flash:generateContent/);
+  assert.equal(request.body.generationConfig.responseMimeType, 'application/json');
+  assert.ok(!request.body.contents[0].parts[0].text.includes('Do not send metadata'));
+  assert.equal(globalThis.fetch.mock.callCount(), 1);
+});
+
+for (const [name, changes] of [
+  ['unknown path', { filePath: 'not-sent.js' }],
+  ['context-only line', { lineNumber: 1, evidence: 'function double(value) {' }],
+  ['outside line', { lineNumber: 900 }],
+  ['string line number', { lineNumber: '2' }],
+  ['fractional line number', { lineNumber: 2.5 }],
+  ['invalid severity', { severity: 'critical' }],
+  ['fabricated evidence', { evidence: 'return dangerous();' }],
+  ['substring evidence', { evidence: 'value' }],
+  ['missing evidence', { evidence: undefined }],
+  ['incorrect title type', { title: {} }],
+  ['empty explanation', { explanation: ' ' }],
+  ['missing fix', { suggestedFix: undefined }]
+]) {
+  test(`rejects AI finding with ${name}`, async () => {
+    respondWith(JSON.stringify({ findings: [{ ...validFinding, ...changes }] }));
+    const result = await aiService.runAiAnalysis(reviewPr);
+    assert.equal(result.status, 'unavailable');
+    assert.deepEqual(result.findings, []);
+    assert.equal(result.error, 'INVALID_FINDINGS');
+    assert.equal(result.coverage.rejectedFindings, 1);
+  });
+}
+
+test('keeps valid findings while exposing rejected model output', async () => {
+  respondWith(JSON.stringify({ findings: [validFinding, { ...validFinding, filePath: 'invented.js' }, null] }));
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.status, 'partial');
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.coverage.rejectedFindings, 2);
+});
+
+test('empty findings are valid but malformed root output is not', async () => {
+  respondWith('{"findings":[]}');
+  assert.equal((await aiService.runAiAnalysis(reviewPr)).status, 'completed');
+  for (const text of ['{}', 'null', '{broken', '{"findings":{}}']) {
+    respondWith(text);
+    const result = await aiService.runAiAnalysis(reviewPr);
+    assert.equal(result.status, 'unavailable');
+    assert.equal(result.error, 'INVALID_RESPONSE');
+  }
+});
+
+test('reports limited coverage even when the model returns no findings', async () => {
+  respondWith('{"findings":[]}');
+  const result = await aiService.runAiAnalysis({ changedFiles: [...reviewPr.changedFiles, { path: 'other.js', patch: '' }] });
+  assert.equal(result.status, 'partial');
+  assert.equal(result.coverage.skippedFiles.length, 1);
+});
+
+test('missing key skips PR AI without making a request', async () => {
+  delete process.env.GEMINI_API_KEY;
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.status, 'skipped');
+  assert.equal(result.error, 'MISSING_API_KEY');
+  assert.equal(globalThis.fetch.mock.callCount(), 0);
+});
+
+test('PR provider failure is sanitized and never retried', async () => {
+  globalThis.fetch.mock.mockImplementation(async () => Response.json({ error: { code: 503, message: 'private offline-test-key', status: 'UNAVAILABLE' } }, { status: 503 }));
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.status, 'unavailable');
+  assert.equal(result.error, 'API_ERROR');
+  assert.equal(globalThis.fetch.mock.callCount(), 1);
+  assert.ok(!JSON.stringify(result).includes('private offline-test-key'));
+});
+
+test('PR request timeout returns an honest AI failure', async () => {
+  globalThis.fetch.mock.mockImplementation(async (_url, { signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })));
+  const keepAlive = setTimeout(() => {}, 1000);
+  try { assert.equal((await aiService.runAiAnalysis(reviewPr, { timeoutMs: 25 })).error, 'TIMEOUT'); }
+  finally { clearTimeout(keepAlive); }
+});
+
+test('rejects output cut off by the model token limit', async () => {
+  globalThis.fetch.mock.mockImplementation(async () => Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: '{"findings":[]}' }] }, finishReason: 'MAX_TOKENS' }] }));
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.status, 'unavailable');
+  assert.equal(result.error, 'INVALID_RESPONSE');
 });
 
 test('smoke CLI reports a missing key safely and exits unsuccessfully', () => {
