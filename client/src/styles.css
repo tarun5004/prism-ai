@@ -92,7 +92,8 @@ body {
 }
 
 .dashboard-shell {
-  width: min(100%, 68rem);
+  width: min(100%, 90rem);
+  min-width: 0;
   padding: 2.25rem clamp(1.25rem, 5vw, 4.75rem) 5rem;
 }
 
@@ -154,7 +155,8 @@ h2 {
 .submit-panel,
 .welcome-section,
 .report-section,
-.history-section {
+.history-section,
+.diff-section {
   margin-top: 2.2rem;
   border: 1px solid #29332d;
   border-radius: 10px;
@@ -266,7 +268,8 @@ button:disabled {
 }
 
 .report-section,
-.history-section {
+.history-section,
+.diff-section {
   margin-top: 1.2rem;
 }
 
@@ -473,6 +476,113 @@ button:disabled {
 .history-item small {
   color: #7d8b82;
   font-size: 0.7rem;
+}
+
+.ai-status-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 1.2rem;
+  border: 1px solid #37453b;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  background: #171c19;
+  color: #b1bcb3;
+}
+
+.ai-status-panel svg { flex: 0 0 auto; margin-top: 0.1rem; }
+.ai-status-panel strong { font-size: 0.85rem; }
+.ai-status-panel p { margin: 0.35rem 0 0; color: #b1bcb3; font-size: 0.8rem; line-height: 1.5; }
+.ai-status-panel.success { border-color: #465d30; color: #c6f36b; }
+.ai-status-panel.warning { border-color: #67542b; color: #f3c867; }
+
+.diff-workspace {
+  display: grid;
+  grid-template-columns: minmax(12rem, 17rem) minmax(0, 1fr);
+  margin-top: 1.25rem;
+  border: 1px solid #303b33;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.diff-file-list {
+  max-height: 34rem;
+  overflow: auto;
+  border-right: 1px solid #303b33;
+  background: #171c19;
+}
+
+.diff-file-button {
+  display: grid;
+  width: 100%;
+  justify-content: stretch;
+  gap: 0.5rem;
+  border-bottom: 1px solid #29332d;
+  border-radius: 0;
+  padding: 0.9rem;
+  background: transparent;
+  color: #b1bcb3;
+  text-align: left;
+  font-weight: 400;
+}
+
+.diff-file-button:hover:not(:disabled),
+.diff-file-button[aria-pressed="true"] {
+  background: #252f24;
+  color: #eef2ed;
+  transform: none;
+}
+
+.diff-file-button[aria-pressed="true"] {
+  box-shadow: inset 3px 0 #c6f36b;
+}
+
+.diff-file-button:focus-visible,
+.diff-scroll:focus-visible {
+  outline: 2px solid #c6f36b;
+  outline-offset: -3px;
+}
+
+.diff-file-path,
+.diff-selected-path {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.diff-file-meta {
+  display: flex;
+  gap: 0.65rem;
+  color: #9aa79d;
+  font-size: 0.7rem;
+}
+
+.diff-additions { color: #c6f36b; }
+.diff-deletions { color: #ff9c8c; }
+
+.diff-file-panel { min-width: 0; background: #111513; }
+.diff-selected-path { margin: 0; padding: 0.9rem; border-bottom: 1px solid #303b33; line-height: 1.5; }
+.diff-message,
+.diff-warning { margin: 0; padding: 1rem; font-size: 0.8rem; line-height: 1.6; color: #abb7ad; }
+.diff-warning { color: #f3c867; background: #30291b; }
+.diff-scroll { max-height: 32rem; overflow: auto; }
+.diff-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; line-height: 1.65; }
+.diff-table th { position: sticky; top: 0; z-index: 1; padding: 0.4rem 0.65rem; background: #1c231f; color: #abb7ad; text-align: left; font-weight: 500; }
+.diff-table td { padding: 0; vertical-align: top; }
+.diff-table code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; tab-size: 4; }
+.diff-table .diff-line-number { width: 1%; min-width: 3rem; padding: 0 0.65rem; border-right: 1px solid #29332d; color: #9aa79d; text-align: right; user-select: none; font-family: ui-monospace, Consolas, monospace; }
+.diff-table .diff-marker { width: 1%; padding: 0 0.6rem; user-select: none; }
+.diff-table .diff-code { padding-right: 1rem; }
+.diff-line-added { background: #1c3021; color: #d4efce; }
+.diff-line-deleted { background: #352220; color: #ffc4ba; }
+.diff-line-hunk { background: #202b32; color: #b0cfdf; }
+.diff-line-meta { color: #a1aaa4; }
+.diff-table .diff-line-hunk td,
+.diff-table .diff-line-meta td { padding: 0.35rem 0.75rem; }
+
+@media (max-width: 1050px) {
+  .diff-workspace { grid-template-columns: minmax(0, 1fr); }
+  .diff-file-list { max-height: 13rem; border-right: 0; border-bottom: 1px solid #303b33; }
 }
 
 @keyframes rise-in {

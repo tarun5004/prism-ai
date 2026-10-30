@@ -1,7 +1,38 @@
 import { AlertTriangle, ArrowUpRight, CheckCircle2, ClipboardCheck, FileCode2, GitPullRequest, LoaderCircle, ShieldAlert, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import DiffViewer from './DiffViewer.jsx';
 
 const apiBaseUrl = 'http://localhost:5000/api';
+
+function getAiStatusDetails(analysis) {
+    if (analysis.status === 'failed') {
+        return { tone: 'warning', label: 'AI review not completed', message: 'The PR analysis failed. No successful AI review is confirmed.' };
+    }
+    if (analysis.aiStatus === 'completed') {
+        return { tone: 'success', label: 'AI analysis completed', message: 'Gemini returned a validated response. Findings remain advisory.' };
+    }
+    if (analysis.aiStatus === 'partial') {
+        return { tone: 'warning', label: 'AI analysis partial', message: analysis.aiError === 'INVALID_FINDINGS' ? 'Some AI findings were rejected. Available validated findings and completed rule-based results are shown.' : 'AI reviewed limited diff context. Available validated findings and completed rule-based results are shown.' };
+    }
+
+    const rulesMessage = analysis.status === 'completed' ? 'Rule-based analysis completed; its results remain available.' : 'Rule-based completion is not confirmed for this report.';
+    if (analysis.aiStatus === 'unavailable' || analysis.aiStatus === 'failed') {
+        const errors = {
+            TIMEOUT: 'The AI request timed out.',
+            API_ERROR: 'The AI provider could not complete the request.',
+            INVALID_RESPONSE: 'The AI response could not be validated.',
+            INVALID_FINDINGS: 'The AI findings could not be validated.',
+            INVALID_TIMEOUT: 'AI request configuration needs attention.'
+        };
+        const reason = typeof analysis.aiError === 'string' && Object.hasOwn(errors, analysis.aiError) ? errors[analysis.aiError] : 'AI analysis could not be completed.';
+        return { tone: 'warning', label: 'AI analysis unavailable', message: `${reason} ${rulesMessage}` };
+    }
+    if (analysis.aiStatus === 'skipped') {
+        const reason = analysis.aiError === 'MISSING_API_KEY' ? 'AI is not configured.' : analysis.aiError === 'NO_REVIEWABLE_DIFF' ? 'No reviewable diff was available for AI.' : 'AI analysis was skipped.';
+        return { tone: 'neutral', label: 'AI analysis skipped', message: `${reason} ${rulesMessage}` };
+    }
+    return { tone: 'neutral', label: 'AI status not recorded', message: `This saved report does not confirm a successful AI review. ${rulesMessage}` };
+}
 
 // Load recent analyses so the dashboard has a useful starting state.
 async function loadRecentAnalyses() {
@@ -61,6 +92,10 @@ function DashboardPage() {
     }
 
     const findings = analysis?.findings || [];
+    const aiReview = analysis ? getAiStatusDetails(analysis) : null;
+    const reportStatusLabel = analysis?.status === 'completed' ? (analysis.aiStatus === 'completed' ? 'Analysis completed' : 'Rule-based analysis completed') : analysis?.status;
+    const ReportStatusIcon = analysis?.status === 'completed' ? CheckCircle2 : AlertTriangle;
+    const emptyFindingsMessage = analysis?.status === 'failed' ? 'No findings are available because this PR analysis failed.' : analysis?.aiStatus === 'completed' ? 'No findings were returned by the completed rule and AI analysis.' : 'No rule-based findings were returned. See the AI status below.';
 
     return (
     <div className="app-frame">
@@ -82,7 +117,9 @@ function DashboardPage() {
                     {errorMessage && <p className="error-message"><AlertTriangle size={16} />{errorMessage}</p>}
                 </form>
             </section>
-            {analysis ? <section className="report-section" aria-labelledby="report-title"><div className="section-heading"><div><p className="section-label">Latest report</p><h2 id="report-title">{analysis.pullRequest?.title || 'Analysis result'}</h2><p className="muted-text">{analysis.pullRequest?.repository} · opened by {analysis.pullRequest?.author}</p></div><span className={`report-status ${analysis.status}`}><CheckCircle2 size={15} />{analysis.status}</span></div><div className="risk-summary"><div><span className="summary-number">{findings.length}</span><span className="summary-label">findings</span></div><div><span className="summary-number high">{findings.filter((finding) => finding.severity === 'high').length}</span><span className="summary-label">high attention</span></div><div><span className="summary-number">{analysis.pullRequest?.changedFiles?.length || 0}</span><span className="summary-label">files changed</span></div></div><div className="findings-list">{findings.length === 0 ? <div className="no-findings"><CheckCircle2 size={22} /><p>No risk signals found by the beta rules.</p></div> : findings.map((finding) => <article className="finding-card" key={`${finding.category}-${finding.evidence}`}><div className={`finding-icon ${finding.severity}`}><ShieldAlert size={18} /></div><div className="finding-content"><div className="finding-meta"><span className="finding-category">{finding.category.replace('-', ' ')}</span><span className={`severity ${finding.severity}`}>{finding.severity}</span></div><h3>{finding.explanation}</h3><p>{finding.evidence}</p><div className="affected-files"><FileCode2 size={14} />{finding.affectedFiles.join(' · ')}</div><div className="action-line"><span>Next check</span>{finding.recommendedAction}</div></div></article>)}</div></section> : <section className="welcome-section"><div className="welcome-icon"><Sparkles size={24} /></div><div><p className="section-label">Ready when you are</p><h2>Your next analysis will appear here.</h2><p className="muted-text">Paste a GitHub Pull Request above to see changed files, rule-based risks, and review actions.</p></div></section>}
+            {analysis ? <section className="report-section" aria-labelledby="report-title"><div className="section-heading"><div><p className="section-label">Latest report</p><h2 id="report-title">{analysis.pullRequest?.title || 'Analysis result'}</h2><p className="muted-text">{analysis.pullRequest?.repository} · opened by {analysis.pullRequest?.author}</p></div><span className={`report-status ${analysis.status}`}><ReportStatusIcon size={15} />{reportStatusLabel}</span></div><div className="risk-summary"><div><span className="summary-number">{findings.length}</span><span className="summary-label">findings</span></div><div><span className="summary-number high">{findings.filter((finding) => finding.severity === 'high').length}</span><span className="summary-label">high attention</span></div><div><span className="summary-number">{analysis.pullRequest?.changedFiles?.length || 0}</span><span className="summary-label">files changed</span></div></div><div className="findings-list">{findings.length === 0 ? <div className="no-findings"><CheckCircle2 size={22} /><p>{emptyFindingsMessage}</p></div> : findings.map((finding) => <article className="finding-card" key={`${finding.category}-${finding.evidence}`}><div className={`finding-icon ${finding.severity}`}><ShieldAlert size={18} /></div><div className="finding-content"><div className="finding-meta"><span className="finding-category">{finding.category.replace('-', ' ')}</span><span className={`severity ${finding.severity}`}>{finding.severity}</span></div><h3>{finding.explanation}</h3><p>{finding.evidence}</p><div className="affected-files"><FileCode2 size={14} />{finding.affectedFiles.join(' · ')}</div><div className="action-line"><span>Next check</span>{finding.recommendedAction}</div></div></article>)}</div></section> : <section className="welcome-section"><div className="welcome-icon"><Sparkles size={24} /></div><div><p className="section-label">Ready when you are</p><h2>Your next analysis will appear here.</h2><p className="muted-text">Paste a GitHub Pull Request above to see changed files, rule-based risks, and review actions.</p></div></section>}
+            {aiReview && <section className={`ai-status-panel ${aiReview.tone}`} role="status" aria-label="AI analysis status"><Sparkles size={19} aria-hidden="true" /><div><strong>{aiReview.label}</strong><p>{aiReview.message}</p></div></section>}
+            {analysis && <DiffViewer key={analysis.id} files={analysis.pullRequest?.changedFiles || []} />}
             <section className="history-section" id="history"><div className="section-heading"><div><p className="section-label">History</p><h2>Recent analyses</h2></div><span className="history-count">{recentAnalyses.length} saved</span></div>{recentAnalyses.length === 0 ? <p className="muted-text">No analyses yet. Your completed reports will stay here.</p> : <div className="history-list">{recentAnalyses.slice(0, 5).map((item) => <button className="history-item" type="button" key={item.id} onClick={() => openAnalysis(item.id)}><span><strong>{item.pullRequest?.title || 'Failed analysis'}</strong><small>{item.pullRequest?.repository || item.pullRequest?.url}</small></span><span className={`history-status ${item.status}`}>{item.status}</span></button>)}</div>}</section>
         </main>
     </div>
