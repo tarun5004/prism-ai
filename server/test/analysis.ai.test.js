@@ -24,10 +24,10 @@ afterEach(() => {
   else process.env.GEMINI_MODEL = originalModel;
 });
 
-function mockRequests(aiFailure) {
+function mockRequests(aiFailure, sourceCode = finding.evidence) {
   mock.method(globalThis, 'fetch', async (url) => {
     if (String(url).startsWith('https://api.github.com/')) {
-      if (String(url).includes('/contents/')) return Response.json({ encoding: 'base64', content: Buffer.from(finding.evidence).toString('base64'), size: finding.evidence.length });
+      if (String(url).includes('/contents/')) return Response.json({ encoding: 'base64', content: Buffer.from(sourceCode).toString('base64'), size: sourceCode.length });
       return Response.json(String(url).includes('/files?') ? [file] : { title: 'Fixture PR', html_url: 'https://github.com/audit/repo/pull/1', user: { login: 'audit' }, base: { sha: 'base' }, head: { sha: 'head' }, changed_files: 1 });
     }
     if (aiFailure) return Response.json({ error: { code: 503, message: 'private provider data', status: 'UNAVAILABLE' } }, { status: 503 });
@@ -70,7 +70,8 @@ test('controller saves AI findings alongside deterministic findings', async () =
   assert.equal(report.aiModel, 'gemini-3.8-flash');
   assert.equal(report.aiReview.summary, review.summary);
   assert.equal(report.aiReview.recommendation, 'human_review');
-  assert.equal(report.pullRequest.reviewContext.snippets.length, 1);
+  assert.equal(report.aiCoverage.contextSnippets, 1);
+  assert.equal(report.pullRequest.reviewContext, undefined);
   assert.equal(report.aiCoverage.analyzedFiles, 1);
   assert.equal(report.aiDiagnostics.attempts, 1);
   assert.ok(Number.isInteger(report.aiDiagnostics.durationMs));
@@ -128,4 +129,13 @@ test('persists a safe actionable GitHub failure code without upstream details', 
   assert.equal(report.errorCode, 'GITHUB_RATE_LIMIT');
   assert.equal((await findAnalysis(report.id)).errorCode, report.errorCode);
   assert.ok(!JSON.stringify(report).includes('private upstream error'));
+});
+
+test('raw secret-bearing source context never leaks through saved report APIs', async () => {
+  mockRequests(false, 'const password = "private-source-value";\n' + finding.evidence);
+  const report = await createReport();
+  const saved = await findAnalysis(report.id);
+  assert.ok(!JSON.stringify(report).includes('private-source-value'));
+  assert.ok(!JSON.stringify(saved).includes('private-source-value'));
+  assert.ok(report.aiCoverage.contextOmissions.some(item => item.reason === 'sensitive-content'));
 });
