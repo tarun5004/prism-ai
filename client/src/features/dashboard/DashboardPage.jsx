@@ -1,8 +1,7 @@
 import { AlertTriangle, ArrowUpRight, CheckCircle2, ClipboardCheck, FileCode2, GitPullRequest, LoaderCircle, ShieldAlert, Sparkles } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import DiffViewer from './DiffViewer.jsx';
-
-const apiBaseUrl = 'http://localhost:5000/api';
+import { useEffect, useRef, useState } from 'react';
+import DiffViewer, { findDiffLocation } from './DiffViewer.jsx';
+import { createAnalysis, loadAnalysis, loadRecentAnalyses } from './analysis.api.js';
 
 function getAiStatusDetails(analysis) {
     if (analysis.status === 'failed') {
@@ -24,7 +23,9 @@ function getAiStatusDetails(analysis) {
             INVALID_FINDINGS: 'The AI findings could not be validated.',
             INVALID_TIMEOUT: 'AI request configuration needs attention.'
         };
-        const reason = typeof analysis.aiError === 'string' && Object.hasOwn(errors, analysis.aiError) ? errors[analysis.aiError] : 'AI analysis could not be completed.';
+        const reason = analysis.aiError === 'API_ERROR' && analysis.aiDiagnostics?.httpStatus === 504
+            ? 'The AI provider exceeded its own response deadline.'
+            : typeof analysis.aiError === 'string' && Object.hasOwn(errors, analysis.aiError) ? errors[analysis.aiError] : 'AI analysis could not be completed.';
         return { tone: 'warning', label: 'AI analysis unavailable', message: `${reason} ${rulesMessage}` };
     }
     if (analysis.aiStatus === 'skipped') {
@@ -34,96 +35,196 @@ function getAiStatusDetails(analysis) {
     return { tone: 'neutral', label: 'AI status not recorded', message: `This saved report does not confirm a successful AI review. ${rulesMessage}` };
 }
 
-// Load recent analyses so the dashboard has a useful starting state.
-async function loadRecentAnalyses() {
-    const response = await fetch(`${apiBaseUrl}/analyses`);
-
-    if (!response.ok) {
-        throw new Error('Recent analyses could not be loaded.');
-    }
-
-    return response.json();
+function formatDate(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleString();
 }
 
-// Render the reviewer dashboard and the first Pull Request submission flow.
+function AnalysisReport({ analysis }) {
+    const [sourceFilter, setSourceFilter] = useState('all');
+    const [severityFilter, setSeverityFilter] = useState('all');
+    const [focusLocation, setFocusLocation] = useState(null);
+    const findings = analysis.findings || [];
+    const files = analysis.pullRequest?.changedFiles || [];
+    const pr = analysis.pullRequest || {};
+    const aiReview = getAiStatusDetails(analysis);
+    const successful = analysis.status === 'completed';
+    const statusLabel = successful ? (analysis.aiStatus === 'completed' ? 'Analysis completed' : 'Rule-based analysis completed') : 'Analysis failed';
+    const ReportIcon = successful ? CheckCircle2 : AlertTriangle;
+    const visibleFindings = findings.filter(finding =>
+        (sourceFilter === 'all' || finding.source === sourceFilter)
+        && (severityFilter === 'all' || finding.severity === severityFilter));
+    const diagnostics = analysis.aiDiagnostics;
+
+    return (
+        <>
+            <section className="report-section" aria-labelledby="report-title">
+                <div className="section-heading">
+                    <div>
+                        <p className="section-label">Review report</p>
+                        <h2 id="report-title">{pr.title || 'Analysis result'}</h2>
+                        <p className="muted-text">{pr.repository || 'Repository unavailable'}{pr.author && ` · opened by ${pr.author}`}</p>
+                    </div>
+                    <span className={`report-status ${analysis.status}`}><ReportIcon size={15} />{statusLabel}</span>
+                </div>
+                <div className="revision-meta">
+                    <span>{formatDate(analysis.createdAt)}</span>
+                    {pr.headSha ? <code title={pr.headSha}>{pr.headBranch} @ {pr.headSha.slice(0, 8)}</code> : <span>Revision not recorded in this older report</span>}
+                    {pr.baseSha && <code title={pr.baseSha}>base {pr.baseBranch} @ {pr.baseSha.slice(0, 8)}</code>}
+                </div>
+                {!successful && <p className="error-message" role="alert">This analysis did not complete. Submit the PR again after checking backend connectivity and GitHub access.</p>}
+                {pr.filesComplete === false && <p className="diff-warning">File retrieval is incomplete: {files.length} of {pr.totalChangedFiles ?? 'an unknown number of'} files were saved. This report covers only the available files.</p>}
+                <div className="risk-summary">
+                    <div><span className="summary-number">{findings.length}</span><span className="summary-label">findings</span></div>
+                    <div><span className="summary-number high">{findings.filter(finding => finding.severity === 'high').length}</span><span className="summary-label">high attention</span></div>
+                    <div><span className="summary-number">{files.length}</span><span className="summary-label">files saved</span></div>
+                    <div><span className="summary-number diff-additions">+{files.reduce((sum, file) => sum + (Number.isFinite(file.additions) ? file.additions : 0), 0)}</span><span className="summary-label diff-deletions">−{files.reduce((sum, file) => sum + (Number.isFinite(file.deletions) ? file.deletions : 0), 0)} lines</span></div>
+                </div>
+                {findings.length > 0 && <div className="finding-filters">
+                    <label>Source<select value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}><option value="all">All findings</option><option value="ai">AI findings</option><option value="rule">Rule-based</option></select></label>
+                    <label>Severity<select value={severityFilter} onChange={event => setSeverityFilter(event.target.value)}><option value="all">All severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+                    <span className="muted-text" role="status">{visibleFindings.length} of {findings.length} shown</span>
+                </div>}
+                <div className="findings-list">
+                    {visibleFindings.length === 0 ? <div className="no-findings"><CheckCircle2 size={22} /><p>{findings.length > 0 ? 'No findings match these filters.' : !successful ? 'No completed findings are available.' : analysis.aiStatus === 'completed' ? 'No validated findings were returned. This is advisory and does not guarantee the PR is safe.' : 'No rule-based findings were returned. Check the AI status below.'}</p></div> : visibleFindings.map((finding, index) => {
+                        const location = findDiffLocation(files, finding);
+                        return <article className="finding-card" key={`${finding.source}-${finding.filePath}-${finding.lineNumber}-${index}`}>
+                            <div className={`finding-icon ${finding.severity}`}><ShieldAlert size={18} /></div>
+                            <div className="finding-content">
+                                <div className="finding-meta"><span className="finding-category">{finding.source === 'ai' ? 'AI review' : finding.source === 'rule' ? 'Rule-based' : 'Saved finding'}</span><span className={`severity ${finding.severity}`}>{finding.severity}</span></div>
+                                <h3>{finding.title || finding.category?.replaceAll('-', ' ') || 'Review finding'}</h3>
+                                <p>{finding.explanation}</p>
+                                {finding.evidence && <pre className="finding-evidence"><code>{finding.evidence}</code></pre>}
+                                <div className="affected-files"><FileCode2 size={14} />{finding.filePath || finding.affectedFiles?.join(' · ') || 'Location not recorded'}</div>
+                                {location ? <button type="button" className="text-button" onClick={() => setFocusLocation({ filePath: finding.filePath, lineNumber: finding.lineNumber })}>View new line {finding.lineNumber} in diff <ArrowUpRight size={14} /></button> : finding.filePath && <p className="location-note">A matching saved diff line is unavailable.</p>}
+                                <div className="action-line"><span>Suggested check</span>{finding.suggestedFix || finding.recommendedAction || 'Verify the finding before making changes.'}</div>
+                            </div>
+                        </article>;
+                    })}
+                </div>
+            </section>
+            <section className={`ai-status-panel ${aiReview.tone}`} aria-label="AI analysis status">
+                <Sparkles size={19} />
+                <div>
+                    <strong>{aiReview.label}</strong><p>{aiReview.message}</p>
+                    {analysis.aiCoverage && <p>AI input: {analysis.aiCoverage.analyzedFiles ?? 0} of {analysis.aiCoverage.totalFiles ?? files.length} fetched files included; {analysis.aiCoverage.skippedFiles?.length || 0} skipped; {analysis.aiCoverage.truncatedFiles?.length || 0} limited patches. Prepared input does not confirm a successful AI review.</p>}
+                    {diagnostics && <details className="ai-diagnostics"><summary>Request details</summary><p>
+                        {Number.isFinite(diagnostics.durationMs) && `${(diagnostics.durationMs / 1000).toFixed(1)}s elapsed. `}
+                        {Number.isFinite(diagnostics.timeoutMs) && `${diagnostics.timeoutMs / 1000}s timeout. `}
+                        {Number.isInteger(diagnostics.httpStatus) && `Provider HTTP ${diagnostics.httpStatus}. `}
+                        {Number.isInteger(diagnostics.attempts) && `${diagnostics.attempts} attempt(s).`}
+                    </p></details>}
+                </div>
+            </section>
+            <DiffViewer files={files} focusLocation={focusLocation} />
+        </>
+    );
+}
+
 function DashboardPage() {
     const [pullRequestUrl, setPullRequestUrl] = useState('');
     const [analysis, setAnalysis] = useState(null);
     const [recentAnalyses, setRecentAnalyses] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [openingId, setOpeningId] = useState(null);
     const [errorMessage, setErrorMessage] = useState('');
+    const [historyStatus, setHistoryStatus] = useState('loading');
+    const [historyError, setHistoryError] = useState('');
+    const activeRequest = useRef(0);
+    const historyRequest = useRef(0);
 
-    useEffect(() => {
-        loadRecentAnalyses().then(setRecentAnalyses).catch(() => setRecentAnalyses([]));
-    }, []);
-
-    // Submit a Pull Request URL to the API and display its normalized report.
-    async function submitAnalysis(event) {
-        event.preventDefault();
-        setErrorMessage('');
-        setIsSubmitting(true);
-
+    async function refreshHistory() {
+        const sequence = ++historyRequest.current;
+        setHistoryStatus('loading');
+        setHistoryError('');
         try {
-            const response = await fetch(`${apiBaseUrl}/analyses`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pullRequestUrl })
-            });
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || result.message || 'Analysis could not be created.');
-            }
-
-            setAnalysis(result);
-            setRecentAnalyses((currentAnalyses) => [result, ...currentAnalyses.filter((item) => item.id !== result.id)]);
+            const results = await loadRecentAnalyses();
+            if (sequence !== historyRequest.current) return;
+            // A report created while history was loading must not disappear.
+            setRecentAnalyses(current => [...new Map([...current, ...results].map(item => [item.id, item])).values()]
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 20));
+            setHistoryStatus('ready');
         } catch (error) {
-            setErrorMessage(error.message);
-        } finally {
-            setIsSubmitting(false);
+            if (sequence !== historyRequest.current) return;
+            setHistoryError(error.message);
+            setHistoryStatus('error');
         }
     }
 
-    // Open a previous report from the compact history list.
-    async function openAnalysis(analysisId) {
-        const response = await fetch(`${apiBaseUrl}/analyses/${analysisId}`);
-        const result = await response.json();
-        setAnalysis(result);
+    useEffect(() => {
+        refreshHistory();
+        return () => { historyRequest.current++; activeRequest.current++; };
+    }, []);
+
+    async function submitAnalysis(event) {
+        event.preventDefault();
+        const sequence = ++activeRequest.current;
+        setErrorMessage('');
+        setOpeningId(null);
+        setIsSubmitting(true);
+        try {
+            const result = await createAnalysis(pullRequestUrl.trim());
+            if (sequence !== activeRequest.current) return;
+            setAnalysis(result);
+            setRecentAnalyses(current => [result, ...current.filter(item => item.id !== result.id)].slice(0, 20));
+        } catch (error) {
+            if (sequence === activeRequest.current) { setErrorMessage(error.message); refreshHistory(); }
+        } finally {
+            if (sequence === activeRequest.current) setIsSubmitting(false);
+        }
     }
 
-    const findings = analysis?.findings || [];
-    const aiReview = analysis ? getAiStatusDetails(analysis) : null;
-    const reportStatusLabel = analysis?.status === 'completed' ? (analysis.aiStatus === 'completed' ? 'Analysis completed' : 'Rule-based analysis completed') : analysis?.status;
-    const ReportStatusIcon = analysis?.status === 'completed' ? CheckCircle2 : AlertTriangle;
-    const emptyFindingsMessage = analysis?.status === 'failed' ? 'No findings are available because this PR analysis failed.' : analysis?.aiStatus === 'completed' ? 'No findings were returned by the completed rule and AI analysis.' : 'No rule-based findings were returned. See the AI status below.';
+    async function openAnalysis(id) {
+        const sequence = ++activeRequest.current;
+        setOpeningId(id);
+        setErrorMessage('');
+        try {
+            const result = await loadAnalysis(id);
+            if (sequence === activeRequest.current) setAnalysis(result);
+        } catch (error) {
+            if (sequence === activeRequest.current) setErrorMessage(error.message);
+        } finally {
+            if (sequence === activeRequest.current) setOpeningId(null);
+        }
+    }
 
     return (
-    <div className="app-frame">
-        <aside className="sidebar">
-            <div className="brand-lockup"><span className="brand-mark">P</span><span>PRism</span></div>
-            <nav className="sidebar-nav" aria-label="Primary navigation">
-                <a className="nav-item active" href="#overview"><ClipboardCheck size={17} />Overview</a>
-                <a className="nav-item" href="#history"><GitPullRequest size={17} />Analyses</a>
-            </nav>
-            <div className="sidebar-note"><Sparkles size={16} /><span>Review support for the changes that matter.</span></div>
-        </aside>
-        <main className="dashboard-shell" id="overview">
-            <header className="topbar"><div><p className="eyebrow">Workspace / Overview</p><h1>Pull Request review, with context.</h1></div><span className="beta-badge">BETA <span className="status-dot" /></span></header>
-            <section className="submit-panel" aria-labelledby="submit-title">
-                <div className="panel-heading"><div className="heading-icon"><GitPullRequest size={20} /></div><div><p className="section-label">Start an analysis</p><h2 id="submit-title">Bring a Pull Request into focus.</h2></div></div>
-                <form className="submit-form" onSubmit={submitAnalysis}>
-                    <label htmlFor="pull-request-url">GitHub Pull Request URL</label>
-                    <div className="input-row"><input id="pull-request-url" type="url" placeholder="https://github.com/org/repository/pull/42" value={pullRequestUrl} onChange={(event) => setPullRequestUrl(event.target.value)} required /><button type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{isSubmitting ? 'Analyzing' : 'Analyze PR'}</button></div>
-                    {errorMessage && <p className="error-message"><AlertTriangle size={16} />{errorMessage}</p>}
-                </form>
-            </section>
-            {analysis ? <section className="report-section" aria-labelledby="report-title"><div className="section-heading"><div><p className="section-label">Latest report</p><h2 id="report-title">{analysis.pullRequest?.title || 'Analysis result'}</h2><p className="muted-text">{analysis.pullRequest?.repository} · opened by {analysis.pullRequest?.author}</p></div><span className={`report-status ${analysis.status}`}><ReportStatusIcon size={15} />{reportStatusLabel}</span></div><div className="risk-summary"><div><span className="summary-number">{findings.length}</span><span className="summary-label">findings</span></div><div><span className="summary-number high">{findings.filter((finding) => finding.severity === 'high').length}</span><span className="summary-label">high attention</span></div><div><span className="summary-number">{analysis.pullRequest?.changedFiles?.length || 0}</span><span className="summary-label">files changed</span></div></div><div className="findings-list">{findings.length === 0 ? <div className="no-findings"><CheckCircle2 size={22} /><p>{emptyFindingsMessage}</p></div> : findings.map((finding) => <article className="finding-card" key={`${finding.category}-${finding.evidence}`}><div className={`finding-icon ${finding.severity}`}><ShieldAlert size={18} /></div><div className="finding-content"><div className="finding-meta"><span className="finding-category">{finding.category.replace('-', ' ')}</span><span className={`severity ${finding.severity}`}>{finding.severity}</span></div><h3>{finding.explanation}</h3><p>{finding.evidence}</p><div className="affected-files"><FileCode2 size={14} />{finding.affectedFiles.join(' · ')}</div><div className="action-line"><span>Next check</span>{finding.recommendedAction}</div></div></article>)}</div></section> : <section className="welcome-section"><div className="welcome-icon"><Sparkles size={24} /></div><div><p className="section-label">Ready when you are</p><h2>Your next analysis will appear here.</h2><p className="muted-text">Paste a GitHub Pull Request above to see changed files, rule-based risks, and review actions.</p></div></section>}
-            {aiReview && <section className={`ai-status-panel ${aiReview.tone}`} role="status" aria-label="AI analysis status"><Sparkles size={19} aria-hidden="true" /><div><strong>{aiReview.label}</strong><p>{aiReview.message}</p></div></section>}
-            {analysis && <DiffViewer key={analysis.id} files={analysis.pullRequest?.changedFiles || []} />}
-            <section className="history-section" id="history"><div className="section-heading"><div><p className="section-label">History</p><h2>Recent analyses</h2></div><span className="history-count">{recentAnalyses.length} saved</span></div>{recentAnalyses.length === 0 ? <p className="muted-text">No analyses yet. Your completed reports will stay here.</p> : <div className="history-list">{recentAnalyses.slice(0, 5).map((item) => <button className="history-item" type="button" key={item.id} onClick={() => openAnalysis(item.id)}><span><strong>{item.pullRequest?.title || 'Failed analysis'}</strong><small>{item.pullRequest?.repository || item.pullRequest?.url}</small></span><span className={`history-status ${item.status}`}>{item.status}</span></button>)}</div>}</section>
-        </main>
-    </div>
+        <div className="app-frame">
+            <aside className="sidebar">
+                <div className="brand-lockup"><span className="brand-mark">P</span><span>PRism</span></div>
+                <nav className="sidebar-nav" aria-label="Primary navigation">
+                    <a className="nav-item" href="#overview"><ClipboardCheck size={17} />Overview</a>
+                    <a className="nav-item" href="#history"><GitPullRequest size={17} />Analyses</a>
+                </nav>
+                <div className="sidebar-note"><Sparkles size={16} /><span>Review support for the changes that matter.</span></div>
+            </aside>
+            <main className="dashboard-shell" id="overview">
+                <header className="topbar"><div><p className="eyebrow">Workspace / Pull request review</p><h1>Understand the change.<br />Review with evidence.</h1><p className="muted-text">Inspect the diff, assess risks, and make your own call.</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
+                <section className="submit-panel" aria-labelledby="submit-title">
+                    <div className="panel-heading"><div className="heading-icon"><GitPullRequest size={20} /></div><div><p className="section-label">Start an analysis</p><h2 id="submit-title">Bring a Pull Request into focus.</h2></div></div>
+                    <form className="submit-form" onSubmit={submitAnalysis}>
+                        <label htmlFor="pull-request-url">GitHub Pull Request URL</label>
+                        <div className="input-row"><input id="pull-request-url" type="url" placeholder="https://github.com/org/repository/pull/42" value={pullRequestUrl} onChange={event => setPullRequestUrl(event.target.value)} required /><button type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{isSubmitting ? 'Analyzing…' : 'Analyze PR'}</button></div>
+                        {isSubmitting && <p className="muted-text" role="status">Fetching changed files and running checks. AI may take up to the configured timeout; please keep this page open.</p>}
+                        {errorMessage && <p className="error-message" role="alert"><AlertTriangle size={16} />{errorMessage}</p>}
+                    </form>
+                </section>
+                {openingId && <p className="muted-text" role="status">Opening saved report…</p>}
+                {analysis ? <AnalysisReport key={analysis.id} analysis={analysis} /> : <section className="welcome-section"><div className="welcome-icon"><Sparkles size={24} /></div><div><p className="section-label">Ready when you are</p><h2>Your next analysis will appear here.</h2><p className="muted-text">Paste a PR URL to inspect saved code changes, rule-based checks, and validated AI findings when available.</p></div></section>}
+                <section className="history-section" id="history" aria-busy={historyStatus === 'loading'}>
+                    <div className="section-heading"><div><p className="section-label">History</p><h2>Recent analyses</h2></div><span className="history-count">{recentAnalyses.length} shown</span></div>
+                    {historyStatus === 'loading' && <p className="muted-text" role="status">Loading saved reports…</p>}
+                    {historyStatus === 'error' && <div className="history-error" role="alert"><p className="error-message">{historyError}</p><button className="text-button" type="button" onClick={refreshHistory}>Reload history</button></div>}
+                    {historyStatus === 'ready' && recentAnalyses.length === 0 && <p className="muted-text">No saved reports yet. Analyze a PR to get started.</p>}
+                    <div className="history-list">{recentAnalyses.map(item => <button className="history-item" type="button" key={item.id} disabled={isSubmitting} aria-pressed={analysis?.id === item.id} onClick={() => openAnalysis(item.id)}>
+                        <span><strong>{item.pullRequest?.title || 'Failed analysis'}</strong><small>{item.pullRequest?.repository || item.pullRequest?.url}</small><small>{formatDate(item.createdAt)}{item.pullRequest?.headSha && ` · ${item.pullRequest.headSha.slice(0, 8)}`}</small></span>
+                        <span className={`history-status ${item.status}`}>{openingId === item.id ? 'Opening…' : item.status === 'failed' ? 'Failed' : item.aiStatus === 'completed' ? 'AI completed' : item.aiStatus === 'partial' ? 'AI partial' : 'Rules completed'}</span>
+                    </button>)}</div>
+                </section>
+            </main>
+        </div>
     );
 }
 
+export { AnalysisReport, getAiStatusDetails };
 export default DashboardPage;
