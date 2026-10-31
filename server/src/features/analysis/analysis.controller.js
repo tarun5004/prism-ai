@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { runAiAnalysis } from '../ai/ai.service.js';
-import { fetchPullRequest, PullRequestError } from '../pullRequest/pullRequest.service.js';
+import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
 import { findAnalysis, listAnalyses, saveAnalysis } from './analysis.repository.js';
 import { runRules } from './analysis.rules.js';
 
@@ -15,6 +15,7 @@ async function createAnalysis(request, response) {
   try {
     const pullRequest = await fetchPullRequest(pullRequestUrl);
     const ruleFindings = runRules(pullRequest);
+    if (process.env.GEMINI_API_KEY?.trim()) pullRequest.reviewContext = await fetchReviewContext(pullRequest);
     const aiResult = await runAiAnalysis(pullRequest);
     const analysis = {
       id: randomUUID(),
@@ -26,6 +27,7 @@ async function createAnalysis(request, response) {
       aiModel: aiResult.model,
       aiCoverage: aiResult.coverage,
       aiDiagnostics: aiResult.diagnostics,
+      ...(aiResult.review ? { aiReview: aiResult.review } : {}),
       ...(aiResult.error ? { aiError: aiResult.error } : {})
     };
 

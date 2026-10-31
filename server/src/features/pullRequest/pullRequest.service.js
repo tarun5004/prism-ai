@@ -1,3 +1,5 @@
+import { posix } from 'node:path';
+
 const githubApiBaseUrl = 'https://api.github.com';
 
 class PullRequestError extends Error {
@@ -197,4 +199,3 @@ async function fetchReviewContext(pullRequest) {
 }
 
 export { fetchPullRequest, fetchReviewContext, PullRequestError };
-import { posix } from 'node:path';

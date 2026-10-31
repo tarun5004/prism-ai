@@ -8,6 +8,7 @@ let originalKey;
 let originalModel;
 const file = { filename: 'src/math.service.js', status: 'modified', additions: 1, deletions: 1, changes: 2, patch: '@@ -1 +1 @@\n-return value * 2;\n+return value / 2;' };
 const finding = { title: 'Unexpected division', severity: 'medium', filePath: file.filename, lineNumber: 1, explanation: 'The result now halves instead of doubles.', suggestedFix: 'Confirm the intended behavior before restoring multiplication.', evidence: 'return value / 2;' };
+const review = { summary: 'The calculation now divides.', walkthrough: [{ filePath: file.filename, description: 'Replaces multiplication with division.', evidenceRefs: [{ filePath: file.filename, lineSide: 'new', lineNumber: 1, evidence: finding.evidence }] }], impacts: [], limitations: ['Callers were not analyzed.'] };
 
 beforeEach(() => {
   originalKey = process.env.GEMINI_API_KEY;
@@ -26,10 +27,11 @@ afterEach(() => {
 function mockRequests(aiFailure) {
   mock.method(globalThis, 'fetch', async (url) => {
     if (String(url).startsWith('https://api.github.com/')) {
-      return Response.json(String(url).includes('/files?') ? [file] : { title: 'Fixture PR', html_url: 'https://github.com/audit/repo/pull/1', user: { login: 'audit' } });
+      if (String(url).includes('/contents/')) return Response.json({ encoding: 'base64', content: Buffer.from(finding.evidence).toString('base64'), size: finding.evidence.length });
+      return Response.json(String(url).includes('/files?') ? [file] : { title: 'Fixture PR', html_url: 'https://github.com/audit/repo/pull/1', user: { login: 'audit' }, base: { sha: 'base' }, head: { sha: 'head' }, changed_files: 1 });
     }
     if (aiFailure) return Response.json({ error: { code: 503, message: 'private provider data', status: 'UNAVAILABLE' } }, { status: 503 });
-    return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ findings: [finding] }) }] }, finishReason: 'STOP' }] });
+    return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ findings: [finding], review }) }] }, finishReason: 'STOP' }] });
   });
 }
 
@@ -66,6 +68,9 @@ test('controller saves AI findings alongside deterministic findings', async () =
   const report = await createReport();
   assert.equal(report.aiStatus, 'completed');
   assert.equal(report.aiModel, 'gemini-3.8-flash');
+  assert.equal(report.aiReview.summary, review.summary);
+  assert.equal(report.aiReview.recommendation, 'human_review');
+  assert.equal(report.pullRequest.reviewContext.snippets.length, 1);
   assert.equal(report.aiCoverage.analyzedFiles, 1);
   assert.equal(report.aiDiagnostics.attempts, 1);
   assert.ok(Number.isInteger(report.aiDiagnostics.durationMs));

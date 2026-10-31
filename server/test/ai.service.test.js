@@ -43,6 +43,40 @@ function respondWith(text) {
   }));
 }
 
+const contextualReview = {
+  summary: 'The calculation changes multiplication to division.',
+  walkthrough: [{ filePath: 'src/math.js', description: 'double now divides the input.', evidenceRefs: [{ filePath: 'src/math.js', lineSide: 'new', lineNumber: 2, evidence: '  return value / 2;' }] }],
+  impacts: [{ description: 'Callers expecting double may receive half.', evidenceRefs: [{ filePath: 'src/math.js', lineSide: 'new', lineNumber: 2, evidence: '  return value / 2;' }] }],
+  limitations: ['Callers were not supplied.']
+};
+
+test('returns a grounded summary, walkthrough, impacts and advisory recommendation', async () => {
+  respondWith(JSON.stringify({ findings: [validFinding], review: contextualReview }));
+  const result = await aiService.runAiAnalysis({ ...reviewPr, description: 'Keep double behavior' });
+  assert.equal(result.review.summary, contextualReview.summary);
+  assert.equal(result.review.recommendation, 'human_review');
+  const sent = JSON.parse(JSON.parse(globalThis.fetch.mock.calls[0].arguments[1].body).contents[0].parts[0].text);
+  assert.equal(sent.intent.description, 'Keep double behavior');
+  assert.ok(Array.isArray(sent.snippets));
+});
+
+test('rejects invented impact references while preserving valid findings', async () => {
+  respondWith(JSON.stringify({ findings: [validFinding], review: { ...contextualReview, impacts: [{ description: 'Invented', evidenceRefs: [{ filePath: 'unknown.js', lineSide: 'new', lineNumber: 1, evidence: 'made up' }] }] } }));
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.error, 'INVALID_REVIEW');
+  assert.equal(result.status, 'partial');
+  assert.equal(result.review, undefined);
+  assert.equal(result.findings.length, 1);
+});
+
+test('validates a removed-line finding on its actual old-side evidence', async () => {
+  const finding = { ...validFinding, filePath: 'src/math.js', lineSide: 'old', lineNumber: 10, evidence: 'if (!user) throw Error();' };
+  respondWith(JSON.stringify({ findings: [finding] }));
+  const result = await aiService.runAiAnalysis({ changedFiles: [{ path: 'src/math.js', additions: 0, deletions: 1, patch: '@@ -10 +9,0 @@\n-if (!user) throw Error();' }] });
+  assert.equal(result.findings[0].lineSide, 'old');
+  assert.equal(result.findings[0].lineNumber, 10);
+});
+
 test('Gemini connectivity is available separately from PR analysis', () => {
   assert.equal(typeof aiService.checkGeminiConnection, 'function');
 });
@@ -144,14 +178,14 @@ test('reviews bounded diff through Gemini and preserves report compatibility', a
   let request;
   globalThis.fetch.mock.mockImplementation(async (url, options) => {
     request = { url: String(url), body: JSON.parse(options.body) };
-    return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ findings: [validFinding] }) }] }, finishReason: 'STOP' }] });
+    return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ findings: [validFinding], review: contextualReview }) }] }, finishReason: 'STOP' }] });
   });
   const result = await aiService.runAiAnalysis(reviewPr);
   assert.equal(result.status, 'completed');
   assert.deepEqual(result.findings[0], { ...validFinding, category: 'ai-review', confidence: 'low', affectedFiles: ['src/math.js'], recommendedAction: validFinding.suggestedFix, source: 'ai' });
   assert.match(request.url, /models\/gemini-3\.8-flash:generateContent/);
   assert.equal(request.body.generationConfig.responseMimeType, 'application/json');
-  assert.ok(!request.body.contents[0].parts[0].text.includes('Do not send metadata'));
+  assert.ok(request.body.contents[0].parts[0].text.includes('Do not send metadata'));
   assert.equal(globalThis.fetch.mock.callCount(), 1);
 });
 
@@ -188,7 +222,7 @@ test('keeps valid findings while exposing rejected model output', async () => {
 });
 
 test('empty findings are valid but malformed root output is not', async () => {
-  respondWith('{"findings":[]}');
+  respondWith(JSON.stringify({ findings: [], review: contextualReview }));
   assert.equal((await aiService.runAiAnalysis(reviewPr)).status, 'completed');
   for (const text of ['{}', 'null', '{broken', '{"findings":{}}']) {
     respondWith(text);
@@ -199,7 +233,7 @@ test('empty findings are valid but malformed root output is not', async () => {
 });
 
 test('reports limited coverage even when the model returns no findings', async () => {
-  respondWith('{"findings":[]}');
+  respondWith(JSON.stringify({ findings: [], review: contextualReview }));
   const result = await aiService.runAiAnalysis({ changedFiles: [...reviewPr.changedFiles, { path: 'other.js', patch: '' }] });
   assert.equal(result.status, 'partial');
   assert.equal(result.coverage.skippedFiles.length, 1);
@@ -239,7 +273,7 @@ test('PR request timeout returns an honest AI failure', async () => {
 });
 
 test('PR timeout defaults to 120 seconds and records safe duration', async () => {
-  respondWith('{"findings":[]}');
+  respondWith(JSON.stringify({ findings: [], review: contextualReview }));
   const result = await aiService.runAiAnalysis(reviewPr);
   assert.equal(result.diagnostics.timeoutMs, 120000);
   assert.equal(result.diagnostics.attempts, 1);
