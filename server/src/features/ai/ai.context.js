@@ -22,7 +22,7 @@ function readPatch(patch) {
         hunk = null;
         continue;
       }
-      hunk = { oldRemaining, newRemaining, newNumber };
+      hunk = { oldRemaining, newRemaining, oldNumber, newNumber };
       continue;
     }
     if (text.startsWith('\\ No newline at end of file')) continue;
@@ -30,7 +30,8 @@ function readPatch(patch) {
     const usesOld = change === 'deleted' || change === 'context';
     const usesNew = change === 'added' || change === 'context';
     if (hunk && change && (!usesOld || hunk.oldRemaining > 0) && (!usesNew || hunk.newRemaining > 0)) {
-      lines.push({ lineNumber: usesNew ? hunk.newNumber++ : null, change, code: text.slice(1) });
+      lines.push({ lineNumber: usesNew ? hunk.newNumber++ : hunk.oldNumber, ...(change === 'deleted' ? { lineSide: 'old' } : {}), change, code: text.slice(1) });
+      if (usesOld) hunk.oldNumber++;
       if (usesOld) hunk.oldRemaining--;
       if (usesNew) hunk.newRemaining--;
     } else {
@@ -47,7 +48,7 @@ function prepareAiInput(pullRequest) {
   const files = [];
   const coverage = { scope: 'fetched-files', totalFiles: changedFiles.length, analyzedFiles: 0, skippedFiles: [], truncatedFiles: [], inputCharacters: 2 };
 
-  for (const file of changedFiles) {
+  for (const file of [...changedFiles].sort((a, b) => Number(/test|spec/i.test(a.path)) - Number(/test|spec/i.test(b.path)))) {
     const filePath = typeof file.path === 'string' ? file.path : '';
     const skip = (reason) => coverage.skippedFiles.push({ filePath, reason });
     if (sensitivePath.test(filePath)) { skip('sensitive-file'); continue; }
@@ -59,7 +60,7 @@ function prepareAiInput(pullRequest) {
     if (files.length >= 5) { skip('file-limit'); continue; }
 
     const parsed = readPatch(file.patch);
-    if (!parsed.lines.some(line => line.change === 'added')) { skip('no-valid-added-lines'); continue; }
+    if (!parsed.lines.some(line => line.change === 'added' || line.change === 'deleted')) { skip('no-valid-changed-lines'); continue; }
     let truncated = parsed.incomplete ||
       (Number.isFinite(file.additions) && parsed.lines.filter(line => line.change === 'added').length !== file.additions) ||
       (Number.isFinite(file.deletions) && parsed.lines.filter(line => line.change === 'deleted').length !== file.deletions);
@@ -72,14 +73,44 @@ function prepareAiInput(pullRequest) {
       }
       selected.lines.push(line);
     }
-    if (!selected.lines.some(line => line.change === 'added')) { skip('input-limit'); continue; }
+    if (!selected.lines.some(line => line.change === 'added' || line.change === 'deleted')) { skip('input-limit'); continue; }
     if (truncated) coverage.truncatedFiles.push(filePath);
     files.push(selected);
   }
 
   coverage.analyzedFiles = files.length;
   coverage.inputCharacters = JSON.stringify(files).length;
-  return { files, coverage };
+  const intent = {};
+  for (const key of ['title', 'description']) {
+    const value = pullRequest?.[key];
+    if (typeof value === 'string' && !credentialText.test(value) && !shellCredential.test(value)) intent[key] = value.slice(0, key === 'title' ? 200 : 2000);
+  }
+  const snippets = [];
+  const contextOmissions = [...(pullRequest?.reviewContext?.omitted || [])];
+  let contextCharacters = 0;
+  for (const snippet of pullRequest?.reviewContext?.snippets || []) {
+    if (!snippet || typeof snippet.filePath !== 'string' || typeof snippet.code !== 'string'
+      || !['old', 'new'].includes(snippet.lineSide) || !Number.isSafeInteger(snippet.startLine) || snippet.startLine < 1) continue;
+    if (sensitivePath.test(snippet.filePath) || credentialText.test(snippet.code) || shellCredential.test(snippet.code)) {
+      contextOmissions.push({ filePath: snippet.filePath, reason: 'sensitive-content' }); continue;
+    }
+    // Keep complete source lines and their original coordinates within the input budget.
+    const lines = [];
+    for (const line of snippet.code.split(/\r?\n/)) {
+      if (lines.join('\n').length + line.length + 1 > 2500) break;
+      lines.push(line);
+    }
+    const selected = { filePath: snippet.filePath, lineSide: snippet.lineSide, startLine: snippet.startLine, code: lines.join('\n'), role: snippet.role };
+    if (!lines.length || contextCharacters + JSON.stringify(selected).length > 8000) {
+      contextOmissions.push({ filePath: snippet.filePath, reason: 'context-input-limit' }); continue;
+    }
+    if (selected.code !== snippet.code) contextOmissions.push({ filePath: snippet.filePath, reason: 'context-window-limited' });
+    snippets.push(selected); contextCharacters += JSON.stringify(selected).length;
+  }
+  coverage.contextSnippets = snippets.length;
+  coverage.contextOmissions = contextOmissions;
+  coverage.inputCharacters = JSON.stringify({ intent, files, snippets }).length;
+  return { files, coverage, intent, snippets };
 }
 
 export { prepareAiInput };

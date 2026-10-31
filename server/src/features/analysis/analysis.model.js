@@ -11,6 +11,7 @@ const analysisSchema = new mongoose.Schema(
     aiModel: { type: String },
     aiError: { type: String },
     aiCoverage: { type: mongoose.Schema.Types.Mixed },
+    aiReview: { type: mongoose.Schema.Types.Mixed },
     aiDiagnostics: {
       durationMs: { type: Number },
       timeoutMs: { type: Number },
@@ -19,7 +20,8 @@ const analysisSchema = new mongoose.Schema(
       networkCode: { type: String },
       failureCategory: { type: String }
     },
-    error: { type: String }
+    error: { type: String },
+    errorCode: { type: String }
   },
   { versionKey: false }
 );
