@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { createAnalysis } from '../src/features/analysis/analysis.controller.js';
-import { findAnalysis } from '../src/features/analysis/analysis.repository.js';
+import { findAnalysis, saveAnalysis } from '../src/features/analysis/analysis.repository.js';
 import Analysis from '../src/features/analysis/analysis.model.js';
 
 let originalKey;
@@ -86,4 +86,30 @@ test('AI outage preserves rule findings and saves the safe failure state', async
   assert.equal((await findAnalysis(report.id)).aiDiagnostics.httpStatus, 503);
   assert.equal(report.aiDiagnostics.failureCategory, 'provider');
   assert.ok(!JSON.stringify(report).includes('private provider data'));
+});
+
+test('report IDs remain unique after controller reload and cannot overwrite history', async () => {
+  mockRequests(true);
+  const first = await createReport();
+  const { createAnalysis: reloadedController } = await import('../src/features/analysis/analysis.controller.js?restart-test');
+  let second;
+  await reloadedController({ body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' } }, {
+    status() { return this; }, json(value) { second = value; return value; }
+  });
+  assert.notEqual(first.id, second.id);
+  assert.match(first.id, /^[0-9a-f-]{36}$/);
+  await assert.rejects(saveAnalysis({ ...first, findings: [] }), /already exists/);
+  assert.deepEqual(await findAnalysis(first.id), first);
+});
+
+test('non-string input returns a JSON validation error without external requests', async () => {
+  const request = mock.method(globalThis, 'fetch', () => { throw Error('must not fetch'); });
+  let status;
+  let result;
+  await createAnalysis({ body: { pullRequestUrl: 123 } }, {
+    status(value) { status = value; return this; }, json(value) { result = value; }
+  });
+  assert.equal(status, 400);
+  assert.equal(typeof result.message, 'string');
+  assert.equal(request.mock.callCount(), 0);
 });

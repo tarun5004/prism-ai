@@ -6,10 +6,11 @@ const analyses = new Map();
 // Save a beta analysis in MongoDB when connected, otherwise keep local development in memory.
 async function saveAnalysis(analysis) {
   if (mongoose.connection.readyState === 1) {
-    await Analysis.findOneAndUpdate({ id: analysis.id }, analysis, { upsert: true, new: true });
+    await Analysis.create(analysis);
     return analysis;
   }
 
+  if (analyses.has(analysis.id)) throw new Error('Analysis already exists.');
   analyses.set(analysis.id, analysis);
   return analysis;
 }

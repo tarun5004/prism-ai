@@ -1,13 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import { runAiAnalysis } from '../ai/ai.service.js';
-import { fetchPullRequest } from '../pullRequest/pullRequest.service.js';
+import { fetchPullRequest, PullRequestError } from '../pullRequest/pullRequest.service.js';
 import { findAnalysis, listAnalyses, saveAnalysis } from './analysis.repository.js';
 import { runRules } from './analysis.rules.js';
 
-let nextAnalysisId = 1;
-
 // Create a report from one Pull Request URL and save the normalized beta result.
 async function createAnalysis(request, response) {
-  const pullRequestUrl = request.body?.pullRequestUrl?.trim();
+  const pullRequestUrl = typeof request.body?.pullRequestUrl === 'string' ? request.body.pullRequestUrl.trim() : '';
 
   if (!pullRequestUrl) {
     return response.status(400).json({ message: 'Pull Request URL is required.' });
@@ -18,7 +17,7 @@ async function createAnalysis(request, response) {
     const ruleFindings = runRules(pullRequest);
     const aiResult = await runAiAnalysis(pullRequest);
     const analysis = {
-      id: String(nextAnalysisId++),
+      id: randomUUID(),
       status: 'completed',
       createdAt: new Date().toISOString(),
       pullRequest,
@@ -32,8 +31,12 @@ async function createAnalysis(request, response) {
 
     return response.status(201).json(await saveAnalysis(analysis));
   } catch (error) {
+    if (!(error instanceof PullRequestError)) {
+      return response.status(500).json({ message: 'Analysis could not be saved or completed. Please try again.' });
+    }
+    if (error.statusCode === 400) return response.status(400).json({ message: error.message });
     const failedAnalysis = {
-      id: String(nextAnalysisId++),
+      id: randomUUID(),
       status: 'failed',
       createdAt: new Date().toISOString(),
       pullRequest: { url: pullRequestUrl },
@@ -41,8 +44,12 @@ async function createAnalysis(request, response) {
       error: error.message
     };
 
-    await saveAnalysis(failedAnalysis);
-    return response.status(502).json(failedAnalysis);
+    try {
+      await saveAnalysis(failedAnalysis);
+    } catch {
+      return response.status(500).json({ message: 'The failed analysis could not be saved. Please try again.' });
+    }
+    return response.status(error.statusCode).json(failedAnalysis);
   }
 }
 
