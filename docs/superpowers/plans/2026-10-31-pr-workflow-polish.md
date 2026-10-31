@@ -54,3 +54,16 @@ Review focus: unavailable imports, secrets in retrieved code/PR intent, oversize
 - Deferred minor: reopening saved failed reports uses generic safe guidance rather than showing historical raw error text. Submission still shows the current sanitized failure.
 - Browser unavailable through computer-use connector: interactive click/layout QA remains unverified. Parser navigation resolution, initial selection and highlighted row verified offline.
 - No PR-context/repository-overview mode or AI provider behavior changes in this slice.
+
+## Contextual review continuation — completed implementation chunks
+- 5cf197b: configurable/default 120-second SDK/server deadline; local ignored environment updated; 47 AI-service checks passed for that chunk.
+- 6b20f41: revision-pinned bounded source windows and selected relative imports, safe intent, production-first context, numbered deleted-side evidence; 20 context/retrieval checks passed.
+- f7c7ac6: structured summary, walkthrough, impacts, limitations, location validation and advisory recommendation; controller/model persistence; 56 service/controller checks passed.
+- 26cb7c9: persist safe actionable GitHub failure codes; 17 controller/retrieval checks passed.
+- 0b4f247: contextual review dashboard, old-side navigation and safe failure guidance; 18 frontend checks passed.
+- 95c8993: independent review caught raw-source context storage bypassing provider secret filtering; regression failed before fix and passed after keeping enrichment transient. Final backend suite: 78/78.
+- Vite production build passed. Final real isolated MongoDB check preserved the validated review and patches while excluding raw source context. Temporary verification database removed.
+- Nine actual local saved reports rendered through the updated UI. Browser connector inventory was empty; interactive layout/click QA remains unverified.
+- Exactly one live generation request was made after offline verification. GitHub retrieval succeeded (10 bounded requests); four source windows reached input preparation. Gemini returned HTTP 503 in 2792ms with timeout 120000ms and attempts 1. No retry was made. Analysis 850ccc03-7782-4784-9daa-d71fc451035d saved deterministic results and honest AI-unavailable status; saved read was verified.
+- Live AI acceptance remains blocked by the upstream 503 response. A real successful contextual review is NOT confirmed by mocked tests. Another generation requires a new controlled attempt; no retry loop/fallback provider was added.
+- Deliberate scope: retain the explicit 4 MiB snapshot guard; no storage migration, repository-wide graph, new application files or dependencies. Unknown legacy failures retain generic guidance; newly recorded failure codes show actionable messages.
