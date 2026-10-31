@@ -609,6 +609,17 @@ button:disabled {
 .location-note { margin-top: 0.5rem !important; }
 .ai-diagnostics { margin-top: 0.7rem; font-size: 0.8rem; }
 .ai-diagnostics summary { cursor: pointer; color: #b1bcb3; }
+.contextual-review h3 { margin: 1.5rem 0 0.65rem; font-size: 1rem; }
+.review-summary { color: #dce5dc; line-height: 1.7; }
+.review-recommendation { display: inline-block; border: 1px solid #586b3e; border-radius: 6px; padding: 0.5rem 0.8rem; color: #c6f36b; font-size: 0.9rem; font-weight: 600; }
+.review-item { padding: 0.8rem 0; border-top: 1px solid #303b33; }
+.review-item h4 { margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; overflow-wrap: anywhere; }
+.review-item p { color: #b1bcb3; font-size: 0.9rem; line-height: 1.65; }
+.review-reference .text-button { overflow-wrap: anywhere; }
+.review-reference .finding-evidence { margin-top: 0.3rem; }
+.review-limitations { margin-top: 1rem; color: #b1bcb3; font-size: 0.85rem; }
+.review-limitations summary { cursor: pointer; color: #f3c867; }
+.review-limitations li { margin: 0.45rem 0; }
 .history-item[aria-pressed="true"] { border-color: #789543; }
 .risk-summary { flex-wrap: wrap; }
 button, input, select { font-family: inherit; }
