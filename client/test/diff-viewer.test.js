@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 // Use the existing JSX transformer; no browser or external API is needed.
 const vite = await createServer({
@@ -11,6 +13,61 @@ const vite = await createServer({
 });
 after(() => vite.close());
 const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx');
+const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
+
+test('report renders advisory AI failure, coverage, revision and safe evidence', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
+    id: 'fixture', status: 'completed', aiStatus: 'unavailable', aiError: 'API_ERROR',
+    createdAt: '2026-10-31T00:00:00Z', aiDiagnostics: { httpStatus: 504, durationMs: 1500, attempts: 1 },
+    pullRequest: { headSha: '1234567890', headBranch: 'fix', baseSha: 'abcdef1234', baseBranch: 'main', filesComplete: false, totalChangedFiles: 2,
+      changedFiles: [{ path: 'a.js', patch: '@@ -0,0 +1 @@\n+<script>unsafe</script>', additions: 1, deletions: 0 }] },
+    findings: [{ source: 'ai', title: 'Check output', severity: 'high', filePath: 'a.js', lineNumber: 1, evidence: '<script>unsafe</script>', explanation: 'Example', suggestedFix: 'Escape output' }]
+  } }));
+  assert.match(html, /Rule-based analysis completed/);
+  assert.match(html, /AI analysis unavailable/);
+  assert.match(html, /own response deadline/);
+  assert.match(html, /File retrieval is incomplete/);
+  assert.match(html, /12345678/);
+  assert.match(html, /View new line 1 in diff/);
+  assert.match(html, /&lt;script&gt;unsafe&lt;\/script&gt;/);
+  assert.ok(!html.includes('<script>unsafe</script>'));
+  assert.ok(!html.includes('AI analysis completed'));
+});
+
+test('old saved reports without revision or AI metadata still render', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: { id: '1', status: 'completed', createdAt: 'invalid', pullRequest: {}, findings: [] } }));
+  assert.match(html, /Revision not recorded/);
+  assert.match(html, /AI status not recorded/);
+  assert.match(html, /No changed files/);
+  assert.match(html, /Date unavailable/);
+});
+
+test('diff initial focus selects the actual target file and highlights its row', () => {
+  const html = renderToStaticMarkup(createElement(viewer.default, {
+    files: [{ path: 'first.js', patch: '' }, { path: 'target.js', previousPath: 'old.js', patch: '@@ -0,0 +10 @@\n+target();', additions: 1, deletions: 0 }],
+    focusLocation: { filePath: 'target.js', lineNumber: 10 }
+  }));
+  assert.match(html, /Renamed from/);
+  assert.match(html, /diff-line-focused/);
+  assert.match(html, /Diff for target.js/);
+});
+
+test('finding navigation resolves only existing new-side lines', () => {
+  const files = [{ path: 'a.js', patch: '@@ -5 +10 @@\n-old\n+new' }];
+  assert.equal(viewer.findDiffLocation(files, { filePath: 'a.js', lineNumber: 10 }).text, 'new');
+  for (const finding of [
+    { filePath: 'missing.js', lineNumber: 10 },
+    { filePath: 'a.js', lineNumber: 5 },
+    { filePath: 'a.js', lineNumber: '10' },
+    { filePath: 'a.js', lineNumber: 0 }
+  ]) assert.equal(viewer.findDiffLocation(files, finding), null);
+});
+
+test('unsafe hunk coordinates remain unnumbered', () => {
+  const result = viewer.parseUnifiedDiff('@@ -9007199254740992 +1 @@\n-old\n+new');
+  assert.equal(result.incomplete, true);
+  assert.ok(result.lines.every(line => line.oldNumber === null && line.newNumber === null));
+});
 
 test('numbers replacements and context using both hunk ranges', () => {
   assert.equal(typeof viewer.parseUnifiedDiff, 'function');

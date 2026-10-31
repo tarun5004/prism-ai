@@ -1,8 +1,25 @@
+@font-face {
+  font-family: Inter;
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #eef2ed;
   background: #111513;
   font-synthesis: none;
+  line-height: 1.5;
 }
 
 * {
@@ -116,11 +133,11 @@ body {
 }
 
 h1 {
-  max-width: 25rem;
+  max-width: 42rem;
   margin: 0.6rem 0 0;
-  font-size: clamp(1.8rem, 4vw, 3rem);
+  font-size: clamp(1.8rem, 3.3vw, 2.75rem);
   letter-spacing: -0.04em;
-  line-height: 1.05;
+  line-height: 1.15;
 }
 
 .beta-badge,
@@ -162,7 +179,6 @@ h2 {
   border-radius: 10px;
   background: #171c19;
   padding: clamp(1.1rem, 3vw, 1.75rem);
-  animation: rise-in 420ms ease both;
 }
 
 .panel-heading,
@@ -545,8 +561,8 @@ button:disabled {
 
 .diff-file-path,
 .diff-selected-path {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  font-size: 0.8rem;
   overflow-wrap: anywhere;
 }
 
@@ -566,17 +582,40 @@ button:disabled {
 .diff-warning { margin: 0; padding: 1rem; font-size: 0.8rem; line-height: 1.6; color: #abb7ad; }
 .diff-warning { color: #f3c867; background: #30291b; }
 .diff-scroll { max-height: 32rem; overflow: auto; }
-.diff-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; line-height: 1.65; }
+.diff-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; line-height: 1.75; }
 .diff-table th { position: sticky; top: 0; z-index: 1; padding: 0.4rem 0.65rem; background: #1c231f; color: #abb7ad; text-align: left; font-weight: 500; }
 .diff-table td { padding: 0; vertical-align: top; }
-.diff-table code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; tab-size: 4; }
-.diff-table .diff-line-number { width: 1%; min-width: 3rem; padding: 0 0.65rem; border-right: 1px solid #29332d; color: #9aa79d; text-align: right; user-select: none; font-family: ui-monospace, Consolas, monospace; }
+.diff-table code { font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; white-space: pre; tab-size: 4; }
+.diff-table .diff-line-number { width: 1%; min-width: 3rem; padding: 0 0.65rem; border-right: 1px solid #29332d; color: #9aa79d; text-align: right; user-select: none; font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; }
 .diff-table .diff-marker { width: 1%; padding: 0 0.6rem; user-select: none; }
 .diff-table .diff-code { padding-right: 1rem; }
 .diff-line-added { background: #1c3021; color: #d4efce; }
 .diff-line-deleted { background: #352220; color: #ffc4ba; }
 .diff-line-hunk { background: #202b32; color: #b0cfdf; }
 .diff-line-meta { color: #a1aaa4; }
+.diff-line-focused { outline: 2px solid #c6f36b; outline-offset: -2px; }
+
+.revision-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-top: 1rem; color: #a5b2a8; font-size: 0.75rem; }
+.revision-meta code, .finding-evidence code { font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; }
+.revision-meta code { overflow-wrap: anywhere; }
+.finding-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin: 1.2rem 0; }
+.finding-filters label { display: grid; gap: 0.35rem; color: #b1bcb3; font-size: 0.8rem; }
+.finding-filters select { border: 1px solid #425047; border-radius: 6px; padding: 0.5rem 0.75rem; background: #111513; color: #eef2ed; font: inherit; }
+.finding-filters .muted-text { margin: 0 0 0.5rem; }
+.finding-content { min-width: 0; }
+.finding-evidence { margin: 0.8rem 0; max-height: 12rem; overflow: auto; padding: 0.85rem; border: 1px solid #303b33; border-radius: 6px; background: #111513; color: #d8e5d6; font-size: 0.8rem; tab-size: 4; }
+.text-button { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0; background: transparent; color: #c6f36b; font-size: 0.8rem; text-align: left; }
+.text-button:hover:not(:disabled) { background: transparent; color: #defba4; transform: none; text-decoration: underline; }
+.location-note { margin-top: 0.5rem !important; }
+.ai-diagnostics { margin-top: 0.7rem; font-size: 0.8rem; }
+.ai-diagnostics summary { cursor: pointer; color: #b1bcb3; }
+.history-item[aria-pressed="true"] { border-color: #789543; }
+.risk-summary { flex-wrap: wrap; }
+button, input, select { font-family: inherit; }
+button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #c6f36b; outline-offset: 3px; }
+.report-status { flex-shrink: 0; }
+.section-heading > div { min-width: 0; }
+#report-title { overflow-wrap: anywhere; }
 .diff-table .diff-line-hunk td,
 .diff-table .diff-line-meta td { padding: 0.35rem 0.75rem; }
 
@@ -608,4 +647,11 @@ button:disabled {
   button { min-height: 2.8rem; }
   .topbar { align-items: flex-start; }
   .risk-summary { gap: 1.2rem; justify-content: space-between; }
+  .report-section > .section-heading { flex-direction: column; }
+  .history-item { flex-wrap: wrap; gap: 0.5rem; }
+  .history-item > span:first-child { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
