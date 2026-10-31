@@ -5,6 +5,15 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import * as aiService from '../src/features/ai/ai.service.js';
 
 const expected = { status: 'ok', provider: 'gemini', message: 'Connection successful' };
+
+test('default review deadline is 120 seconds in SDK headers and diagnostics', async () => {
+  respondWith(JSON.stringify({ findings: [] }));
+  const result = await aiService.runAiAnalysis({ changedFiles: [{ path: 'a.js', additions: 1, deletions: 0, patch: '@@ -0,0 +1 @@\n+hello();' }] });
+  assert.equal(result.diagnostics.timeoutMs, 120000);
+  const options = globalThis.fetch.mock.calls[0].arguments[1];
+  assert.equal(new Headers(options.headers).get('x-server-timeout'), '120');
+  assert.equal(globalThis.fetch.mock.callCount(), 1);
+});
 const environmentKeys = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_API_URL', 'AI_API_KEY'];
 let originalEnvironment;
 
@@ -229,10 +238,10 @@ test('PR request timeout returns an honest AI failure', async () => {
   finally { clearTimeout(keepAlive); }
 });
 
-test('PR timeout defaults to 60 seconds and records safe duration', async () => {
+test('PR timeout defaults to 120 seconds and records safe duration', async () => {
   respondWith('{"findings":[]}');
   const result = await aiService.runAiAnalysis(reviewPr);
-  assert.equal(result.diagnostics.timeoutMs, 60000);
+  assert.equal(result.diagnostics.timeoutMs, 120000);
   assert.equal(result.diagnostics.attempts, 1);
   assert.ok(Number.isInteger(result.diagnostics.durationMs));
   assert.ok(result.diagnostics.durationMs >= 0);

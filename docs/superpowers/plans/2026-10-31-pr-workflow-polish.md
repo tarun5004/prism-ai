@@ -1,5 +1,17 @@
 # PR workflow polish implementation plan
 
+## Approved continuation — contextual AI review
+
+Use existing modules only; no new application files or dependencies. Preserve existing user changes and main. Implement inline, test and commit each chunk separately.
+
+1. Deadline: 120000ms default/configuration; keep one attempt and safe diagnostics. Test SDK deadline header offline before committing.
+2. Context: PR intent, changed-line-centered windows, old/new evidence; fetch at most five changed JS/TS source files and three direct relative imports pinned to SHA. Bound response bytes and context budget; record omissions honestly. No clone, execution, graph service or repository-wide claims.
+3. Review: extend existing structured response with summary, referenced walkthrough/impacts, limitations; validate evidence against supplied source. Persist only validated review; derive advisory recommendation from validated findings and coverage. Preserve legacy findings-only compatibility for saved reports.
+4. UI: show review, coverage and recommendation; support deleted-line navigation; display allowlisted saved failure guidance. Targeted offline rendering/parser tests and production build.
+5. Verification: merge feature branches to integration; backend tests, isolated Mongo persistence, health; one controlled real PR review attempt without retries. Inspect actual request result and record limitations. Browser QA only if a browser connector is available.
+
+Review focus: unavailable imports, secrets in retrieved code/PR intent, oversized content, incomplete/removed-only patches, fabricated review references, provider failures, legacy reports and unknown historical errors.
+
 > Execute inline with executing-plans, one verified chunk at a time.
 
 **Goal:** Finish existing PR reports before adding PR-context or repository modes.

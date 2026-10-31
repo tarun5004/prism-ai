@@ -18,7 +18,7 @@ const safeNetworkCodes = new Set([
   'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'ERR_TLS_CERT_ALTNAME_INVALID'
 ]);
 
-async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS?.trim() || 60000) } = {}) {
+async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS?.trim() || 120000) } = {}) {
   const startedAt = performance.now();
   const { files, coverage } = prepareAiInput(pullRequest);
   const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
