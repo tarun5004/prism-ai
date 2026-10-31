@@ -20,7 +20,8 @@ const analysisSchema = new mongoose.Schema(
       networkCode: { type: String },
       failureCategory: { type: String }
     },
-    error: { type: String }
+    error: { type: String },
+    errorCode: { type: String }
   },
   { versionKey: false }
 );

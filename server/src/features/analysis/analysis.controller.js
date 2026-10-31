@@ -43,7 +43,8 @@ async function createAnalysis(request, response) {
       createdAt: new Date().toISOString(),
       pullRequest: { url: pullRequestUrl },
       findings: [],
-      error: error.message
+      error: error.message,
+      errorCode: error.code
     };
 
     try {

@@ -118,3 +118,14 @@ test('non-string input returns a JSON validation error without external requests
   assert.equal(typeof result.message, 'string');
   assert.equal(request.mock.callCount(), 0);
 });
+
+test('persists a safe actionable GitHub failure code without upstream details', async () => {
+  mock.method(globalThis, 'fetch', async () => Response.json({ message: 'private upstream error' }, { status: 403, headers: { 'x-ratelimit-remaining': '0' } }));
+  let report;
+  await createAnalysis({ body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' } }, {
+    status(value) { assert.equal(value, 502); return this; }, json(value) { report = value; }
+  });
+  assert.equal(report.errorCode, 'GITHUB_RATE_LIMIT');
+  assert.equal((await findAnalysis(report.id)).errorCode, report.errorCode);
+  assert.ok(!JSON.stringify(report).includes('private upstream error'));
+});

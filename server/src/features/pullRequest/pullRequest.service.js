@@ -3,9 +3,10 @@ import { posix } from 'node:path';
 const githubApiBaseUrl = 'https://api.github.com';
 
 class PullRequestError extends Error {
-  constructor(message, statusCode = 502) {
+  constructor(message, statusCode = 502, code = 'GITHUB_UNAVAILABLE') {
     super(message);
     this.statusCode = statusCode;
+    this.code = { 400: 'INVALID_PR_URL', 409: 'REVISION_CHANGED', 413: 'REPORT_TOO_LARGE' }[statusCode] || code;
   }
 }
 
@@ -28,7 +29,9 @@ async function requestGitHub(address, options, maxBytes) {
         : 'GitHub denied access. Check repository permissions or try again later.';
       if (response.status === 404) message = 'Pull Request not found or not accessible with the server GitHub token.';
       if (response.status === 429) message = 'GitHub rate limit reached. Wait before trying again.';
-      throw new PullRequestError(message);
+      const code = response.status === 429 || response.headers.get('x-ratelimit-remaining') === '0' ? 'GITHUB_RATE_LIMIT'
+        : response.status === 401 ? 'GITHUB_AUTH' : response.status === 403 ? 'GITHUB_ACCESS' : response.status === 404 ? 'GITHUB_NOT_FOUND' : 'GITHUB_UNAVAILABLE';
+      throw new PullRequestError(message, 502, code);
     }
     if (!maxBytes) return await response.json();
     const reader = response.body.getReader();
@@ -48,7 +51,7 @@ async function requestGitHub(address, options, maxBytes) {
   } catch (error) {
     if (error instanceof PullRequestError) throw error;
     if (error.name === 'TimeoutError' || options.signal.aborted) {
-      throw new PullRequestError('GitHub request timed out. Try again later.');
+      throw new PullRequestError('GitHub request timed out. Try again later.', 502, 'GITHUB_TIMEOUT');
     }
     throw new PullRequestError('Could not connect to GitHub or read its response. Try again later.');
   }
