@@ -7,11 +7,28 @@ const file = (overrides = {}) => ({ path: 'src/example.js', additions: 1, deleti
 test('prepares real new-side line references without PR metadata', () => {
   const result = prepareAiInput({ title: 'unnecessary title', changedFiles: [file()] });
   assert.deepEqual(result.files, [{ filePath: 'src/example.js', lines: [
-    { lineNumber: null, change: 'deleted', code: 'old();' },
+    { lineNumber: 10, lineSide: 'old', change: 'deleted', code: 'old();' },
     { lineNumber: 20, change: 'added', code: 'next();' }
   ] }]);
   assert.equal(JSON.stringify(result.files).includes('unnecessary title'), false);
   assert.equal(result.coverage.analyzedFiles, 1);
+});
+
+test('includes safe PR intent and source snippets but excludes secrets', () => {
+  const result = prepareAiInput({ title: 'Fix calculation', description: 'Preserve expected totals', changedFiles: [file()], reviewContext: { snippets: [
+    { filePath: 'src/example.js', lineSide: 'new', startLine: 18, code: 'function calculate() {\n return 2;\n}' },
+    { filePath: 'src/private.js', lineSide: 'new', startLine: 1, code: 'const password = "private-value";' }
+  ], omitted: [] } });
+  assert.equal(result.intent.title, 'Fix calculation');
+  assert.equal(result.snippets.length, 1);
+  assert.ok(!JSON.stringify(result).includes('private-value'));
+});
+
+test('retains deleted-only evidence on the old side', () => {
+  const result = prepareAiInput({ changedFiles: [file({ additions: 0, deletions: 1, patch: '@@ -10 +9,0 @@\n-if (!user) throw Error();' })] });
+  assert.equal(result.files.length, 1);
+  assert.equal(result.files[0].lines[0].lineNumber, 10);
+  assert.equal(result.files[0].lines[0].lineSide, 'old');
 });
 
 test('handles multiple hunks, context and no-newline markers', () => {
@@ -20,10 +37,10 @@ test('handles multiple hunks, context and no-newline markers', () => {
   assert.deepEqual(result.coverage.truncatedFiles, []);
 });
 
-test('skips unavailable, binary, deleted-only and non-code input', () => {
+test('skips unavailable, binary and non-code input while retaining deleted code', () => {
   const result = prepareAiInput({ changedFiles: [file({ path: 'a.js', patch: '' }), file({ path: 'b.js', patch: 'GIT binary patch' }), file({ path: 'c.js', additions: 0, patch: '@@ -1 +0,0 @@\n-old();' }), file({ path: 'README.md' })] });
-  assert.equal(result.files.length, 0);
-  assert.equal(result.coverage.skippedFiles.length, 4);
+  assert.equal(result.files.length, 1);
+  assert.equal(result.coverage.skippedFiles.length, 3);
 });
 
 test('does not send sensitive paths or credential-bearing patches', () => {

@@ -1,11 +1,46 @@
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
-import { fetchPullRequest } from '../src/features/pullRequest/pullRequest.service.js';
+import { fetchPullRequest, fetchReviewContext } from '../src/features/pullRequest/pullRequest.service.js';
 
 afterEach(() => mock.restoreAll());
 const url = 'https://github.com/demo/project/pull/12';
 const metadata = { title: 'Example', html_url: url, changed_files: 101, base: { ref: 'main', sha: 'base' }, head: { ref: 'fix', sha: 'head' } };
 const file = { filename: 'new.js', previous_filename: 'old.js', status: 'renamed', additions: 1, deletions: 0, changes: 1, patch: '@@ -0,0 +1 @@\n+hello();' };
+
+test('retrieves bounded revision-pinned source windows and a direct import', async () => {
+  const addresses = [];
+  mock.method(globalThis, 'fetch', async address => {
+    addresses.push(String(address));
+    const code = String(address).includes('helper.ts') ? 'export const helper = 1;' : 'import { helper } from "./helper";\nexport const value = helper;';
+    return Response.json({ encoding: 'base64', content: Buffer.from(code).toString('base64'), size: code.length });
+  });
+  const result = await fetchReviewContext({ url, baseSha: 'base', headSha: 'head', changedFiles: [{ path: 'src/main.ts', status: 'modified', additions: 1, deletions: 1, patch: '@@ -2 +2 @@\n-old\n+new' }] });
+  assert.equal(result.snippets.length, 2);
+  assert.equal(result.snippets[0].startLine, 1);
+  assert.equal(result.snippets[0].lineSide, 'new');
+  assert.equal(result.snippets[1].filePath, 'src/helper.ts');
+  assert.ok(addresses.every(address => address.includes('ref=head')));
+});
+
+test('uses the base revision and previous filename for deleted-only renamed code', async () => {
+  let address;
+  mock.method(globalThis, 'fetch', async value => {
+    address = String(value);
+    return Response.json({ encoding: 'base64', content: Buffer.from('old();').toString('base64'), size: 6 });
+  });
+  const result = await fetchReviewContext({ url, baseSha: 'base', headSha: 'head', changedFiles: [{ path: 'new.ts', previousPath: 'old.ts', additions: 0, deletions: 1, patch: '@@ -1 +0,0 @@\n-old();' }] });
+  assert.match(address, /contents\/old.ts\?ref=base/);
+  assert.equal(result.snippets[0].lineSide, 'old');
+  assert.equal(result.snippets[0].filePath, 'new.ts');
+});
+
+test('context retrieval reports unavailable content and bounds its requests', async () => {
+  const request = mock.method(globalThis, 'fetch', async () => Response.json({ size: 999999, encoding: 'base64', content: '' }));
+  const result = await fetchReviewContext({ url, baseSha: 'base', headSha: 'head', changedFiles: Array.from({ length: 10 }, (_, n) => ({ path: `src/file${n}.ts`, patch: '@@ -1 +1 @@\n-a\n+b' })) });
+  assert.equal(result.snippets.length, 0);
+  assert.equal(request.mock.callCount(), 5);
+  assert.ok(result.omitted.length >= 5);
+});
 
 test('paginates files and preserves patches, rename and commit revisions', async () => {
   const requests = [];
