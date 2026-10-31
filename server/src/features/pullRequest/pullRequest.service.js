@@ -52,6 +52,7 @@ async function fetchPullRequest(pullRequestUrl) {
   const totalChangedFiles = Number.isSafeInteger(pullRequest.changed_files) && pullRequest.changed_files >= 0
     ? pullRequest.changed_files : null;
   const files = [];
+  let snapshotBytes = Buffer.byteLength(JSON.stringify(pullRequest), 'utf8');
   let reachedEnd = false;
 
   // GitHub exposes at most 3000 PR files, with at most 100 files per page.
@@ -59,6 +60,11 @@ async function fetchPullRequest(pullRequestUrl) {
     const batch = await requestGitHub(`${address}/files?per_page=100&page=${page}`, options);
     if (!Array.isArray(batch) || batch.length > 100 || batch.some(file => !file || typeof file.filename !== 'string')) {
       throw new PullRequestError('GitHub returned an invalid changed-file list.');
+    }
+    snapshotBytes += Buffer.byteLength(JSON.stringify(batch), 'utf8');
+    // Leave room for findings and BSON overhead within MongoDB's document limit.
+    if (snapshotBytes > 4 * 1024 * 1024) {
+      throw new PullRequestError('This Pull Request exceeds the demo\'s 4 MiB report limit. Analyze a smaller PR.', 413);
     }
     files.push(...batch);
     if (batch.length < 100 || (totalChangedFiles !== null && files.length >= totalChangedFiles)) {

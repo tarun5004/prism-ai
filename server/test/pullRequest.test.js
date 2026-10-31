@@ -62,6 +62,13 @@ test('rejects invalid URLs without requesting GitHub', async () => {
   assert.equal(request.mock.callCount(), 0);
 });
 
+test('rejects oversized snapshots before AI work or more GitHub requests', async () => {
+  const request = mock.method(globalThis, 'fetch', async address => Response.json(String(address).includes('/files?')
+    ? Array(50).fill({ ...file, patch: 'x'.repeat(100000) }) : metadata));
+  await assert.rejects(fetchPullRequest(url), error => error.statusCode === 413 && /4 MiB/.test(error.message));
+  assert.equal(request.mock.callCount(), 2);
+});
+
 test('sanitizes rate-limit, network and timeout failures without retrying', async () => {
   const request = mock.method(globalThis, 'fetch', async () => Response.json({ message: 'private upstream data' }, { status: 403, headers: { 'x-ratelimit-remaining': '0' } }));
   await assert.rejects(fetchPullRequest(url), /rate limit/);
