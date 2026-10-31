@@ -21,10 +21,11 @@ function getAiStatusDetails(analysis) {
             API_ERROR: 'The AI provider could not complete the request.',
             INVALID_RESPONSE: 'The AI response could not be validated.',
             INVALID_FINDINGS: 'The AI findings could not be validated.',
+            INVALID_REVIEW: 'The AI review explanation could not be validated. Any valid findings are shown separately.',
             INVALID_TIMEOUT: 'AI request configuration needs attention.'
         };
         const reason = analysis.aiError === 'API_ERROR' && analysis.aiDiagnostics?.httpStatus === 504
-            ? 'The AI provider exceeded its own response deadline.'
+            ? 'The AI request exceeded its processing deadline.'
             : typeof analysis.aiError === 'string' && Object.hasOwn(errors, analysis.aiError) ? errors[analysis.aiError] : 'AI analysis could not be completed.';
         return { tone: 'warning', label: 'AI analysis unavailable', message: `${reason} ${rulesMessage}` };
     }
@@ -38,6 +39,29 @@ function getAiStatusDetails(analysis) {
 function formatDate(value) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleString();
+}
+
+function getFailureMessage(analysis) {
+    const messages = {
+        GITHUB_RATE_LIMIT: 'GitHub rate limit reached. Wait before analyzing again or check the server token.',
+        GITHUB_AUTH: 'GitHub authentication failed. Check the server token.',
+        GITHUB_ACCESS: 'GitHub denied access. Check repository permissions and try again later.',
+        GITHUB_NOT_FOUND: 'This PR was not found or is not accessible with the server token.',
+        GITHUB_TIMEOUT: 'GitHub retrieval timed out. Try again later.',
+        REVISION_CHANGED: 'The PR revision changed during retrieval. Analyze the latest revision again.',
+        REPORT_TOO_LARGE: 'This PR exceeds the demo’s 4 MiB report limit. Choose a smaller PR.',
+        GITHUB_UNAVAILABLE: 'GitHub could not be reached or returned an unusable response. Try again later.'
+    };
+    return Object.hasOwn(messages, analysis.errorCode) ? messages[analysis.errorCode] : 'This analysis did not complete. Check backend connectivity and GitHub access before trying again.';
+}
+
+function ReviewReference({ reference, files, onNavigate }) {
+    const location = findDiffLocation(files, reference);
+    return <div className="review-reference">
+        {location ? <button type="button" className="text-button" onClick={() => onNavigate({ ...reference })}>View {reference.lineSide || 'new'} line {reference.lineNumber} in diff · {reference.filePath}</button>
+            : <span className="muted-text">Source context · {reference.filePath}:{reference.lineNumber} ({reference.lineSide || 'new'})</span>}
+        <pre className="finding-evidence"><code>{reference.evidence}</code></pre>
+    </div>;
 }
 
 function AnalysisReport({ analysis }) {
@@ -55,6 +79,8 @@ function AnalysisReport({ analysis }) {
         (sourceFilter === 'all' || finding.source === sourceFilter)
         && (severityFilter === 'all' || finding.severity === severityFilter));
     const diagnostics = analysis.aiDiagnostics;
+    const review = successful && ['completed', 'partial'].includes(analysis.aiStatus) ? analysis.aiReview : null;
+    const recommendationLabels = { changes_requested: 'Changes recommended', human_review: 'Human review recommended', insufficient_context: 'More context needed', no_blocker_found: 'No blocker found in reviewed scope' };
 
     return (
         <>
@@ -72,7 +98,7 @@ function AnalysisReport({ analysis }) {
                     {pr.headSha ? <code title={pr.headSha}>{pr.headBranch} @ {pr.headSha.slice(0, 8)}</code> : <span>Revision not recorded in this older report</span>}
                     {pr.baseSha && <code title={pr.baseSha}>base {pr.baseBranch} @ {pr.baseSha.slice(0, 8)}</code>}
                 </div>
-                {!successful && <p className="error-message" role="alert">This analysis did not complete. Submit the PR again after checking backend connectivity and GitHub access.</p>}
+                {!successful && <p className="error-message" role="alert">{getFailureMessage(analysis)}</p>}
                 {pr.filesComplete === false && <p className="diff-warning">File retrieval is incomplete: {files.length} of {pr.totalChangedFiles ?? 'an unknown number of'} files were saved. This report covers only the available files.</p>}
                 <div className="risk-summary">
                     <div><span className="summary-number">{findings.length}</span><span className="summary-label">findings</span></div>
@@ -96,18 +122,37 @@ function AnalysisReport({ analysis }) {
                                 <p>{finding.explanation}</p>
                                 {finding.evidence && <pre className="finding-evidence"><code>{finding.evidence}</code></pre>}
                                 <div className="affected-files"><FileCode2 size={14} />{finding.filePath || finding.affectedFiles?.join(' · ') || 'Location not recorded'}</div>
-                                {location ? <button type="button" className="text-button" onClick={() => setFocusLocation({ filePath: finding.filePath, lineNumber: finding.lineNumber })}>View new line {finding.lineNumber} in diff <ArrowUpRight size={14} /></button> : finding.filePath && <p className="location-note">A matching saved diff line is unavailable.</p>}
+                                {location ? <button type="button" className="text-button" onClick={() => setFocusLocation({ filePath: finding.filePath, lineNumber: finding.lineNumber, lineSide: finding.lineSide || 'new' })}>View {finding.lineSide || 'new'} line {finding.lineNumber} in diff <ArrowUpRight size={14} /></button> : finding.filePath && <p className="location-note">A matching saved diff line is unavailable.</p>}
                                 <div className="action-line"><span>Suggested check</span>{finding.suggestedFix || finding.recommendedAction || 'Verify the finding before making changes.'}</div>
                             </div>
                         </article>;
                     })}
                 </div>
             </section>
+            {review && <section className="report-section contextual-review" aria-labelledby="ai-review-title">
+                <p className="section-label">Contextual AI review · advisory</p>
+                <h2 id="ai-review-title">What changed and why it matters</h2>
+                <p className="review-summary">{review.summary}</p>
+                <p className="review-recommendation">{recommendationLabels[review.recommendation] || 'Human review required'}</p>
+                <p className="muted-text">This recommendation covers only the supplied context. It is not merge approval; verify findings and run your tests.</p>
+                <h3>Change walkthrough</h3>
+                {(review.walkthrough || []).map((item, index) => <article className="review-item" key={index}>
+                    <h4>{item.filePath}</h4><p>{item.description}</p>
+                    {(item.evidenceRefs || []).map((reference, refIndex) => <ReviewReference key={refIndex} reference={reference} files={files} onNavigate={setFocusLocation} />)}
+                </article>)}
+                <h3>Potential impact</h3>
+                {review.impacts?.length ? review.impacts.map((item, index) => <article className="review-item" key={index}><p>{item.description}</p>
+                    {(item.evidenceRefs || []).map((reference, refIndex) => <ReviewReference key={refIndex} reference={reference} files={files} onNavigate={setFocusLocation} />)}
+                </article>) : <p className="muted-text">No additional supported impact was returned for this context.</p>}
+                <details className="review-limitations" open><summary>Review limitations</summary><ul>{(review.limitations || []).map((limitation, index) => <li key={index}>{limitation}</li>)}</ul></details>
+            </section>}
             <section className={`ai-status-panel ${aiReview.tone}`} aria-label="AI analysis status">
                 <Sparkles size={19} />
                 <div>
                     <strong>{aiReview.label}</strong><p>{aiReview.message}</p>
                     {analysis.aiCoverage && <p>AI input: {analysis.aiCoverage.analyzedFiles ?? 0} of {analysis.aiCoverage.totalFiles ?? files.length} fetched files included; {analysis.aiCoverage.skippedFiles?.length || 0} skipped; {analysis.aiCoverage.truncatedFiles?.length || 0} limited patches. Prepared input does not confirm a successful AI review.</p>}
+                    {analysis.aiCoverage && <p>{analysis.aiCoverage.contextSnippets || 0} source windows included; {analysis.aiCoverage.contextOmissions?.length || 0} context omissions. Direct-import retrieval is limited and does not trace every caller.</p>}
+                    {analysis.aiStatus === 'partial' && analysis.aiError === 'INVALID_REVIEW' && <p>The AI explanation was rejected because its structure or code references could not be validated.</p>}
                     {diagnostics && <details className="ai-diagnostics"><summary>Request details</summary><p>
                         {Number.isFinite(diagnostics.durationMs) && `${(diagnostics.durationMs / 1000).toFixed(1)}s elapsed. `}
                         {Number.isFinite(diagnostics.timeoutMs) && `${diagnostics.timeoutMs / 1000}s timeout. `}

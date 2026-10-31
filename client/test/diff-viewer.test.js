@@ -15,6 +15,32 @@ after(() => vite.close());
 const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx');
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 
+test('renders contextual AI review, referenced impacts and advisory merge guidance', () => {
+  const reference = { filePath: 'a.js', lineSide: 'old', lineNumber: 5, evidence: 'guard();' };
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
+    id: 'context', status: 'completed', aiStatus: 'partial', pullRequest: { changedFiles: [{ path: 'a.js', patch: '@@ -5 +4,0 @@\n-guard();', additions: 0, deletions: 1 }] }, findings: [],
+    aiReview: { summary: 'Removes a guard.', recommendation: 'insufficient_context', walkthrough: [{ filePath: 'a.js', description: 'Guard removed.', evidenceRefs: [reference] }], impacts: [{ description: 'Invalid users may reach the handler.', evidenceRefs: [reference] }], limitations: ['Callers were not supplied.'] }
+  } }));
+  assert.match(html, /Removes a guard/);
+  assert.match(html, /Potential impact/);
+  assert.match(html, /More context needed/);
+  assert.match(html, /View old line 5/);
+  assert.match(html, /Callers were not supplied/);
+});
+
+test('resolves old-side locations without confusing a same-number new line', () => {
+  const files = [{ path: 'a.js', patch: '@@ -5 +5 @@\n-old\n+new' }];
+  assert.equal(viewer.findDiffLocation(files, { filePath: 'a.js', lineSide: 'old', lineNumber: 5 }).text, 'old');
+  assert.equal(viewer.findDiffLocation(files, { filePath: 'a.js', lineSide: 'invalid', lineNumber: 5 }), null);
+});
+
+test('reopened failure uses safe error-code guidance and hides unknown raw errors', () => {
+  const report = { id: 'failed', status: 'failed', pullRequest: {}, findings: [], errorCode: 'REVISION_CHANGED', error: 'private raw upstream data' };
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: report }));
+  assert.match(html, /revision changed/);
+  assert.ok(!html.includes('private raw upstream data'));
+});
+
 test('report renders advisory AI failure, coverage, revision and safe evidence', () => {
   const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
     id: 'fixture', status: 'completed', aiStatus: 'unavailable', aiError: 'API_ERROR',
@@ -25,7 +51,7 @@ test('report renders advisory AI failure, coverage, revision and safe evidence',
   } }));
   assert.match(html, /Rule-based analysis completed/);
   assert.match(html, /AI analysis unavailable/);
-  assert.match(html, /own response deadline/);
+  assert.match(html, /processing deadline/);
   assert.match(html, /File retrieval is incomplete/);
   assert.match(html, /12345678/);
   assert.match(html, /View new line 1 in diff/);

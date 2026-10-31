@@ -55,9 +55,10 @@ function parseUnifiedDiff(patch) {
 
 function findDiffLocation(files, location) {
   if (!location || !Number.isSafeInteger(location.lineNumber) || location.lineNumber < 1) return null;
+  if (!['old', 'new'].includes(location.lineSide ?? 'new')) return null;
   const file = files.find(file => file.path === location.filePath);
   if (typeof file?.patch !== 'string') return null;
-  return parseUnifiedDiff(file.patch).lines.find(line => line.newNumber === location.lineNumber) || null;
+  return parseUnifiedDiff(file.patch).lines.find(line => line[(location.lineSide ?? 'new') === 'old' ? 'oldNumber' : 'newNumber'] === location.lineNumber) || null;
 }
 
 function DiffViewer({ files = [], focusLocation = null }) {
@@ -66,6 +67,9 @@ function DiffViewer({ files = [], focusLocation = null }) {
   const selectedFile = files.find((file) => file.path === selectedPath) || files[0];
   const patch = typeof selectedFile?.patch === 'string' ? selectedFile.patch : '';
   const diff = parseUnifiedDiff(patch);
+  const isFocusedLine = line => focusLocation?.filePath === selectedFile?.path
+    && Number.isSafeInteger(focusLocation?.lineNumber)
+    && line[(focusLocation.lineSide ?? 'new') === 'old' ? 'oldNumber' : 'newNumber'] === focusLocation.lineNumber;
   const isBinary = /^(Binary files .* differ|GIT binary patch)\r?$/m.test(patch);
   const countMismatch = diff.hasHunks && (
     (Number.isFinite(selectedFile.additions) && diff.lines.filter((line) => line.kind === 'added').length !== selectedFile.additions) ||
@@ -127,9 +131,9 @@ function DiffViewer({ files = [], focusLocation = null }) {
                     <tbody>
                       {diff.lines.map((line, index) => (
                         <tr key={index}
-                          ref={focusLocation?.filePath === selectedFile.path && focusLocation?.lineNumber === line.newNumber ? focusedRow : null}
-                          tabIndex={focusLocation?.filePath === selectedFile.path && focusLocation?.lineNumber === line.newNumber ? -1 : undefined}
-                          className={`diff-line diff-line-${line.kind}${focusLocation?.filePath === selectedFile.path && focusLocation?.lineNumber === line.newNumber ? ' diff-line-focused' : ''}`}>
+                          ref={isFocusedLine(line) ? focusedRow : null}
+                          tabIndex={isFocusedLine(line) ? -1 : undefined}
+                          className={`diff-line diff-line-${line.kind}${isFocusedLine(line) ? ' diff-line-focused' : ''}`}>
                           {line.kind === 'hunk' || line.kind === 'meta' ? <td colSpan={4}><code>{line.text}</code></td> : (
                             <>
                               <td className="diff-line-number">{line.oldNumber}</td>
