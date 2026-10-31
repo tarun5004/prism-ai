@@ -15,8 +15,10 @@ async function createAnalysis(request, response) {
   try {
     const pullRequest = await fetchPullRequest(pullRequestUrl);
     const ruleFindings = runRules(pullRequest);
-    if (process.env.GEMINI_API_KEY?.trim()) pullRequest.reviewContext = await fetchReviewContext(pullRequest);
-    const aiResult = await runAiAnalysis(pullRequest);
+    // Source enrichment is transient; only validated review evidence reaches storage/API.
+    const reviewInput = process.env.GEMINI_API_KEY?.trim()
+      ? { ...pullRequest, reviewContext: await fetchReviewContext(pullRequest) } : pullRequest;
+    const aiResult = await runAiAnalysis(reviewInput);
     const analysis = {
       id: randomUUID(),
       status: 'completed',
