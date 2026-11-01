@@ -15,6 +15,17 @@ after(() => vite.close());
 const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx');
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 
+test('workspace places the diff beside accessible overview and findings controls', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: { id: 'workspace', status: 'completed', pullRequest: { title: 'Example PR', changedFiles: [] }, findings: [] } }));
+  assert.match(html, /class="review-workbench"/);
+  assert.match(html, /aria-label="Review views"/);
+  assert.match(html, /aria-pressed="true"[^>]*>Overview/);
+  assert.match(html, /Findings/);
+  assert.match(html, /aria-label="Review panel"/);
+  assert.match(html, /No contextual AI review is available/);
+  assert.match(html, /Changed files/);
+});
+
 test('renders contextual AI review, referenced impacts and advisory merge guidance', () => {
   const reference = { filePath: 'a.js', lineSide: 'old', lineNumber: 5, evidence: 'guard();' };
   const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {

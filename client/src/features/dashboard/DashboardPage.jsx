@@ -65,6 +65,7 @@ function ReviewReference({ reference, files, onNavigate }) {
 }
 
 function AnalysisReport({ analysis }) {
+    const [activeView, setActiveView] = useState('overview');
     const [sourceFilter, setSourceFilter] = useState('all');
     const [severityFilter, setSeverityFilter] = useState('all');
     const [focusLocation, setFocusLocation] = useState(null);
@@ -83,7 +84,7 @@ function AnalysisReport({ analysis }) {
     const recommendationLabels = { changes_requested: 'Changes recommended', human_review: 'Human review recommended', insufficient_context: 'More context needed', no_blocker_found: 'No blocker found in reviewed scope' };
 
     return (
-        <>
+        <div className="analysis-workspace">
             <section className="report-section" aria-labelledby="report-title">
                 <div className="section-heading">
                     <div>
@@ -106,63 +107,80 @@ function AnalysisReport({ analysis }) {
                     <div><span className="summary-number">{files.length}</span><span className="summary-label">files saved</span></div>
                     <div><span className="summary-number diff-additions">+{files.reduce((sum, file) => sum + (Number.isFinite(file.additions) ? file.additions : 0), 0)}</span><span className="summary-label diff-deletions">−{files.reduce((sum, file) => sum + (Number.isFinite(file.deletions) ? file.deletions : 0), 0)} lines</span></div>
                 </div>
-                {findings.length > 0 && <div className="finding-filters">
-                    <label>Source<select value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}><option value="all">All findings</option><option value="ai">AI findings</option><option value="rule">Rule-based</option></select></label>
-                    <label>Severity<select value={severityFilter} onChange={event => setSeverityFilter(event.target.value)}><option value="all">All severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
-                    <span className="muted-text" role="status">{visibleFindings.length} of {findings.length} shown</span>
-                </div>}
-                <div className="findings-list">
-                    {visibleFindings.length === 0 ? <div className="no-findings"><CheckCircle2 size={22} /><p>{findings.length > 0 ? 'No findings match these filters.' : !successful ? 'No completed findings are available.' : analysis.aiStatus === 'completed' ? 'No validated findings were returned. This is advisory and does not guarantee the PR is safe.' : 'No rule-based findings were returned. Check the AI status below.'}</p></div> : visibleFindings.map((finding, index) => {
-                        const location = findDiffLocation(files, finding);
-                        return <article className="finding-card" key={`${finding.source}-${finding.filePath}-${finding.lineNumber}-${index}`}>
-                            <div className={`finding-icon ${finding.severity}`}><ShieldAlert size={18} /></div>
-                            <div className="finding-content">
-                                <div className="finding-meta"><span className="finding-category">{finding.source === 'ai' ? 'AI review' : finding.source === 'rule' ? 'Rule-based' : 'Saved finding'}</span><span className={`severity ${finding.severity}`}>{finding.severity}</span></div>
-                                <h3>{finding.title || finding.category?.replaceAll('-', ' ') || 'Review finding'}</h3>
-                                <p>{finding.explanation}</p>
-                                {finding.evidence && <pre className="finding-evidence"><code>{finding.evidence}</code></pre>}
-                                <div className="affected-files"><FileCode2 size={14} />{finding.filePath || finding.affectedFiles?.join(' · ') || 'Location not recorded'}</div>
-                                {location ? <button type="button" className="text-button" onClick={() => setFocusLocation({ filePath: finding.filePath, lineNumber: finding.lineNumber, lineSide: finding.lineSide || 'new' })}>View {finding.lineSide || 'new'} line {finding.lineNumber} in diff <ArrowUpRight size={14} /></button> : finding.filePath && <p className="location-note">A matching saved diff line is unavailable.</p>}
-                                <div className="action-line"><span>Suggested check</span>{finding.suggestedFix || finding.recommendedAction || 'Verify the finding before making changes.'}</div>
+            </section>
+            <div className="review-workbench">
+                <DiffViewer files={files} focusLocation={focusLocation} />
+                <aside className="review-sidebar">
+                    <div className="review-panel-heading"><Sparkles size={17} /><strong>Review assistant</strong><span className="history-count">Advisory</span></div>
+                    <nav className="review-views" aria-label="Review views">
+                        <button type="button" aria-pressed={activeView === 'overview'} aria-controls="review-panel" onClick={() => setActiveView('overview')}>Overview</button>
+                        <button type="button" aria-pressed={activeView === 'findings'} aria-controls="review-panel" onClick={() => setActiveView('findings')}>Findings <span>{findings.length}</span></button>
+                    </nav>
+                    <div className="review-panel" id="review-panel" role="region" aria-label="Review panel">
+                        <section className={`ai-status-panel ${aiReview.tone}`} aria-label="AI analysis status">
+                            <Sparkles size={19} />
+                            <div>
+                                <strong>{aiReview.label}</strong><p>{aiReview.message}</p>
+                                {analysis.aiCoverage && <p>AI input: {analysis.aiCoverage.analyzedFiles ?? 0} of {analysis.aiCoverage.totalFiles ?? files.length} fetched files included; {analysis.aiCoverage.skippedFiles?.length || 0} skipped; {analysis.aiCoverage.truncatedFiles?.length || 0} limited patches. Prepared input does not confirm a successful AI review.</p>}
+                                {analysis.aiCoverage && <p>{analysis.aiCoverage.contextSnippets || 0} source windows included; {analysis.aiCoverage.contextOmissions?.length || 0} context omissions. Direct-import retrieval is limited and does not trace every caller.</p>}
+                                {analysis.aiStatus === 'partial' && analysis.aiError === 'INVALID_REVIEW' && <p>The AI explanation was rejected because its structure or code references could not be validated.</p>}
+                                {diagnostics && <details className="ai-diagnostics"><summary>Request details</summary><p>
+                                    {Number.isFinite(diagnostics.durationMs) && `${(diagnostics.durationMs / 1000).toFixed(1)}s elapsed. `}
+                                    {Number.isFinite(diagnostics.timeoutMs) && `${diagnostics.timeoutMs / 1000}s timeout. `}
+                                    {Number.isInteger(diagnostics.httpStatus) && `Provider HTTP ${diagnostics.httpStatus}. `}
+                                    {Number.isInteger(diagnostics.attempts) && `${diagnostics.attempts} attempt(s).`}
+                                </p></details>}
                             </div>
-                        </article>;
-                    })}
-                </div>
-            </section>
-            {review && <section className="report-section contextual-review" aria-labelledby="ai-review-title">
-                <p className="section-label">Contextual AI review · advisory</p>
-                <h2 id="ai-review-title">What changed and why it matters</h2>
-                <p className="review-summary">{review.summary}</p>
-                <p className="review-recommendation">{recommendationLabels[review.recommendation] || 'Human review required'}</p>
-                <p className="muted-text">This recommendation covers only the supplied context. It is not merge approval; verify findings and run your tests.</p>
-                <h3>Change walkthrough</h3>
-                {(review.walkthrough || []).map((item, index) => <article className="review-item" key={index}>
-                    <h4>{item.filePath}</h4><p>{item.description}</p>
-                    {(item.evidenceRefs || []).map((reference, refIndex) => <ReviewReference key={refIndex} reference={reference} files={files} onNavigate={setFocusLocation} />)}
-                </article>)}
-                <h3>Potential impact</h3>
-                {review.impacts?.length ? review.impacts.map((item, index) => <article className="review-item" key={index}><p>{item.description}</p>
-                    {(item.evidenceRefs || []).map((reference, refIndex) => <ReviewReference key={refIndex} reference={reference} files={files} onNavigate={setFocusLocation} />)}
-                </article>) : <p className="muted-text">No additional supported impact was returned for this context.</p>}
-                <details className="review-limitations" open><summary>Review limitations</summary><ul>{(review.limitations || []).map((limitation, index) => <li key={index}>{limitation}</li>)}</ul></details>
-            </section>}
-            <section className={`ai-status-panel ${aiReview.tone}`} aria-label="AI analysis status">
-                <Sparkles size={19} />
-                <div>
-                    <strong>{aiReview.label}</strong><p>{aiReview.message}</p>
-                    {analysis.aiCoverage && <p>AI input: {analysis.aiCoverage.analyzedFiles ?? 0} of {analysis.aiCoverage.totalFiles ?? files.length} fetched files included; {analysis.aiCoverage.skippedFiles?.length || 0} skipped; {analysis.aiCoverage.truncatedFiles?.length || 0} limited patches. Prepared input does not confirm a successful AI review.</p>}
-                    {analysis.aiCoverage && <p>{analysis.aiCoverage.contextSnippets || 0} source windows included; {analysis.aiCoverage.contextOmissions?.length || 0} context omissions. Direct-import retrieval is limited and does not trace every caller.</p>}
-                    {analysis.aiStatus === 'partial' && analysis.aiError === 'INVALID_REVIEW' && <p>The AI explanation was rejected because its structure or code references could not be validated.</p>}
-                    {diagnostics && <details className="ai-diagnostics"><summary>Request details</summary><p>
-                        {Number.isFinite(diagnostics.durationMs) && `${(diagnostics.durationMs / 1000).toFixed(1)}s elapsed. `}
-                        {Number.isFinite(diagnostics.timeoutMs) && `${diagnostics.timeoutMs / 1000}s timeout. `}
-                        {Number.isInteger(diagnostics.httpStatus) && `Provider HTTP ${diagnostics.httpStatus}. `}
-                        {Number.isInteger(diagnostics.attempts) && `${diagnostics.attempts} attempt(s).`}
-                    </p></details>}
-                </div>
-            </section>
-            <DiffViewer files={files} focusLocation={focusLocation} />
-        </>
+                        </section>
+
+                        <div hidden={activeView !== 'overview'}>
+                            {review && <section className="report-section contextual-review" aria-labelledby="ai-review-title">
+                                <p className="section-label">Contextual AI review · advisory</p>
+                                <h2 id="ai-review-title">What changed and why it matters</h2>
+                                <p className="review-summary">{review.summary}</p>
+                                <p className="review-recommendation">{recommendationLabels[review.recommendation] || 'Human review required'}</p>
+                                <p className="muted-text">This recommendation covers only the supplied context. It is not merge approval; verify findings and run your tests.</p>
+                                <h3>Change walkthrough</h3>
+                                {(review.walkthrough || []).map((item, index) => <article className="review-item" key={index}>
+                                    <h4>{item.filePath}</h4><p>{item.description}</p>
+                                    {(item.evidenceRefs || []).map((reference, refIndex) => <ReviewReference key={refIndex} reference={reference} files={files} onNavigate={setFocusLocation} />)}
+                                </article>)}
+                                <h3>Potential impact</h3>
+                                {review.impacts?.length ? review.impacts.map((item, index) => <article className="review-item" key={index}><p>{item.description}</p>
+                                    {(item.evidenceRefs || []).map((reference, refIndex) => <ReviewReference key={refIndex} reference={reference} files={files} onNavigate={setFocusLocation} />)}
+                                </article>) : <p className="muted-text">No additional supported impact was returned for this context.</p>}
+                                <details className="review-limitations" open><summary>Review limitations</summary><ul>{(review.limitations || []).map((limitation, index) => <li key={index}>{limitation}</li>)}</ul></details>
+                            </section>}
+                            {!review && <div className="review-empty"><Sparkles size={25} /><h3>No contextual AI review is available</h3><p className="muted-text">Check the AI status above. Saved code changes and rule-based findings remain available in this workspace.</p></div>}
+                        </div>
+                        <section hidden={activeView !== 'findings'} aria-label="Findings">
+                            {findings.length > 0 && <div className="finding-filters">
+                                <label>Source<select value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}><option value="all">All findings</option><option value="ai">AI findings</option><option value="rule">Rule-based</option></select></label>
+                                <label>Severity<select value={severityFilter} onChange={event => setSeverityFilter(event.target.value)}><option value="all">All severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+                                <span className="muted-text" role="status">{visibleFindings.length} of {findings.length} shown</span>
+                            </div>}
+                            <div className="findings-list">
+                                {visibleFindings.length === 0 ? <div className="no-findings"><CheckCircle2 size={22} /><p>{findings.length > 0 ? 'No findings match these filters.' : !successful ? 'No completed findings are available.' : analysis.aiStatus === 'completed' ? 'No validated findings were returned. This is advisory and does not guarantee the PR is safe.' : 'No rule-based findings were returned. Check the AI status below.'}</p></div> : visibleFindings.map((finding, index) => {
+                                    const location = findDiffLocation(files, finding);
+                                    return <article className="finding-card" key={`${finding.source}-${finding.filePath}-${finding.lineNumber}-${index}`}>
+                                        <div className={`finding-icon ${finding.severity}`}><ShieldAlert size={18} /></div>
+                                        <div className="finding-content">
+                                            <div className="finding-meta"><span className="finding-category">{finding.source === 'ai' ? 'AI review' : finding.source === 'rule' ? 'Rule-based' : 'Saved finding'}</span><span className={`severity ${finding.severity}`}>{finding.severity}</span></div>
+                                            <h3>{finding.title || finding.category?.replaceAll('-', ' ') || 'Review finding'}</h3>
+                                            <p>{finding.explanation}</p>
+                                            {finding.evidence && <pre className="finding-evidence"><code>{finding.evidence}</code></pre>}
+                                            <div className="affected-files"><FileCode2 size={14} />{finding.filePath || finding.affectedFiles?.join(' · ') || 'Location not recorded'}</div>
+                                            {location ? <button type="button" className="text-button" onClick={() => setFocusLocation({ filePath: finding.filePath, lineNumber: finding.lineNumber, lineSide: finding.lineSide || 'new' })}>View {finding.lineSide || 'new'} line {finding.lineNumber} in diff <ArrowUpRight size={14} /></button> : finding.filePath && <p className="location-note">A matching saved diff line is unavailable.</p>}
+                                            <div className="action-line"><span>Suggested check</span>{finding.suggestedFix || finding.recommendedAction || 'Verify the finding before making changes.'}</div>
+                                        </div>
+                                    </article>;
+                                })}
+                            </div>
+                        </section>
+                    </div>
+                </aside>
+            </div>
+        </div>
     );
 }
 
@@ -244,9 +262,9 @@ function DashboardPage() {
                 <div className="sidebar-note"><Sparkles size={16} /><span>Review support for the changes that matter.</span></div>
             </aside>
             <main className="dashboard-shell" id="overview">
-                <header className="topbar"><div><p className="eyebrow">Workspace / Pull request review</p><h1>Understand the change.<br />Review with evidence.</h1><p className="muted-text">Inspect the diff, assess risks, and make your own call.</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
+                <header className="topbar"><div><p className="eyebrow">Workspace / Reviews</p><h1>Pull request workspace</h1><p className="muted-text">Code changes, grounded feedback, and your next review decision.</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
                 <section className="submit-panel" aria-labelledby="submit-title">
-                    <div className="panel-heading"><div className="heading-icon"><GitPullRequest size={20} /></div><div><p className="section-label">Start an analysis</p><h2 id="submit-title">Bring a Pull Request into focus.</h2></div></div>
+                    <div className="panel-heading"><div className="heading-icon"><GitPullRequest size={20} /></div><div><p className="section-label">New review</p><h2 id="submit-title">Open a pull request</h2></div></div>
                     <form className="submit-form" onSubmit={submitAnalysis}>
                         <label htmlFor="pull-request-url">GitHub Pull Request URL</label>
                         <div className="input-row"><input id="pull-request-url" type="url" placeholder="https://github.com/org/repository/pull/42" value={pullRequestUrl} onChange={event => setPullRequestUrl(event.target.value)} required /><button type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{isSubmitting ? 'Analyzing…' : 'Analyze PR'}</button></div>
