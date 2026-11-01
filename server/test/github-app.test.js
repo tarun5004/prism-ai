@@ -18,6 +18,11 @@ test('repository discovery rejects invalid/revoked tokens with safe errors', asy
   await assert.rejects(github.userRepositories('test-token'), error => !error.message.includes('secret') && error.statusCode === 401);
 });
 
+test('malformed GitHub authorization responses never expose upstream body fragments', async () => {
+  mock.method(globalThis, 'fetch', async () => new Response('private-upstream-value', { status: 200 }));
+  await assert.rejects(github.userRepositories('test-token'), error => error.statusCode === 502 && !error.message.includes('private'));
+});
+
 test('optional GitHub summary deduplicates a revision and preserves honest AI failure wording', async () => {
   const old = [process.env.GITHUB_POST_REVIEW, process.env.APP_ORIGIN, process.env.GITHUB_APP_SLUG];
   process.env.GITHUB_POST_REVIEW = 'true'; process.env.APP_ORIGIN = 'https://demo.example'; process.env.GITHUB_APP_SLUG = 'prism';

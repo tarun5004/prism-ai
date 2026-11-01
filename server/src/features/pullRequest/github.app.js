@@ -33,7 +33,8 @@ async function githubRequest(path, token, body) {
     });
   } catch { throw failure(502, 'GitHub access verification is unavailable.'); }
   if (!response.ok) throw failure(response.status === 401 ? 401 : 403, 'GitHub access could not be verified. Reconnect your account.');
-  return response.json();
+  try { return await response.json(); }
+  catch { throw failure(502, 'GitHub access verification returned an invalid response.'); }
 }
 
 async function userRepositories(token) {
