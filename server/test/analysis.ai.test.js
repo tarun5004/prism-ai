@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { createAnalysis } from '../src/features/analysis/analysis.controller.js';
-import { findAnalysis, saveAnalysis } from '../src/features/analysis/analysis.repository.js';
+import { findAnalysis, listAnalyses, saveAnalysis } from '../src/features/analysis/analysis.repository.js';
 import Analysis from '../src/features/analysis/analysis.model.js';
 
 let originalKey;
@@ -138,4 +138,69 @@ test('raw secret-bearing source context never leaks through saved report APIs', 
   assert.ok(!JSON.stringify(report).includes('private-source-value'));
   assert.ok(!JSON.stringify(saved).includes('private-source-value'));
   assert.ok(report.aiCoverage.contextOmissions.some(item => item.reason === 'sensitive-content'));
+});
+
+function streamResponse(onFrame = () => {}) {
+  const frames = [];
+  return {
+    frames, headers: {}, ended: false,
+    status(value) { this.statusCode = value; return this; },
+    setHeader(name, value) { this.headers[name] = value; },
+    flushHeaders() {},
+    write(value) { const frame = JSON.parse(value); frames.push(frame); onFrame(frame); },
+    end() { this.ended = true; },
+    json(value) { this.jsonValue = value; return value; }
+  };
+}
+
+test('streams actual stage boundaries and one saved terminal report', async () => {
+  mockRequests(false);
+  const response = streamResponse(frame => {
+    if (frame.type !== 'progress') return;
+    const calls = globalThis.fetch.mock.callCount();
+    if (frame.stage === 'fetching') assert.equal(calls, 0);
+    if (frame.stage === 'context') assert.equal(calls, 3);
+    if (frame.stage === 'reviewing') assert.equal(calls, 4);
+    if (frame.stage === 'saving') assert.equal(calls, 5);
+  });
+  await createAnalysis({ headers: { accept: 'application/x-ndjson' }, body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' } }, response);
+  assert.equal(response.headers['Content-Type'], 'application/x-ndjson; charset=utf-8');
+  assert.deepEqual(response.frames.filter(frame => frame.type === 'progress').map(frame => frame.stage), ['fetching', 'context', 'reviewing', 'saving']);
+  const terminal = response.frames.at(-1);
+  assert.equal(terminal.type, 'result');
+  assert.deepEqual(JSON.parse(JSON.stringify(await findAnalysis(terminal.report.id))), terminal.report);
+  assert.equal(response.frames.filter(frame => frame.type === 'result').length, 1);
+  assert.equal(response.ended, true);
+});
+
+test('streamed provider failure retains deterministic report and honest AI status', async () => {
+  mockRequests(true);
+  const response = streamResponse();
+  await createAnalysis({ headers: { accept: 'application/x-ndjson' }, body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' } }, response);
+  const terminal = response.frames.at(-1);
+  assert.equal(terminal.type, 'result');
+  assert.equal(terminal.report.aiStatus, 'unavailable');
+  assert.ok(terminal.report.findings.some(finding => finding.source === 'rule'));
+});
+
+test('stream errors terminate safely without claiming subsequent stages', async () => {
+  mock.method(globalThis, 'fetch', async () => Response.json({ message: 'private error' }, { status: 403 }));
+  const response = streamResponse();
+  await createAnalysis({ headers: { accept: 'application/x-ndjson' }, body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' } }, response);
+  assert.deepEqual(response.frames.filter(frame => frame.type === 'progress').map(frame => frame.stage), ['fetching']);
+  assert.equal(response.frames.at(-1).type, 'error');
+  assert.equal(response.ended, true);
+  assert.ok(!JSON.stringify(response.frames).includes('private error'));
+});
+
+test('a disconnected stream does not prevent saving its analysis', async () => {
+  mockRequests(false);
+  const before = new Set((await listAnalyses()).map(report => report.id));
+  const response = streamResponse();
+  response.destroyed = true;
+  response.write = () => { throw Error('must not write after disconnect'); };
+  response.json = () => { throw Error('must not write JSON after disconnect'); };
+  await createAnalysis({ headers: { accept: 'application/x-ndjson' }, body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' } }, response);
+  assert.equal(response.frames.length, 0);
+  assert.ok((await listAnalyses()).some(report => !before.has(report.id) && report.aiReview));
 });
