@@ -17,9 +17,9 @@ const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx'
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 const app = await vite.ssrLoadModule('/src/app/App.jsx');
 
-test('light theme keeps text, primary actions and diff states readable', () => {
+test('charcoal theme keeps text, primary actions and diff states readable', () => {
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-  assert.match(css, /color-scheme:\s*light/);
+  assert.match(css, /color-scheme:\s*dark/);
   const colors = Object.fromEntries([...css.matchAll(/--([a-z-]+):\s*(#[a-f\d]{6})/gi)].map(match => [match[1], match[2]]));
   const luminance = hex => {
     assert.equal(typeof hex, 'string', 'Expected a declared theme color');
@@ -50,6 +50,9 @@ test('introduction presents working features and routes every trial CTA into the
   assert.equal((html.match(/href="\/app"/g) || []).length, 3);
   assert.ok(!html.includes('pull-request-url'));
   assert.ok(!html.includes('Trusted by'));
+  const entry = renderToStaticMarkup(createElement(app.default));
+  assert.ok(!entry.includes('pull-request-url'), 'Initial landing must not mount the workspace');
+  assert.ok(!entry.includes('dashboard-shell'));
 });
 
 test('renders only the active page instead of stacking overview, history and report', () => {
