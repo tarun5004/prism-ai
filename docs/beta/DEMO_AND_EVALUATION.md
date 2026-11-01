@@ -43,9 +43,13 @@ Record one row per test case in [TEST_CASES.md](TEST_CASES.md). Use the followin
 
 `correctly detected expected findings / total expected findings`
 
-### False-positive rate
+### False-discovery rate
 
 `false-positive findings / total findings`
+
+This is not the conventional false-positive rate `FP / (FP + TN)`. A count of all possible non-bugs in a PR is not well-defined, so do not claim that FPR here. Zero-denominator rates are undefined, not automatically 0% or 100%.
+
+For frozen synthetic code cases and reproducible scoring, use [evaluation-cases.json](evaluation-cases.json) and `python -B server/scripts/evaluate_ai.py --run PATH_TO_RUN_JSON`. The automated evaluation workflow below will be documented with the collector slice. Existing four-case manual rule checks are separate from AI semantic-quality evaluation.
 
 ### Response time
 
