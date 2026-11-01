@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
 import * as github from '../src/features/pullRequest/github.app.js';
 import express from 'express';
+import app from '../src/app.js';
 
 afterEach(() => mock.restoreAll());
 
@@ -15,6 +16,23 @@ test('installation access is checked against both installation and repository', 
 test('repository discovery rejects invalid/revoked tokens with safe errors', async () => {
   mock.method(globalThis, 'fetch', async () => Response.json({ message: 'secret upstream text' }, { status: 401 }));
   await assert.rejects(github.userRepositories('test-token'), error => !error.message.includes('secret') && error.statusCode === 401);
+});
+
+test('public mode fails closed without App config and never serves HTML for unknown API routes', async () => {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    assert.equal((await fetch(base + '/api/analyses')).status, 503);
+    const response = await fetch(base + '/api/unknown');
+    assert.match(response.headers.get('content-type'), /application\/json/);
+    assert.equal(response.status, 404);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous;
+  }
 });
 
 test('OAuth binds state to a browser, sends PKCE, hides tokens and blocks cross-origin writes', async () => {

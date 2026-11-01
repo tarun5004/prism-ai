@@ -97,7 +97,7 @@ function createGitHubRoutes() {
     prune(sessions);
     const session = sessions.get(cookie(request, 'prism_session'));
     const slug = process.env.GITHUB_APP_SLUG;
-    response.set('Cache-Control', 'no-store').json({ enabled: appMode(), authenticated: Boolean(session), login: session?.login || null, installUrl: /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
+    response.set('Cache-Control', 'no-store').json({ enabled: appMode() || process.env.NODE_ENV === 'production', authenticated: Boolean(session), userId: session?.userId || null, login: session?.login || null, installUrl: /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
   });
   router.get('/login', (request, response) => {
     if (!appMode() || !process.env.GITHUB_APP_CLIENT_ID || !process.env.GITHUB_APP_CLIENT_SECRET || !process.env.APP_ORIGIN) return response.status(503).json({ message: 'GitHub App login is not configured.' });
