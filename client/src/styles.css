@@ -665,6 +665,18 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .review-empty { padding: 1rem 0.25rem; }
 .review-empty > svg { color: #829087; }
 .review-empty h3 { font-size: 0.95rem; margin-bottom: 0.5rem; }
+.analysis-progress { margin-top: 1.25rem; padding: 1rem; border: 1px solid #3b4c32; border-radius: 8px; background: #141c15; }
+.progress-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.progress-heading [role="status"] { display: flex; align-items: flex-start; gap: 0.7rem; }
+.progress-heading svg { color: #c6f36b; flex: 0 0 auto; margin-top: 0.15rem; }
+.progress-heading h3 { margin: 0; font-size: 0.9rem; font-weight: 600; }
+.progress-heading p, .progress-note { margin: 0.35rem 0 0; color: #a4b09f; font-size: 0.8rem; line-height: 1.6; }
+.elapsed-time { flex-shrink: 0; color: #a4b09f; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.progress-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; gap: 0.75rem; padding: 0; margin: 1.1rem 0 0.75rem; }
+.progress-stages li { display: flex; align-items: center; gap: 0.5rem; color: #8b978c; font-size: 0.75rem; }
+.progress-stages svg { flex: 0 0 auto; }
+.progress-stages [data-state="active"], .progress-stages [data-state="complete"] { color: #c6f36b; }
+.step-number { display: grid; place-items: center; width: 1.1rem; height: 1.1rem; flex-shrink: 0; border: 1px solid #4b584b; border-radius: 50%; font-size: 0.65rem; }
 .history-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); }
 .history-item { align-items: flex-start; flex-direction: column; gap: 0.65rem; }
 .history-item > span:first-child { max-width: 100%; }
@@ -711,6 +723,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   .review-workbench .diff-file-list { max-height: 12rem; border-right: 0; border-bottom: 1px solid #303b33; }
   .review-workbench .diff-scroll { min-height: 16rem; max-height: 60vh; }
   .analysis-workspace > .report-section { padding: 1rem; }
+  .progress-heading { flex-wrap: wrap; }
+  .progress-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

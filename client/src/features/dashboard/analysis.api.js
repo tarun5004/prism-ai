@@ -5,12 +5,64 @@ function isReport(value) {
     && value.pullRequest && typeof value.pullRequest === 'object' && Array.isArray(value.findings);
 }
 
-async function request(path, options, failureMessage) {
+async function readProgress(response, onProgress) {
+  if (!response.body) throw new Error('The progress connection is unavailable.');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  const stages = ['fetching', 'context', 'reviewing', 'saving'];
+  let buffer = '';
+  let report;
+  let lastStage = -1;
+  const readFrame = line => {
+    if (!line.trim()) return;
+    let frame;
+    try { frame = JSON.parse(line); } catch { throw new Error('The server sent invalid progress data.'); }
+    if (report || !frame || typeof frame !== 'object') throw new Error('The server sent invalid progress data.');
+    if (frame.type === 'progress') {
+      const index = stages.indexOf(frame.stage);
+      if (index < 0 || index < lastStage) throw new Error('The server sent invalid progress data.');
+      if (index !== lastStage) onProgress(frame.stage);
+      lastStage = index;
+    } else if (frame.type === 'result' && isReport(frame.report)) {
+      report = frame.report;
+    } else if (frame.type === 'error') {
+      throw new Error(typeof frame.message === 'string' && frame.message.length <= 1000 ? frame.message : 'Analysis could not be completed.');
+    } else throw new Error('The server sent an invalid progress report.');
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      if (buffer.length > 8 * 1024 * 1024) throw new Error('The progress report exceeded the supported size.');
+      let end;
+      while ((end = buffer.indexOf('\n')) >= 0) {
+        readFrame(buffer.slice(0, end));
+        buffer = buffer.slice(end + 1);
+      }
+      if (done) break;
+    }
+    if (buffer.trim()) readFrame(buffer);
+    if (!report) throw new Error('The connection ended before the report arrived. Check history before starting another review.');
+    return report;
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error('The progress connection was interrupted. Check history before starting another review.');
+    throw error;
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
+async function request(path, options, failureMessage, onProgress) {
   let response;
   try {
     response = await fetch(`${apiBaseUrl}/analyses${path}`, options);
   } catch {
+    if (options?.signal?.aborted) throw new Error('The review request was cancelled.');
     throw new Error('Could not reach PRism. Check that the backend is running.');
+  }
+  if (response.ok && onProgress && response.headers.get('content-type')?.startsWith('application/x-ndjson')) {
+    return readProgress(response, onProgress);
   }
   let result;
   try { result = await response.json(); } catch { throw new Error(failureMessage); }
@@ -30,10 +82,11 @@ async function loadAnalysis(id) {
   return result;
 }
 
-async function createAnalysis(pullRequestUrl) {
+async function createAnalysis(pullRequestUrl, { onProgress, signal } = {}) {
   const result = await request('', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pullRequestUrl })
-  }, 'Analysis could not be created.');
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(onProgress ? { Accept: 'application/x-ndjson' } : {}) },
+    body: JSON.stringify({ pullRequestUrl }), signal
+  }, 'Analysis could not be created.', onProgress);
   if (!isReport(result)) throw new Error('The server returned an invalid response for this analysis.');
   return result;
 }

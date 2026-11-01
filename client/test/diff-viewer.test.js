@@ -15,6 +15,17 @@ after(() => vite.close());
 const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx');
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 
+test('progress panel marks only stages preceding the actual backend stage as done', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisProgress, { stage: 'context', elapsedSeconds: 17 }));
+  assert.match(html, /Building review context/);
+  assert.match(html, /aria-current="step"/);
+  assert.match(html, /17s elapsed/);
+  assert.match(html, /Your context is being read/);
+  assert.equal((html.match(/data-state="complete"/g) || []).length, 1);
+  assert.equal((html.match(/data-state="pending"/g) || []).length, 2);
+  assert.ok(!html.includes('%'));
+});
+
 test('workspace places the diff beside accessible overview and findings controls', () => {
   const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: { id: 'workspace', status: 'completed', pullRequest: { title: 'Example PR', changedFiles: [] }, findings: [] } }));
   assert.match(html, /class="review-workbench"/);
