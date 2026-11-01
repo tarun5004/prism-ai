@@ -1,5 +1,15 @@
 # PR workflow polish implementation plan
 
+## 2026-11-01 — approved dark introduction page
+
+User approved implementation after reference analysis. Use PRism AI branding, charcoal/orange styling and existing local fonts. Screenshots were captured at 60–70% zoom: use readable fluid sizing at normal zoom, not screenshot-sized text. Landing at `/`, workspace at `/app`, history/report URLs unchanged. No invented customers, review metrics, login, webhook or MCP claims. Keep running workspace state while visiting the introduction. No new application files or dependencies are needed.
+
+- [ ] Chunk 1: extend App.jsx with isolated landing components, real internal CTA links, interactive feature preview, context explanation and oversized outlined/masked PRism AI footer. Update DashboardPage workspace links; extend existing render/route tests, observe failure then pass, commit on frontend branch.
+- [ ] Chunk 2: replace theme variables with accessible charcoal/orange colors; add scoped landing layout, responsive grids, restrained transitions and reduced-motion support in styles.css. Update contrast checks and UI_DIRECTION.md; verify targeted tests/build, commit.
+- [ ] Integrate, review, verify direct production-preview routes. Browser visual/interaction QA only if a surface is available. Preserve existing user configuration and rule files; do not call GitHub/Gemini.
+
+Review focus: hidden workspace must retain active request state; landing must not start history requests before entering workspace; modified clicks remain normal links; no fabricated live data; narrow-screen content must wrap; footer must fit viewport width.
+
 ## 2026-11-01 — approved page routing and light theme
 
 Reuse existing App.jsx, DashboardPage.jsx, styles.css and render tests. No new packages, application files, backend changes, webhook or MCP work.
