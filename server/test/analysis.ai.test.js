@@ -204,3 +204,20 @@ test('a disconnected stream does not prevent saving its analysis', async () => {
   assert.equal(response.frames.length, 0);
   assert.ok((await listAnalyses()).some(report => !before.has(report.id) && report.aiReview));
 });
+
+test('does not announce AI stages when the provider is not configured', async () => {
+  mockRequests(false);
+  delete process.env.GEMINI_API_KEY;
+  const response = streamResponse();
+  await createAnalysis({ headers: { accept: 'application/x-ndjson' }, body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' } }, response);
+  assert.deepEqual(response.frames.filter(frame => frame.type === 'progress').map(frame => frame.stage), ['fetching', 'saving']);
+  assert.equal(response.frames.at(-1).report.aiError, 'MISSING_API_KEY');
+});
+
+test('does not announce AI review when no reviewable diff exists', async () => {
+  mock.method(globalThis, 'fetch', async url => Response.json(String(url).includes('/files?') ? [] : { title: 'Empty PR', html_url: 'https://github.com/audit/repo/pull/1', changed_files: 0 }));
+  const response = streamResponse();
+  await createAnalysis({ headers: { accept: 'application/x-ndjson' }, body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' } }, response);
+  assert.deepEqual(response.frames.filter(frame => frame.type === 'progress').map(frame => frame.stage), ['fetching', 'saving']);
+  assert.equal(response.frames.at(-1).report.aiError, 'NO_REVIEWABLE_DIFF');
+});

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { runAiAnalysis } from '../ai/ai.service.js';
+import { prepareAiInput } from '../ai/ai.context.js';
 import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
 import { findAnalysis, listAnalyses, saveAnalysis } from './analysis.repository.js';
 import { runRules } from './analysis.rules.js';
@@ -36,12 +37,12 @@ async function createAnalysis(request, response) {
     progress('fetching');
     const pullRequest = await fetchPullRequest(pullRequestUrl);
     const ruleFindings = runRules(pullRequest);
-    progress('context');
+    const aiEnabled = Boolean(process.env.GEMINI_API_KEY?.trim()) && prepareAiInput(pullRequest).files.length > 0;
+    if (aiEnabled) progress('context');
     // Source enrichment is transient; only validated review evidence reaches storage/API.
-    const reviewInput = process.env.GEMINI_API_KEY?.trim()
+    const reviewInput = aiEnabled
       ? { ...pullRequest, reviewContext: await fetchReviewContext(pullRequest) } : pullRequest;
-    progress('reviewing');
-    const aiResult = await runAiAnalysis(reviewInput);
+    const aiResult = await runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') });
     const analysis = {
       id: randomUUID(),
       status: 'completed',
