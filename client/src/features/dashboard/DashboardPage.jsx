@@ -118,6 +118,7 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                     <span className={`report-status ${analysis.status}`}><ReportIcon size={15} />{statusLabel}</span>
                 </div>
                 <div className="revision-meta">
+                    {analysis.githubFeedback && <span>GitHub summary: {({ posted: 'posted', existing: 'already posted for this revision', unavailable: 'not delivered; saved review remains available', skipped: 'disabled' })[analysis.githubFeedback.status] || 'status unknown'}</span>}
                     <span>{formatDate(analysis.createdAt)}</span>
                     {pr.headSha ? <code title={pr.headSha}>{pr.headBranch} @ {pr.headSha.slice(0, 8)}</code> : <span>Revision not recorded in this older report</span>}
                     {pr.baseSha && <code title={pr.baseSha}>base {pr.baseBranch} @ {pr.baseSha.slice(0, 8)}</code>}
