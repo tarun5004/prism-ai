@@ -31,7 +31,7 @@ const safeNetworkCodes = new Set([
   'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'ERR_TLS_CERT_ALTNAME_INVALID'
 ]);
 
-async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS?.trim() || 120000) } = {}) {
+async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS?.trim() || 120000), onRequest = () => {} } = {}) {
   const startedAt = performance.now();
   const { files, coverage, intent, snippets } = prepareAiInput(pullRequest);
   const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
@@ -57,6 +57,7 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
 
   try {
     const client = new GoogleGenAI({ apiKey, vertexai: false, httpOptions: { timeout: timeoutMs, retryOptions: { attempts: 1 } } });
+    onRequest();
     diagnostics.attempts = 1;
     response = await client.models.generateContent({
       model,
