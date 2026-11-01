@@ -1,5 +1,15 @@
 # PR workflow polish implementation plan
 
+## 2026-11-01 — approved GitHub PR webhook
+
+Implement inline in verified chunks, not a new platform. Repo-scoped webhook for opened/synchronize/reopened/ready_for_review, skip drafts/closed PRs. Verify raw-body SHA256 HMAC before JSON processing; require server secret + one repository allowlist. Respond promptly, then run existing pipeline in the same long-lived Node process. No GitHub comments or auto-merge.
+
+- [ ] Extract existing pipeline unchanged into analysis.service.js; controller preserves JSON/NDJSON contracts. Add expected revision guard before AI and optional trigger provenance to existing model. Run targeted existing tests, commit.
+- [ ] Add one focused pullRequest.webhook.js receiver/dispatch module and existing-app raw route before JSON middleware. Deterministic report ID hashes repository/PR/base/head; in-flight set prevents concurrent duplicate calls; existing repository lookup suppresses persisted duplicates across restarts. Bound active jobs to two, return busy rather than silently accepting excess. Persist final success/failure and safe structured completion logs. Test signed local HTTP, rejects, ignored events, duplicate races, revision mismatch and failures; commit.
+- [ ] Configure placeholders/local secret without printing/staging secrets. README tunnel/setup/delivery/results walkthrough. Full backend offline checks, syntax/health, frontend build, independent review and integration. No live GitHub/Gemini calls needed.
+
+Ruling: use in-process dispatch rather than queue/worker infrastructure for this single-user demo; acceptance is not crash-durable. Lost events need manual GitHub redelivery; persisted final reports remain deduplicated when MongoDB is connected. One Node process only. Busy responses also need redelivery. New files are only shared analysis service, focused webhook module and its native test file. Do not overwrite/stage user .env.example/rule changes or modify main.
+
 ## 2026-11-01 — subtle card depth and real saved sample
 
 Completed in existing files: layered card shadows, perspective tilt and selected-card lift; mobile/reduced-motion disable transforms. Hero sample button lazily calls the existing history API, selects a completed report with a safe route ID (preferring contextual AI review), then navigates to its saved report. Loading disables duplicate clicks; empty/error states remain actionable through the existing trial button; unmount aborts the pending read. No automatic generation, hardcoded report IDs, new endpoints/files/dependencies or backend edits.

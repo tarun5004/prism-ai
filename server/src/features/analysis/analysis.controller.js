@@ -1,9 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { runAiAnalysis } from '../ai/ai.service.js';
-import { prepareAiInput } from '../ai/ai.context.js';
-import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
-import { findAnalysis, listAnalyses, saveAnalysis } from './analysis.repository.js';
-import { runRules } from './analysis.rules.js';
+import { analyzePullRequest } from './analysis.service.js';
+import { findAnalysis, listAnalyses } from './analysis.repository.js';
 
 // Create a report from one Pull Request URL and save the normalized beta result.
 async function createAnalysis(request, response) {
@@ -33,54 +29,8 @@ async function createAnalysis(request, response) {
     response.flushHeaders();
   }
 
-  try {
-    progress('fetching');
-    const pullRequest = await fetchPullRequest(pullRequestUrl);
-    const ruleFindings = runRules(pullRequest);
-    const aiEnabled = Boolean(process.env.GEMINI_API_KEY?.trim()) && prepareAiInput(pullRequest).files.length > 0;
-    if (aiEnabled) progress('context');
-    // Source enrichment is transient; only validated review evidence reaches storage/API.
-    const reviewInput = aiEnabled
-      ? { ...pullRequest, reviewContext: await fetchReviewContext(pullRequest) } : pullRequest;
-    const aiResult = await runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') });
-    const analysis = {
-      id: randomUUID(),
-      status: 'completed',
-      createdAt: new Date().toISOString(),
-      pullRequest,
-      findings: [...ruleFindings, ...aiResult.findings],
-      aiStatus: aiResult.status,
-      aiModel: aiResult.model,
-      aiCoverage: aiResult.coverage,
-      aiDiagnostics: aiResult.diagnostics,
-      ...(aiResult.review ? { aiReview: aiResult.review } : {}),
-      ...(aiResult.error ? { aiError: aiResult.error } : {})
-    };
-
-    progress('saving');
-    return reply(201, await saveAnalysis(analysis));
-  } catch (error) {
-    if (!(error instanceof PullRequestError)) {
-      return reply(500, { message: 'Analysis could not be saved or completed. Please try again.' });
-    }
-    if (error.statusCode === 400) return reply(400, { message: error.message });
-    const failedAnalysis = {
-      id: randomUUID(),
-      status: 'failed',
-      createdAt: new Date().toISOString(),
-      pullRequest: { url: pullRequestUrl },
-      findings: [],
-      error: error.message,
-      errorCode: error.code
-    };
-
-    try {
-      await saveAnalysis(failedAnalysis);
-    } catch {
-      return reply(500, { message: 'The failed analysis could not be saved. Please try again.' });
-    }
-    return reply(error.statusCode, failedAnalysis);
-  }
+  const result = await analyzePullRequest(pullRequestUrl, { progress });
+  return reply(result.status, result.body);
 }
 
 // Return recent beta analyses for the dashboard history list.

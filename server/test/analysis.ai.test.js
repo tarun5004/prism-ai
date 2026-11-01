@@ -3,6 +3,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { createAnalysis } from '../src/features/analysis/analysis.controller.js';
 import { findAnalysis, listAnalyses, saveAnalysis } from '../src/features/analysis/analysis.repository.js';
 import Analysis from '../src/features/analysis/analysis.model.js';
+import { analyzePullRequest } from '../src/features/analysis/analysis.service.js';
 
 let originalKey;
 let originalModel;
@@ -45,6 +46,23 @@ async function createReport() {
   assert.equal(httpStatus, 201);
   return report;
 }
+
+test('webhook revision mismatch saves a failure before context or AI calls', async () => {
+  const calls = [];
+  mock.method(globalThis, 'fetch', async url => {
+    calls.push(String(url));
+    assert.ok(String(url).startsWith('https://api.github.com/'));
+    assert.ok(!String(url).includes('/contents/'));
+    return Response.json(String(url).includes('/files?') ? [file] : { base: { sha: 'base' }, head: { sha: 'head' }, changed_files: 1 });
+  });
+  const trigger = { type: 'github_webhook', deliveryId: 'offline', action: 'opened', repository: 'audit/repo', baseSha: 'old', headSha: 'old' };
+  const result = await analyzePullRequest('https://github.com/audit/repo/pull/1', { id: 'webhook-stale-test', trigger, expectedRevision: trigger });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.errorCode, 'REVISION_CHANGED');
+  assert.equal((await findAnalysis('webhook-stale-test')).trigger.deliveryId, 'offline');
+  assert.equal(new Analysis(result.body).toObject().trigger.headSha, 'old');
+  assert.ok(calls.length > 0);
+});
 
 test('schema retains AI execution details and location fields', async () => {
   const value = new Analysis({ id: 'schema-test', status: 'completed', createdAt: new Date().toISOString(), pullRequest: {}, findings: [finding], aiStatus: 'partial', aiModel: 'gemini-3.8-flash', aiError: 'INVALID_FINDINGS', aiCoverage: { analyzedFiles: 1, rejectedFindings: 1 } });
