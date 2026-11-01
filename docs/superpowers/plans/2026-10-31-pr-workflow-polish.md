@@ -1,5 +1,20 @@
 # PR workflow polish implementation plan
 
+## 2026-11-01 — approved UI workspace and live progress
+
+This existing document is the task ledger requested by the user. No temporary database, new application files, packages, webhook or MCP work is needed for these two features.
+
+**Design:** Keep graphite/lime, Inter/JetBrains Mono and existing evidence rendering. Use a compact application header, report/revision summary and a desktop workspace with file navigation + unified diff beside an overview/findings review panel. Stack panels on smaller screens. Keep history, filters, old/new evidence navigation and honest AI status accessible.
+
+**Progress contract:** Existing POST /api/analyses keeps its JSON behavior. Opt-in Accept: application/x-ndjson emits newline-separated progress frames {type:'progress',stage:'fetching'|'context'|'reviewing'|'saving'}, followed by exactly one {type:'result',report} or {type:'error',message}. Stages reflect actual boundaries; final report retains separate AI status. No timer-driven stages, guessed percentages, queues, new endpoints or automatic retries. Elapsed time is informational only. Interrupted streams produce an error, never a second generation request.
+
+- [ ] UI chunk: extend DashboardPage.jsx, DiffViewer.jsx/styles.css and existing render tests; verify and commit on feature/v0-frontend.
+- [ ] Backend chunk: opt-in progress framing in existing analysis.controller.js; extend existing controller tests for ordering, errors, persistence and disconnected clients; verify and commit on feature/v0-backend.
+- [ ] Client chunk: incremental UTF-8 stream parsing in analysis.api.js; progress/elapsed UI in DashboardPage.jsx with cleanup; existing API/render tests for split frames, failures and honest statuses; verify and commit on feature/v0-frontend.
+- [ ] Integrate, independent review, full relevant offline checks, production build and one real streamed review if service available. Record observed states; browser QA depends on available connector.
+
+**Known history / guardrails:** User changes to server/.env.example, AGENT.md and RULE.md must remain unstaged. Branch switches can be rejected by the local example-file change: advance a clean temporary worktree then switch only after target config matches; never stash/reset. Gemini 3.8 previously returned 503/504 on minimal input; configured 3.6 has produced a valid partial review. 14 seconds was one observation, not a promised response time. Raw retrieved context stays transient; store only validated evidence and coverage. Main must remain unchanged.
+
 ## Approved continuation — contextual AI review
 
 Use existing modules only; no new application files or dependencies. Preserve existing user changes and main. Implement inline, test and commit each chunk separately.
