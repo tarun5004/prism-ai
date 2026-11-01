@@ -160,7 +160,7 @@ def main():
     parser.add_argument("--run", type=Path, required=True)
     args = parser.parse_args()
     try:
-        raw = args.dataset.read_bytes()
+        raw = args.dataset.read_text(encoding="utf-8-sig").replace("\r\n", "\n").encode("utf-8")
         result = score(json.loads(raw), json.loads(args.run.read_text(encoding="utf-8")), hashlib.sha256(raw).hexdigest())
     except (OSError, ValueError, TypeError, KeyError) as error:
         print("Evaluation rejected: " + str(error), file=sys.stderr)
