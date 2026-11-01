@@ -209,12 +209,13 @@ function AnalysisProgress({ stage = 'connecting', elapsedSeconds = 0, visitedSta
     </section>;
 }
 
-function DashboardPage() {
+function DashboardPage({ route = { page: 'overview' }, onNavigate }) {
     const [pullRequestUrl, setPullRequestUrl] = useState('');
     const [analysis, setAnalysis] = useState(null);
     const [recentAnalyses, setRecentAnalyses] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [openingId, setOpeningId] = useState(null);
+    const [reportError, setReportError] = useState(null);
+    const [reportReload, setReportReload] = useState(0);
     const [errorMessage, setErrorMessage] = useState('');
     const [historyStatus, setHistoryStatus] = useState('loading');
     const [historyError, setHistoryError] = useState('');
@@ -265,7 +266,6 @@ function DashboardPage() {
         setElapsedSeconds(0);
         setReceivedStages([]);
         setErrorMessage('');
-        setOpeningId(null);
         setIsSubmitting(true);
         try {
             const result = await createAnalysis(pullRequestUrl.trim(), {
@@ -275,6 +275,7 @@ function DashboardPage() {
             if (sequence !== activeRequest.current) return;
             setAnalysis(result);
             setRecentAnalyses(current => [result, ...current.filter(item => item.id !== result.id)].slice(0, 20));
+            onNavigate?.('/analyses/' + encodeURIComponent(result.id));
         } catch (error) {
             if (sequence === activeRequest.current) { setErrorMessage(error.message); refreshHistory(); }
         } finally {
@@ -283,57 +284,84 @@ function DashboardPage() {
         }
     }
 
-    async function openAnalysis(id) {
-        const sequence = ++activeRequest.current;
-        setOpeningId(id);
-        setErrorMessage('');
-        try {
-            const result = await loadAnalysis(id);
-            if (sequence === activeRequest.current) setAnalysis(result);
-        } catch (error) {
-            if (sequence === activeRequest.current) setErrorMessage(error.message);
-        } finally {
-            if (sequence === activeRequest.current) setOpeningId(null);
-        }
-    }
-
+    useEffect(() => {
+        setReportError(null);
+        if (route.page !== 'review' || analysis?.id === route.analysisId) return;
+        let cancelled = false;
+        loadAnalysis(route.analysisId).then(result => {
+            if (!cancelled) setAnalysis(result);
+        }).catch(error => {
+            if (!cancelled) setReportError({ analysisId: route.analysisId, message: error.message });
+        });
+        return () => { cancelled = true; };
+    }, [route.page, route.analysisId, analysis?.id, reportReload]);
+    const pageTitles = { overview: 'Start a new review', analyses: 'Saved analyses', review: 'Pull request review', 'not-found': 'Page not found' };
+    const currentReport = route.page === 'review' && analysis?.id === route.analysisId ? analysis : null;
     return (
         <div className="app-frame">
             <aside className="sidebar">
-                <div className="brand-lockup"><span className="brand-mark">P</span><span>PRism</span></div>
+                <RouteLink className="brand-lockup" to="/" onNavigate={onNavigate}><span className="brand-mark">P</span><span>PRism</span></RouteLink>
                 <nav className="sidebar-nav" aria-label="Primary navigation">
-                    <a className="nav-item" href="#overview"><ClipboardCheck size={17} />Overview</a>
-                    <a className="nav-item" href="#history"><GitPullRequest size={17} />Analyses</a>
+                    <RouteLink className={`nav-item${route.page === 'overview' ? ' active' : ''}`} aria-current={route.page === 'overview' ? 'page' : undefined} to="/" onNavigate={onNavigate}><ClipboardCheck size={17} />New review</RouteLink>
+                    <RouteLink className={`nav-item${['analyses', 'review'].includes(route.page) ? ' active' : ''}`} aria-current={route.page === 'analyses' ? 'page' : undefined} to="/analyses" onNavigate={onNavigate}><GitPullRequest size={17} />Analyses</RouteLink>
                 </nav>
-                <div className="sidebar-note"><Sparkles size={16} /><span>Review support for the changes that matter.</span></div>
+                {isSubmitting ? <RouteLink className="running-review" to="/" onNavigate={onNavigate}><LoaderCircle className="spin" size={15} />Review in progress</RouteLink> : <div className="sidebar-note"><Sparkles size={16} /><span>Review support for the changes that matter.</span></div>}
             </aside>
-            <main className="dashboard-shell" id="overview">
-                <header className="topbar"><div><p className="eyebrow">Workspace / Reviews</p><h1>Pull request workspace</h1><p className="muted-text">Code changes, grounded feedback, and your next review decision.</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
-                <section className="submit-panel" aria-labelledby="submit-title">
-                    <div className="panel-heading"><div className="heading-icon"><GitPullRequest size={20} /></div><div><p className="section-label">New review</p><h2 id="submit-title">Open a pull request</h2></div></div>
-                    <form className="submit-form" onSubmit={submitAnalysis} aria-busy={isSubmitting}>
-                        <label htmlFor="pull-request-url">GitHub Pull Request URL</label>
-                        <div className="input-row"><input id="pull-request-url" type="url" placeholder="https://github.com/org/repository/pull/42" value={pullRequestUrl} onChange={event => setPullRequestUrl(event.target.value)} disabled={isSubmitting} required /><button type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{isSubmitting ? 'Review in progress…' : 'Analyze PR'}</button></div>
-                        {errorMessage && <p className="error-message" role="alert"><AlertTriangle size={16} />{errorMessage}</p>}
-                    </form>
-                    {isSubmitting && <AnalysisProgress stage={progressStage} elapsedSeconds={elapsedSeconds} visitedStages={receivedStages} />}
-                </section>
-                {openingId && <p className="muted-text" role="status">Opening saved report…</p>}
-                {analysis ? <AnalysisReport key={analysis.id} analysis={analysis} /> : <section className="welcome-section"><div className="welcome-icon"><Sparkles size={24} /></div><div><p className="section-label">Ready when you are</p><h2>Your next analysis will appear here.</h2><p className="muted-text">Paste a PR URL to inspect saved code changes, rule-based checks, and validated AI findings when available.</p></div></section>}
-                <section className="history-section" id="history" aria-busy={historyStatus === 'loading'}>
-                    <div className="section-heading"><div><p className="section-label">History</p><h2>Recent analyses</h2></div><span className="history-count">{recentAnalyses.length} shown</span></div>
-                    {historyStatus === 'loading' && <p className="muted-text" role="status">Loading saved reports…</p>}
-                    {historyStatus === 'error' && <div className="history-error" role="alert"><p className="error-message">{historyError}</p><button className="text-button" type="button" onClick={refreshHistory}>Reload history</button></div>}
-                    {historyStatus === 'ready' && recentAnalyses.length === 0 && <p className="muted-text">No saved reports yet. Analyze a PR to get started.</p>}
-                    <div className="history-list">{recentAnalyses.map(item => <button className="history-item" type="button" key={item.id} disabled={isSubmitting} aria-pressed={analysis?.id === item.id} onClick={() => openAnalysis(item.id)}>
-                        <span><strong>{item.pullRequest?.title || 'Failed analysis'}</strong><small>{item.pullRequest?.repository || item.pullRequest?.url}</small><small>{formatDate(item.createdAt)}{item.pullRequest?.headSha && ` · ${item.pullRequest.headSha.slice(0, 8)}`}</small></span>
-                        <span className={`history-status ${item.status}`}>{openingId === item.id ? 'Opening…' : item.status === 'failed' ? 'Failed' : item.aiStatus === 'completed' ? 'AI completed' : item.aiStatus === 'partial' ? 'AI partial' : 'Rules completed'}</span>
-                    </button>)}</div>
-                </section>
+            <main className={`dashboard-shell page-${route.page}`}>
+                <header className="topbar"><div><p className="eyebrow">Workspace / {route.page === 'overview' ? 'New review' : 'Analyses'}</p><h1 tabIndex={-1}>{pageTitles[route.page] || 'Page not found'}</h1><p className="muted-text">{route.page === 'overview' ? 'Bring a pull request into focus with code changes and grounded feedback.' : route.page === 'analyses' ? 'Reopen a saved report and inspect its exact revision.' : 'Inspect the saved diff, context and advisory findings.'}</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
+                {route.page === 'overview' && <OverviewPage pullRequestUrl={pullRequestUrl} onUrlChange={setPullRequestUrl} onSubmit={submitAnalysis} isSubmitting={isSubmitting} error={errorMessage} progressStage={progressStage} elapsedSeconds={elapsedSeconds} receivedStages={receivedStages} onNavigate={onNavigate} />}
+                {route.page === 'analyses' && <AnalysesPage reports={recentAnalyses} status={historyStatus} error={historyError} onReload={refreshHistory} onNavigate={onNavigate} />}
+                {route.page === 'review' && <ReviewPage analysis={currentReport} error={reportError?.analysisId === route.analysisId ? reportError.message : ''} onRetry={() => setReportReload(value => value + 1)} onNavigate={onNavigate} />}
+                {route.page === 'not-found' && <section className="welcome-section"><div><h2>This page does not exist</h2><p className="muted-text">Choose a destination from the navigation or start a new review.</p><RouteLink className="text-button" to="/" onNavigate={onNavigate}>Back to new review</RouteLink></div></section>}
             </main>
         </div>
     );
 }
 
-export { AnalysisReport, AnalysisProgress, getAiStatusDetails };
+function RouteLink({ to, onNavigate, children, ...props }) {
+    return <a {...props} href={to} onClick={event => {
+        if (onNavigate && !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.currentTarget.target) {
+            event.preventDefault();
+            onNavigate(to);
+        }
+    }}>{children}</a>;
+}
+
+function OverviewPage({ pullRequestUrl = '', onUrlChange, onSubmit, isSubmitting, error, progressStage, elapsedSeconds, receivedStages, onNavigate }) {
+    return <div className="overview-content">
+        <section className="submit-panel" aria-labelledby="submit-title">
+            <div className="panel-heading"><div className="heading-icon"><GitPullRequest size={20} /></div><div><p className="section-label">New review</p><h2 id="submit-title">Open a pull request</h2></div></div>
+            <form className="submit-form" onSubmit={onSubmit} aria-busy={isSubmitting}>
+                <label htmlFor="pull-request-url">GitHub Pull Request URL</label>
+                <div className="input-row"><input id="pull-request-url" type="url" placeholder="https://github.com/org/repository/pull/42" value={pullRequestUrl} onChange={event => onUrlChange(event.target.value)} disabled={isSubmitting} required /><button type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{isSubmitting ? 'Review in progress…' : 'Analyze PR'}</button></div>
+                {error && <p className="error-message" role="alert"><AlertTriangle size={16} />{error}</p>}
+            </form>
+            {isSubmitting && <AnalysisProgress stage={progressStage} elapsedSeconds={elapsedSeconds} visitedStages={receivedStages} />}
+        </section>
+        <section className="welcome-section"><div className="welcome-icon"><Sparkles size={24} /></div><div><h2>One PR. A clearer review.</h2><p className="muted-text">Read the diff, understand potential impact and inspect findings with code evidence. AI feedback remains advisory.</p><RouteLink className="text-button" to="/analyses" onNavigate={onNavigate}>Browse saved analyses <ArrowUpRight size={15} /></RouteLink></div></section>
+    </div>;
+}
+
+function AnalysesPage({ reports = [], status = 'loading', error, onReload, onNavigate }) {
+    return <section className="history-section" aria-busy={status === 'loading'}>
+        <div className="section-heading"><div><p className="section-label">History</p><h2>Recent analyses</h2></div><span className="history-count">{reports.length} shown</span></div>
+        {status === 'loading' && <p className="muted-text" role="status">Loading saved reports…</p>}
+        {status === 'error' && <div className="history-error" role="alert"><p className="error-message">{error}</p><button className="text-button" type="button" onClick={onReload}>Reload history</button></div>}
+        {status === 'ready' && reports.length === 0 && <div className="empty-state"><p className="muted-text">No saved reports yet.</p><RouteLink className="text-button" to="/" onNavigate={onNavigate}>Start your first review</RouteLink></div>}
+        <div className="history-list">{reports.map(item => <RouteLink className="history-item" to={'/analyses/' + encodeURIComponent(item.id)} onNavigate={onNavigate} key={item.id}>
+            <span><strong>{item.pullRequest?.title || 'Failed analysis'}</strong><small>{item.pullRequest?.repository || item.pullRequest?.url}</small><small>{formatDate(item.createdAt)}{item.pullRequest?.headSha && ` · ${item.pullRequest.headSha.slice(0, 8)}`}</small></span>
+            <span className={`history-status ${item.status}`}>{item.status === 'failed' ? 'Failed' : item.aiStatus === 'completed' ? 'AI completed' : item.aiStatus === 'partial' ? 'AI partial' : 'Rules completed'}</span>
+        </RouteLink>)}</div>
+    </section>;
+}
+
+function ReviewPage({ analysis, error, onRetry, onNavigate }) {
+    return <>
+        <RouteLink className="text-button back-link" to="/analyses" onNavigate={onNavigate}>← All analyses</RouteLink>
+        {error ? <section className="welcome-section" role="alert"><AlertTriangle size={21} /><div><h2>Report could not be opened</h2><p className="muted-text">{error}</p><button type="button" className="text-button" onClick={onRetry}>Try again</button></div></section>
+            : analysis ? <AnalysisReport key={analysis.id} analysis={analysis} />
+                : <p className="report-loading muted-text" role="status"><LoaderCircle className="spin" size={18} />Loading saved report…</p>}
+    </>;
+}
+export { AnalysisReport, AnalysisProgress, OverviewPage, AnalysesPage, ReviewPage, getAiStatusDetails };
 export default DashboardPage;

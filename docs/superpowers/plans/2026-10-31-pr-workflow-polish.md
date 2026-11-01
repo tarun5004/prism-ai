@@ -1,5 +1,15 @@
 # PR workflow polish implementation plan
 
+## 2026-11-01 — approved page routing and light theme
+
+Reuse existing App.jsx, DashboardPage.jsx, styles.css and render tests. No new packages, application files, backend changes, webhook or MCP work.
+
+- [ ] Routing chunk: native history paths `/` (new review), `/analyses` (history), `/analyses/:id` (saved report), explicit not-found page; separate page components in the existing dashboard module. Preserve browser Back/Forward, modified link clicks, refresh/deep links, legacy history hash, loading/errors/retry, live progress and saved-report navigation. Tests first, targeted verification, frontend commit.
+- [ ] Theme chunk: CodeRabbit-inspired light ivory/white surfaces, ink text, orange primary accent, distinct green/red diff colors and readable semantic risk/status colors. Keep existing local fonts. Replace existing palette, do not accumulate a second theme/override system. Verify stylesheet/render checks, commit separately.
+- [ ] Integrate and independently review; frontend checks, production build, production-preview deep-link HTTP checks and actual saved-report render. No model calls are necessary for this frontend-only change. Browser interaction QA only if a connector is available.
+
+Task memory: native routing must not fetch a missing/malformed ID; show only the active page. Do not display a cached different report while a deep link loads. Do not reset/lose an active review when switching pages. Existing uncommitted user configuration/rule files stay untouched and unstaged. Main remains unchanged.
+
 ## 2026-11-01 — approved UI workspace and live progress
 
 This existing document is the task ledger requested by the user. No temporary database, new application files, packages, webhook or MCP work is needed for these two features.
