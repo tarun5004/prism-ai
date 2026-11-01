@@ -54,10 +54,13 @@ test('optional GitHub summary deduplicates a revision and preserves honest AI fa
     return Response.json(posted ? [{ body: posted, user: { login: 'prism[bot]' } }] : []);
   });
   const report = { id: 'summary-test', installationId: 7, status: 'completed', aiStatus: 'unavailable', findings: [], pullRequest: { url: 'https://github.com/demo/repo/pull/2', baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40) } };
+  const getToken = mock.fn(async (id, repository) => { assert.equal(id, 7); assert.equal(repository, 'demo/repo'); return 'bot-installation-token'; });
   try {
-    assert.equal((await github.postReviewSummary(report, 'token')).status, 'posted');
+    assert.equal((await github.postReviewSummary(report, { getToken })).status, 'posted');
+    assert.equal(getToken.mock.callCount(), 1, 'Manual reviews must mint bot credentials rather than reuse a human token');
     assert.match(posted, /AI review unavailable/);
-    assert.equal((await github.postReviewSummary(report, 'token')).status, 'existing');
+    assert.equal((await github.postReviewSummary(report, { getToken })).status, 'existing');
+    assert.ok(globalThis.fetch.mock.calls.every(call => call.arguments[1].headers.Authorization === 'Bearer bot-installation-token'));
     assert.equal(globalThis.fetch.mock.calls.filter(call => call.arguments[1].method === 'POST').length, 1);
   } finally {
     ['GITHUB_POST_REVIEW', 'APP_ORIGIN', 'GITHUB_APP_SLUG'].forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; });

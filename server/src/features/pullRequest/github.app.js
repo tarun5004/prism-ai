@@ -93,10 +93,10 @@ async function installationToken(installationId, repository) {
   return result.token;
 }
 
-async function postReviewSummary(report, token) {
+async function postReviewSummary(report, { getToken = installationToken } = {}) {
   if (process.env.GITHUB_POST_REVIEW !== 'true' || !report.installationId) return { status: 'skipped' };
   const match = report.pullRequest?.url?.match(/^https:\/\/github\.com\/([a-z\d-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/i);
-  if (!match || !report.pullRequest.baseSha || !report.pullRequest.headSha || !token || !/^[a-z\d_-]{1,128}$/i.test(report.id)) return { status: 'unavailable', errorCode: 'INVALID_SCOPE' };
+  if (!match || !report.pullRequest.baseSha || !report.pullRequest.headSha || !/^[a-z\d_-]{1,128}$/i.test(report.id)) return { status: 'unavailable', errorCode: 'INVALID_SCOPE' };
   const revision = createHash('sha256').update(`${report.installationId}:${match[1].toLowerCase()}/${match[2].toLowerCase()}:${report.pullRequest.baseSha}:${report.pullRequest.headSha}`).digest('hex');
   const marker = `<!-- prism-ai:${revision} -->`;
   if (posting.has(revision)) return { status: 'unavailable', errorCode: 'POST_IN_PROGRESS' };
@@ -104,6 +104,8 @@ async function postReviewSummary(report, token) {
   try {
     const origin = new URL(process.env.APP_ORIGIN);
     if (origin.origin !== process.env.APP_ORIGIN || !['https:', 'http:'].includes(origin.protocol)) throw Error('origin');
+    // Manual reviews carry a human token; comments must always use the App bot identity.
+    const token = await getToken(report.installationId, `${match[1]}/${match[2]}`);
     const path = `/repos/${match[1]}/${match[2]}/issues/${match[3]}/comments`;
     for (let page = 1; page <= 3; page++) {
       const comments = await githubRequest(`${path}?per_page=100&page=${page}`, token);

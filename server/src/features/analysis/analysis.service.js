@@ -41,7 +41,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     progress('saving');
     const saved = await saveAnalysis(analysis);
     if (installationId && process.env.GITHUB_POST_REVIEW === 'true') {
-      const feedback = await postReviewSummary(saved, githubToken);
+      const feedback = await postReviewSummary(saved);
       try { return { status: 201, body: await saveGitHubFeedback(id, feedback) || saved }; }
       catch { return { status: 201, body: { ...saved, githubFeedback: { status: 'unavailable', errorCode: 'STATUS_SAVE_FAILED' } } }; }
     }
