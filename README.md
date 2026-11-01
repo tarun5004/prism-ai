@@ -8,7 +8,7 @@ Built as a small MERN + Gemini project. Feedback is advisory: PRism does not run
 
 [Feature status & next steps](docs/FEATURE_ROADMAP.md) · [UI direction](docs/UI_DIRECTION.md) · [Evaluation notes](docs/beta/DEMO_AND_EVALUATION.md)
 
-> **Delivery status — 1 November 2026:** the current V0 is on the local `integration/v0-demo` branch. The remote repository currently exposes only `main`, which does not contain this full V0 yet. Publishing the integration branch and reviewing its PR are still pending. There is no verified public deployment URL.
+> **Delivery status — 2 November 2026:** the current V0 is on the local `integration/v0-demo` branch. Remote `main` does not contain this full V0; the integration branch is not published yet. Publishing it and reviewing its PR remain release steps. There is no verified public deployment URL.
 
 ## Take a 60-second tour
 
@@ -130,6 +130,10 @@ Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and Google's offic
 | GET | `/api/analyses/:analysisId` | One saved report or `404` |
 | POST | `/api/analyses` | Analyze `{"pullRequestUrl":"https://github.com/owner/repo/pull/42"}` |
 | POST | `/api/webhooks/github` | Verify and accept/ignore a signed GitHub event |
+| PUT | `/api/analyses/:analysisId/findings/:findingIndex/feedback` | Save the current reviewer's useful/incorrect annotation |
+| GET | `/api/github/session` | Safe connection status and App installation link |
+| GET | `/api/github/login` / `/api/github/callback` | State/PKCE authorization flow |
+| POST | `/api/github/logout` | End the current server session; requires matching Origin |
 
 Manual submission defaults to JSON. With `Accept: application/x-ndjson`, it streams progress frames and then one terminal result/error. The client does not automatically retry a generation request.
 
