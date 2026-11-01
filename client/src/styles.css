@@ -779,9 +779,12 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .landing h1:focus { outline: none; }
 .hero-copy p { margin: 0 0 1.5rem; font-size: 1rem; max-width: 360px; }
 .hero-copy small { display: block; margin-top: 0.9rem; color: var(--muted); font-size: 0.7rem; }
+.sample-review-button { display: block; margin-top: 1rem; padding: 0.5rem 0; background: transparent; color: var(--ink); font-weight: 500; }
+.sample-review-button:hover:not(:disabled) { background: transparent; color: var(--accent-hover); transform: none; }
+.hero-copy .sample-review-message { margin: 0.6rem 0; font-size: 0.8rem; color: var(--muted); }
 .landing-showcase { display: flex; gap: 0.65rem; }
-.showcase-card { flex: 1 1 0; min-width: 0; height: 355px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); transition: flex-grow 420ms cubic-bezier(0.22, 1, 0.36, 1), border-color 180ms ease; }
-.showcase-card[data-expanded="true"] { flex-grow: 5; border-color: var(--accent); }
+.showcase-card { flex: 1 1 0; min-width: 0; height: 355px; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: 0 12px 24px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.08); transform: perspective(1200px) rotateY(-2deg); transition: flex-grow 420ms cubic-bezier(0.22, 1, 0.36, 1), border-color 180ms ease, transform 300ms ease, box-shadow 300ms ease; }
+.showcase-card[data-expanded="true"] { flex-grow: 5; border-color: var(--accent); transform: perspective(1200px) translateY(-5px) rotateX(1deg); box-shadow: 0 22px 36px rgb(0 0 0 / 0.5), 0 2px 0 rgb(255 87 10 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.12); }
 .showcase-card-trigger { width: 100%; min-height: 54px; justify-content: flex-start; gap: 0.6rem; border-radius: 0; padding: 0.9rem; background: var(--page-bg); color: var(--muted); font-weight: 500; }
 .showcase-card-trigger > span:first-child { font: 0.65rem 'JetBrains Mono', monospace; color: var(--accent-hover); }
 .showcase-card-trigger > span:last-child { margin-left: auto; }
@@ -879,6 +882,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   .hero-copy p { font-size: 0.9rem; }
   .landing-showcase { flex-direction: column; }
   .showcase-card { flex: none; height: auto; }
+  .showcase-card, .showcase-card[data-expanded="true"] { transform: none; }
   .showcase-card-content { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 350ms ease, opacity 250ms ease; }
   .showcase-card[data-expanded="true"] .showcase-card-content { grid-template-rows: 1fr; }
   .showcase-card-inner { min-height: 0; width: 100%; overflow: hidden; padding: 0 0.7rem; }
@@ -904,5 +908,6 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .showcase-card, .showcase-card[data-expanded="true"] { transform: none; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

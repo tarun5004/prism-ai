@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DashboardPage, { RouteLink } from '../features/dashboard/DashboardPage.jsx';
+import { loadSampleAnalysis } from '../features/dashboard/analysis.api.js';
 
 function resolveRoute(pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -96,13 +97,34 @@ function FeatureShowcase({ activeIndex, onSelect }) {
 function LandingPage({ onNavigate }) {
   const [activeFeature, setActiveFeature] = useState(0);
   const [activeContext, setActiveContext] = useState(0);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [sampleMessage, setSampleMessage] = useState('');
+  const sampleRequest = useRef(null);
+  useEffect(() => () => sampleRequest.current?.abort(), []);
+  async function openSample() {
+    if (sampleRequest.current) return;
+    const controller = new AbortController();
+    sampleRequest.current = controller;
+    setSampleLoading(true);
+    setSampleMessage('');
+    try {
+      const report = await loadSampleAnalysis({ signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (report) onNavigate?.('/analyses/' + encodeURIComponent(report.id));
+      else setSampleMessage('No completed saved review yet. Analyze a PR first to create one.');
+    } catch {
+      if (!controller.signal.aborted) setSampleMessage('Saved reviews could not be loaded. Check the backend, then try again.');
+    } finally {
+      if (!controller.signal.aborted) { sampleRequest.current = null; setSampleLoading(false); }
+    }
+  }
   const context = contextSteps[activeContext];
   const trial = className => <RouteLink className={className} to="/app" onNavigate={onNavigate}>Try it for free <span aria-hidden="true">↗</span></RouteLink>;
   return <div className="landing">
     <a className="skip-link" href="#landing-main">Skip to content</a>
     <header className="landing-header"><nav className="landing-nav landing-width" aria-label="Main navigation"><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate} aria-label="PRism AI home"><span className="brand-mark">P</span>PRism AI</RouteLink><div className="landing-nav-links"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="https://github.com/tarun5004/prism-ai" target="_blank" rel="noopener noreferrer">View source ↗</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div>{trial('landing-cta landing-cta-small')}</nav></header>
     <main id="landing-main">
-      <section className="landing-hero landing-width"><div><p className="landing-eyebrow">PULL REQUEST INTELLIGENCE</p><h1 tabIndex={-1}>Understand the change.<br /><span>Before you merge.</span></h1></div><div className="hero-copy"><p>Code changes fast.<br />Make sense of the diff, the context and the risk—with evidence you can inspect.</p>{trial('landing-cta')}<small>Personal demo · Bring a GitHub PR URL</small></div></section>
+      <section className="landing-hero landing-width"><div><p className="landing-eyebrow">PULL REQUEST INTELLIGENCE</p><h1 tabIndex={-1}>Understand the change.<br /><span>Before you merge.</span></h1></div><div className="hero-copy"><p>Code changes fast.<br />Make sense of the diff, the context and the risk—with evidence you can inspect.</p>{trial('landing-cta')}<button className="sample-review-button" type="button" onClick={openSample} disabled={sampleLoading} aria-busy={sampleLoading}>{sampleLoading ? 'Opening saved review…' : 'See a sample review →'}</button>{sampleMessage && <p className="sample-review-message" role="status">{sampleMessage}</p>}<small>Personal demo · Bring a GitHub PR URL</small></div></section>
       <FeatureShowcase activeIndex={activeFeature} onSelect={setActiveFeature} />
       <div className="landing-capabilities landing-width"><span>Built for a clearer review</span><span>GitHub PRs</span><span>Unified diffs</span><span>Gemini + rules</span><span>Saved reports</span></div>
       <section className="landing-statement landing-width"><div className="context-lines" aria-hidden="true">{[0, 1, 2, 3, 4].map(index => <i key={index} />)}</div><div><p className="landing-eyebrow">LESS GUESSWORK. MORE CONTEXT.</p><h2>A diff shows what changed.<br />A review helps you understand why it matters.</h2><p className="landing-muted">Move from changed lines to potential impact, with clear evidence and honest limits.</p></div></section>
