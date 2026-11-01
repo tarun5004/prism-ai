@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import DashboardPage, { RouteLink } from '../features/dashboard/DashboardPage.jsx';
 
 function resolveRoute(pathname) {
@@ -20,6 +20,7 @@ function App() {
   const [pathname, setPathname] = useState(() => typeof window === 'undefined' ? '/' : window.location.pathname);
   const route = resolveRoute(pathname);
   const [workspaceVisited, setWorkspaceVisited] = useState(() => resolveRoute(pathname).page !== 'landing');
+  const lastWorkspaceRoute = useRef(route);
   const navigate = useCallback(path => {
     const destination = new URL(path, window.location.origin);
     if (destination.origin !== window.location.origin) return;
@@ -40,7 +41,10 @@ function App() {
 
   useEffect(() => {
     const page = resolveRoute(pathname).page;
-    if (page !== 'landing') setWorkspaceVisited(true);
+    if (page !== 'landing') {
+      lastWorkspaceRoute.current = resolveRoute(pathname);
+      setWorkspaceVisited(true);
+    }
     document.title = `${{ landing: 'Understand every change', overview: 'New review', analyses: 'Saved analyses', review: 'PR review', 'not-found': 'Page not found' }[page]} · PRism AI`;
     document.querySelector(page === 'landing' ? '.landing h1' : '.dashboard-shell h1')?.focus({ preventScroll: true });
     window.scrollTo(0, 0);
@@ -49,7 +53,7 @@ function App() {
   return <>
     {route.page === 'landing' && <LandingPage onNavigate={navigate} />}
     {/* Keep an active review mounted when its user visits the introduction. */}
-    {(workspaceVisited || route.page !== 'landing') && <div hidden={route.page === 'landing'}><DashboardPage route={route} onNavigate={navigate} /></div>}
+    {(workspaceVisited || route.page !== 'landing') && <div hidden={route.page === 'landing'}><DashboardPage route={route.page === 'landing' ? lastWorkspaceRoute.current : route} onNavigate={navigate} /></div>}
   </>;
 }
 
@@ -81,7 +85,7 @@ function LandingPage({ onNavigate }) {
   const trial = className => <RouteLink className={className} to="/app" onNavigate={onNavigate}>Try it for free <span aria-hidden="true">↗</span></RouteLink>;
   return <div className="landing">
     <a className="skip-link" href="#landing-main">Skip to content</a>
-    <header className="landing-header"><nav className="landing-nav landing-width" aria-label="Main navigation"><a className="brand-lockup" href="/" aria-label="PRism AI home"><span className="brand-mark">P</span>PRism AI</a><div className="landing-nav-links"><a href="#features">Features</a><a href="#how-it-works">How it works</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div>{trial('landing-cta landing-cta-small')}</nav></header>
+    <header className="landing-header"><nav className="landing-nav landing-width" aria-label="Main navigation"><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate} aria-label="PRism AI home"><span className="brand-mark">P</span>PRism AI</RouteLink><div className="landing-nav-links"><a href="#features">Features</a><a href="#how-it-works">How it works</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div>{trial('landing-cta landing-cta-small')}</nav></header>
     <main id="landing-main">
       <section className="landing-hero landing-width"><div><p className="landing-eyebrow">PULL REQUEST INTELLIGENCE</p><h1 tabIndex={-1}>Understand the change.<br /><span>Before you merge.</span></h1></div><div className="hero-copy"><p>Code changes fast.<br />Make sense of the diff, the context and the risk—with evidence you can inspect.</p>{trial('landing-cta')}<small>Personal demo · Bring a GitHub PR URL</small></div></section>
       <section className="landing-showcase landing-width" aria-label="Explore PRism features"><div className="showcase-controls">{features.map((feature, index) => <button type="button" key={feature.name} aria-pressed={activeFeature === index} aria-controls="feature-preview" onClick={() => setActiveFeature(index)}><span>0{index + 1}</span>{feature.name}<span className="showcase-active-label">{activeFeature === index ? ' the change' : ''}</span></button>)}</div><div id="feature-preview" className="showcase-stage"><FeaturePreview feature={features[activeFeature]} /></div></section>
@@ -91,7 +95,7 @@ function LandingPage({ onNavigate }) {
       <section id="how-it-works" className="landing-width landing-context-section"><p className="landing-eyebrow">02 / HOW IT WORKS</p><h2>Context in. Grounded feedback out.</h2><p className="landing-section-intro">A focused review of the PR—not a claim to understand your entire repository.</p><div className="context-explorer"><div className="context-options" aria-label="Review context steps">{contextSteps.map((step, index) => <button type="button" key={step.name} aria-pressed={activeContext === index} aria-controls="context-detail" onClick={() => setActiveContext(index)}><span className="mono-label">0{index + 1}</span><strong>{step.name}</strong></button>)}</div><div id="context-detail" className="context-detail"><div className="context-pipeline" aria-label="Selected context flow">{context.nodes.map((node, index) => <div key={node}><span>0{index + 1}</span><strong>{node}</strong></div>)}</div><h3>{context.title}</h3><p>{context.description}</p><span className="preview-chip">Human review before merging</span></div></div></section>
       <section className="landing-width landing-final-cta"><div><p className="landing-eyebrow">OPEN A PULL REQUEST. GET A CLEARER PICTURE.</p><h2>Make your next review count.</h2></div>{trial('landing-cta')}</section>
     </main>
-    <footer className="landing-footer landing-width"><div className="footer-links"><div><a className="brand-lockup" href="/">PRism AI</a><p>Understand changes.<br />Review with evidence.</p></div><div><h3>Explore</h3><a href="#features">Features</a><a href="#how-it-works">How it works</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div><div><h3>Built with clarity</h3><p>Evidence-backed feedback</p><p>Visible context limits</p><p>AI guidance, human judgment</p></div></div><div className="footer-wordmark" aria-hidden="true">PRism AI</div><div className="footer-bottom"><span>PRism AI · Personal demo project</span><span>AI feedback is advisory. Verify before merging.</span></div></footer>
+    <footer className="landing-footer landing-width"><div className="footer-links"><div><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate}>PRism AI</RouteLink><p>Understand changes.<br />Review with evidence.</p></div><div><h3>Explore</h3><a href="#features">Features</a><a href="#how-it-works">How it works</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div><div><h3>Built with clarity</h3><p>Evidence-backed feedback</p><p>Visible context limits</p><p>AI guidance, human judgment</p></div></div><div className="footer-wordmark" aria-hidden="true">PRism AI</div><div className="footer-bottom"><span>PRism AI · Personal demo project</span><span>AI feedback is advisory. Verify before merging.</span></div></footer>
   </div>;
 }
 

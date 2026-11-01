@@ -55,6 +55,20 @@ test('introduction presents working features and routes every trial CTA into the
   assert.ok(!entry.includes('dashboard-shell'));
 });
 
+test('internal home navigation avoids reload and preserves modified-click behavior', () => {
+  const destinations = [];
+  const link = dashboard.RouteLink({ to: '/', onNavigate: path => destinations.push(path), children: 'Home' });
+  let prevented = false;
+  const event = { button: 0, currentTarget: {}, preventDefault() { prevented = true; } };
+  link.props.onClick(event);
+  assert.equal(prevented, true);
+  assert.deepEqual(destinations, ['/']);
+  prevented = false;
+  link.props.onClick({ ...event, ctrlKey: true });
+  assert.equal(prevented, false);
+  assert.equal(destinations.length, 1);
+});
+
 test('renders only the active page instead of stacking overview, history and report', () => {
   const overview = renderToStaticMarkup(createElement(dashboard.default, { route: { page: 'overview' } }));
   assert.match(overview, /Open a pull request/);
