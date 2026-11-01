@@ -4,11 +4,14 @@
 
 User approved implementation after reference analysis. Use PRism AI branding, charcoal/orange styling and existing local fonts. Screenshots were captured at 60–70% zoom: use readable fluid sizing at normal zoom, not screenshot-sized text. Landing at `/`, workspace at `/app`, history/report URLs unchanged. No invented customers, review metrics, login, webhook or MCP claims. Keep running workspace state while visiting the introduction. No new application files or dependencies are needed.
 
-- [ ] Chunk 1: extend App.jsx with isolated landing components, real internal CTA links, interactive feature preview, context explanation and oversized outlined/masked PRism AI footer. Update DashboardPage workspace links; extend existing render/route tests, observe failure then pass, commit on frontend branch.
-- [ ] Chunk 2: replace theme variables with accessible charcoal/orange colors; add scoped landing layout, responsive grids, restrained transitions and reduced-motion support in styles.css. Update contrast checks and UI_DIRECTION.md; verify targeted tests/build, commit.
-- [ ] Integrate, review, verify direct production-preview routes. Browser visual/interaction QA only if a surface is available. Preserve existing user configuration and rule files; do not call GitHub/Gemini.
+- [x] Chunk 1: extend App.jsx with isolated landing components, real internal CTA links, interactive feature preview, context explanation and oversized outlined/masked PRism AI footer. Update DashboardPage workspace links; extend existing render/route tests, observe failure then pass, commit on frontend branch.
+- [x] Chunk 2: replace theme variables with accessible charcoal/orange colors; add scoped landing layout, responsive grids, restrained transitions and reduced-motion support in styles.css. Update contrast checks and UI_DIRECTION.md; verify targeted tests/build, commit.
+- [x] Integrate, review, verify direct production-preview routes. Browser visual/interaction QA only if a surface is available. Preserve existing user configuration and rule files; do not call GitHub/Gemini.
 
 Review focus: hidden workspace must retain active request state; landing must not start history requests before entering workspace; modified clicks remain normal links; no fabricated live data; narrow-screen content must wrap; footer must fit viewport width.
+
+
+Verified: 30 frontend checks passed; latest production build passed. Local production preview served /, /app, /analyses and a report deep link; built JS/CSS and both local fonts returned successfully. No external API calls or backend edits. Independent review caught plain landing home anchors causing a full reload; fixed them with shared RouteLink and retained the last workspace route to keep report controls mounted. Reviewer confirmed no remaining important findings. Browser inventory is empty, so visual fidelity, normal-zoom fit and real browser selector/Back-Forward interaction remain unverified. Main and user configuration/rule files preserved. Chunks: 1d3687f (landing/routes), 43caff6 (dark theme), 6e4149c (navigation state fix).
 
 ## 2026-11-01 — approved page routing and light theme
 
