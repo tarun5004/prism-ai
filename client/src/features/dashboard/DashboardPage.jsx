@@ -302,17 +302,17 @@ function DashboardPage({ route = { page: 'overview' }, onNavigate }) {
             <aside className="sidebar">
                 <RouteLink className="brand-lockup" to="/" onNavigate={onNavigate}><span className="brand-mark">P</span><span>PRism</span></RouteLink>
                 <nav className="sidebar-nav" aria-label="Primary navigation">
-                    <RouteLink className={`nav-item${route.page === 'overview' ? ' active' : ''}`} aria-current={route.page === 'overview' ? 'page' : undefined} to="/" onNavigate={onNavigate}><ClipboardCheck size={17} />New review</RouteLink>
+                    <RouteLink className={`nav-item${route.page === 'overview' ? ' active' : ''}`} aria-current={route.page === 'overview' ? 'page' : undefined} to="/app" onNavigate={onNavigate}><ClipboardCheck size={17} />New review</RouteLink>
                     <RouteLink className={`nav-item${['analyses', 'review'].includes(route.page) ? ' active' : ''}`} aria-current={route.page === 'analyses' ? 'page' : undefined} to="/analyses" onNavigate={onNavigate}><GitPullRequest size={17} />Analyses</RouteLink>
                 </nav>
-                {isSubmitting ? <RouteLink className="running-review" to="/" onNavigate={onNavigate}><LoaderCircle className="spin" size={15} />Review in progress</RouteLink> : <div className="sidebar-note"><Sparkles size={16} /><span>Review support for the changes that matter.</span></div>}
+                {isSubmitting ? <RouteLink className="running-review" to="/app" onNavigate={onNavigate}><LoaderCircle className="spin" size={15} />Review in progress</RouteLink> : <div className="sidebar-note"><Sparkles size={16} /><span>Review support for the changes that matter.</span></div>}
             </aside>
             <main className={`dashboard-shell page-${route.page}`}>
                 <header className="topbar"><div><p className="eyebrow">Workspace / {route.page === 'overview' ? 'New review' : 'Analyses'}</p><h1 tabIndex={-1}>{pageTitles[route.page] || 'Page not found'}</h1><p className="muted-text">{route.page === 'overview' ? 'Bring a pull request into focus with code changes and grounded feedback.' : route.page === 'analyses' ? 'Reopen a saved report and inspect its exact revision.' : 'Inspect the saved diff, context and advisory findings.'}</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
                 {route.page === 'overview' && <OverviewPage pullRequestUrl={pullRequestUrl} onUrlChange={setPullRequestUrl} onSubmit={submitAnalysis} isSubmitting={isSubmitting} error={errorMessage} progressStage={progressStage} elapsedSeconds={elapsedSeconds} receivedStages={receivedStages} onNavigate={onNavigate} />}
                 {route.page === 'analyses' && <AnalysesPage reports={recentAnalyses} status={historyStatus} error={historyError} onReload={refreshHistory} onNavigate={onNavigate} />}
                 {route.page === 'review' && <ReviewPage analysis={currentReport} error={reportError?.analysisId === route.analysisId ? reportError.message : ''} onRetry={() => setReportReload(value => value + 1)} onNavigate={onNavigate} />}
-                {route.page === 'not-found' && <section className="welcome-section"><div><h2>This page does not exist</h2><p className="muted-text">Choose a destination from the navigation or start a new review.</p><RouteLink className="text-button" to="/" onNavigate={onNavigate}>Back to new review</RouteLink></div></section>}
+                {route.page === 'not-found' && <section className="welcome-section"><div><h2>This page does not exist</h2><p className="muted-text">Choose a destination from the navigation or start a new review.</p><RouteLink className="text-button" to="/app" onNavigate={onNavigate}>Back to new review</RouteLink></div></section>}
             </main>
         </div>
     );
@@ -347,7 +347,7 @@ function AnalysesPage({ reports = [], status = 'loading', error, onReload, onNav
         <div className="section-heading"><div><p className="section-label">History</p><h2>Recent analyses</h2></div><span className="history-count">{reports.length} shown</span></div>
         {status === 'loading' && <p className="muted-text" role="status">Loading saved reports…</p>}
         {status === 'error' && <div className="history-error" role="alert"><p className="error-message">{error}</p><button className="text-button" type="button" onClick={onReload}>Reload history</button></div>}
-        {status === 'ready' && reports.length === 0 && <div className="empty-state"><p className="muted-text">No saved reports yet.</p><RouteLink className="text-button" to="/" onNavigate={onNavigate}>Start your first review</RouteLink></div>}
+        {status === 'ready' && reports.length === 0 && <div className="empty-state"><p className="muted-text">No saved reports yet.</p><RouteLink className="text-button" to="/app" onNavigate={onNavigate}>Start your first review</RouteLink></div>}
         <div className="history-list">{reports.map(item => <RouteLink className="history-item" to={'/analyses/' + encodeURIComponent(item.id)} onNavigate={onNavigate} key={item.id}>
             <span><strong>{item.pullRequest?.title || 'Failed analysis'}</strong><small>{item.pullRequest?.repository || item.pullRequest?.url}</small><small>{formatDate(item.createdAt)}{item.pullRequest?.headSha && ` · ${item.pullRequest.headSha.slice(0, 8)}`}</small></span>
             <span className={`history-status ${item.status}`}>{item.status === 'failed' ? 'Failed' : item.aiStatus === 'completed' ? 'AI completed' : item.aiStatus === 'partial' ? 'AI partial' : 'Rules completed'}</span>
@@ -363,5 +363,5 @@ function ReviewPage({ analysis, error, onRetry, onNavigate }) {
                 : <p className="report-loading muted-text" role="status"><LoaderCircle className="spin" size={18} />Loading saved report…</p>}
     </>;
 }
-export { AnalysisReport, AnalysisProgress, OverviewPage, AnalysesPage, ReviewPage, getAiStatusDetails };
+export { AnalysisReport, AnalysisProgress, OverviewPage, AnalysesPage, ReviewPage, getAiStatusDetails, RouteLink };
 export default DashboardPage;

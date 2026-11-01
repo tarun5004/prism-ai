@@ -33,10 +33,23 @@ test('light theme keeps text, primary actions and diff states readable', () => {
 });
 
 test('resolves separate page URLs and rejects invalid report paths', () => {
-  assert.deepEqual(app.resolveRoute('/'), { page: 'overview' });
+  assert.deepEqual(app.resolveRoute('/'), { page: 'landing' });
+  assert.deepEqual(app.resolveRoute('/app'), { page: 'overview' });
   assert.deepEqual(app.resolveRoute('/analyses/'), { page: 'analyses' });
   assert.deepEqual(app.resolveRoute('/analyses/legacy-1'), { page: 'review', analysisId: 'legacy-1' });
   for (const path of ['/unknown', '/analyses/a/extra', '/analyses/%', '/analyses/a%2Fb']) assert.equal(app.resolveRoute(path).page, 'not-found');
+});
+
+test('introduction presents working features and routes every trial CTA into the workspace', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /Understand the change/);
+  assert.match(html, /Illustrative preview/);
+  assert.match(html, /AI feedback is advisory/);
+  assert.match(html, /class="footer-wordmark"/);
+  assert.equal((html.match(/Try it for free/g) || []).length, 3);
+  assert.equal((html.match(/href="\/app"/g) || []).length, 3);
+  assert.ok(!html.includes('pull-request-url'));
+  assert.ok(!html.includes('Trusted by'));
 });
 
 test('renders only the active page instead of stacking overview, history and report', () => {
