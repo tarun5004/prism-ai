@@ -1,154 +1,52 @@
-# PRism AI — feature status and implementation roadmap
+# PRism AI — feature status and remaining owner actions
 
-Status date: **2 November 2026**. This is the current feature/status source. Earlier phase plans remain historical; the implementation ledger is [here](superpowers/plans/2026-10-31-pr-workflow-polish.md).
+Status: **2 November 2026**. Implementation record: [chunk ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md). Implemented means local code, not a claim of live deployment or measured review accuracy.
 
-## 1. The product we are building
+## Priority and completed slices
 
-**Current demo:** a developer submits a PR URL, or configures a repository webhook, and inspects a saved diff plus advisory AI review.
+| Priority | Slice | Implemented | Verification boundary |
+| --- | --- | --- | --- |
+| P0 | Existing review workflow | Paginated GitHub patches, revision guards, unified diff, deterministic rules, Gemini structured findings, contextual walkthrough/impacts, saved history, actual progress | Existing workflow retained; live evaluation is separate from offline checks |
+| P0 | E2 diagnostics | SDK input/output/thinking/total tokens (unknown = null), prompt/schema version, run ID, timing/failure metadata, report request details | Real usage saved in the live dev artifact; mocked checks and isolated Mongo read-back also exercised |
+| P0 | GitHub App backend | State + PKCE login, opaque HttpOnly cookie, server-only user tokens, fresh installation/repository authorization, narrow installation tokens, installation-scoped reports/webhook IDs | Offline callback/replay/origin/access tests; real registration/installation not performed |
+| P0 | Public access boundary | Production requires App credentials, HTTPS APP_ORIGIN and MongoDB; protected reads/writes; runtime storage gate; no-store API; CSRF origin checks | Single Node process; sessions restart on process restart; no enterprise tenancy claims |
+| P0 | Usage control | Six review starts per user/installation per hour and thirty globally, plus existing two webhook jobs | In-memory limits reset at restart; public hosting/provider spending controls still need operator setup |
+| P1 | E3 guidance | Opt-in REVIEW_GUIDANCE=lexical; ranked README/CONTRIBUTING sections, head revision, original coordinates, existing request/context budgets and sensitive-content filtering | Guidance can be omitted when the shared source budget is exhausted; not repository-wide semantic RAG |
+| P1 | E3 retrieval experiment | Three original E1-linked relevance queries; lexical hit@1 and optional official-SDK embeddings/cosine comparison; version/hash/source references | Offline lexical artifact recorded; semantic path mocked only, no live embedding improvement claim |
+| P1 | E4 feedback | Useful / Incorrect, optional reason, validated API, actor-derived annotation key, atomic Mongo update, saved UI states | Separate from generated evidence; not automatic training or a replacement for curated evaluation labels |
+| P1 | E5 MCP | Official SDK, local stdio list_reports/read_report, bounded projections, malformed ID/scope rejection and credential-pattern filtering | Real SDK client/server protocol tested in memory; compatible desktop client setup remains manual; no public remote MCP endpoint |
+| P0 | E6 delivery | Same-origin /api, Vite development proxy, configurable origin/CORS, Express static SPA deep links, offline CI workflow | CI configuration added; a GitHub-hosted CI run and public host are not inferred from local tests |
+| Optional | GitHub feedback | Default-off advisory summary + access-controlled link, revision marker, bounded bot-comment lookup, safe failure status | Mocked posting/dedup test; requires explicit App PR-write permission and GITHUB_POST_REVIEW=true |
+| P0 | E1 evaluation | Frozen 12 dev / 4 held-out review cases, Python scorer, opt-in collector, atomic artifacts, source hashes, quota-stop behavior | Human adjudication and a complete held-out quality baseline remain outstanding |
 
-**Target recruiter experience:** open the deployed website → click **Install on GitHub** → choose repositories and approve narrow permissions → raise/update a PR → get a review without installing tools or creating a webhook manually.
+## Live evidence and actual blockers
 
-The target onboarding flow is **not implemented yet**. A GitHub App is the appropriate installation/event-delivery mechanism. MCP is a separate interface for compatible AI clients to use PRism tools/reports; connecting an MCP server alone does not subscribe a repository to GitHub PR events.
+[Saved development run](beta/evaluation-live-dev.json): B01/B02/B03/B04/B06 completed with actual provider usage; B05 returned HTTP 503; B07/B08 returned HTTP 429. C01 is recorded interrupted with unknown request outcome following a Windows file-lock save failure; C02-C04 were not run. The collector now retries only transient filesystem renames and stops generation batches on 429. No generation retry loop was added.
 
-GitHub App registration does not require a paid GitHub plan. Hosting, storage and AI usage are separate; do not promise unlimited free hosted reviews. The project is a focused personal/portfolio demo, not an enterprise platform.
+This is **not** a full accuracy benchmark. Judgments remain empty, so precision/recall are intentionally unavailable. Do not put an accuracy percentage or response-time SLA in the CV/README. Held-out cases were not sent to Gemini.
 
-## 2. Read the status labels correctly
+[Retrieval artifact](beta/retrieval-offline.json) records a tiny synthetic lexical experiment with zero provider calls. Optional embeddings are implemented but not live-verified while quota is exhausted. This measures document relevance, not bug detection.
 
-- **Implemented:** present in the current local V0 code; not necessarily deployed publicly.
-- **Recorded verification:** a previously executed check or author-reported manual demo, with its scope stated.
-- **Planned:** acceptance criteria below are future work, not a feature claim.
-- A passing mocked API test is not live-model quality evidence. A live screenshot is not a benchmark. An accepted webhook is not a completed AI review.
+## Manual/account steps — next priority
 
-## 3. Implemented inventory
+1. **P0: rotate previously exposed credentials**, then register a GitHub App and configure the deployment secrets. No secret values belong in commits, screenshots or logs.
+2. **P0: create free/student-eligible hosting and MongoDB**, configure HTTPS APP_ORIGIN, register callback/webhook URLs, and install the App on a test repository. See [setup](../README.md#github-app-setup-owner-actions).
+3. **P0: live onboarding verification**: connect GitHub, select repositories, open/update a non-draft PR, confirm saved review, replay delivery, remove repository access and confirm the report is denied. Include a second account/repository for cross-access checks.
+4. **P0: human evaluation**: adjudicate saved findings against frozen labels; later collect remaining dev/held-out cases within available quota. Never tune against held-out results.
+5. **P1: optional PR summaries**: grant PR write only if desired, enable the flag, verify exactly one advisory summary per revision. It never approves/merges a PR.
+6. **P1: desktop MCP setup and responsive browser QA**: configure a compatible local client and visually test desktop/mobile routes, login, feedback and diffs.
+7. **Release decision: choose a project license**. No license was selected on the owner's behalf. Main is not merged without explicit approval.
 
-| Feature | State / evidence | Boundary |
-| --- | --- | --- |
-| Manual GitHub PR submission | Implemented; backend/controller and client API checks recorded | One PR URL per run; no repository-wide review |
-| PR metadata, paginated files and patches | Implemented in pullRequest.service.js; offline retrieval checks | Endpoint cap is 3,000 files; 4 MiB snapshot guard; incomplete coverage remains visible |
-| Base/head revisions and mixed-revision guard | Implemented; revision checks recorded | Refuses a snapshot that changes during retrieval |
-| Unified diff viewer | Implemented; parser/render tests | Multiple hunks, old/new lines, added/deleted/renamed files; no side-by-side mode |
-| Deterministic risk rules | Implemented in analysis.rules.js | Signals are advisory, not confirmed defects |
-| Official Gemini SDK + structured output | Implemented; mocked failure tests and prior live demo evidence | Single provider; no automatic generation retry; configured model must be available to the key |
-| Bounded contextual review | Implemented in ai.context.js / pullRequest.service.js | PR intent, changed-line windows, selected JS/TS direct imports; no embedding index or complete dependency graph |
-| Findings and review validation | Implemented; existing evidence/schema tests | Rejects invalid paths, line sides/numbers, types, severities and evidence. Does not prove semantic correctness |
-| Walkthrough, impacts and advisory recommendation | Implemented; report render tests and author live screenshot | States scope/limitations; never approval or merge automation |
-| Failure diagnostics and coverage | Implemented: duration, deadline, attempts, allowlisted failure details and omissions | Actual token counts, prompt version and comparative experiment records are pending |
-| Saved reports and history | Implemented; repository/schema checks and isolated MongoDB verification | MongoDB persistence or temporary in-memory fallback; no user/install ownership enforcement |
-| Actual progress stream | Implemented through existing POST endpoint | NDJSON stages and elapsed time; no invented percentages or response-time SLA |
-| Routed dark UI | Implemented: `/`, `/app`, `/analyses`, `/analyses/:id` | Charcoal/orange theme, hover/focus/tap feature cards, modest depth, local fonts; browser automation QA incomplete |
-| Saved sample entry and source link | Implemented; client checks and prior local report-read verification | Uses real saved history; fresh stores have no sample; source link opens the repository |
-| Signed repository webhook | Implemented in pullRequest.webhook.js; signed HTTP tests | One configured repository; raw-body HMAC, event validation, drafts/closed PRs ignored |
-| Webhook dispatch and deduplication | Implemented; in-flight/persisted duplicate tests and isolated MongoDB verification | Two concurrent jobs, one Node process, deterministic repo/PR/base/head ID; no durable queue |
-| Live webhook demo | Author reported signed ping, PR event, saved AI review/diff and no second report after redelivery | Manual observation; exact provider call count was not independently instrumented |
+## Operating boundaries
 
-Existing recorded baseline: **91 backend offline tests**, **33 frontend checks**, backend syntax/local health and frontend production build passed during implementation. These counts are a dated baseline; update them after relevant future checks, not after an unexecuted assumption.
+- This remains a single-user/portfolio-scale demo with simple installation access controls, not a scalable SaaS. One backend instance only; no durable queue or distributed sessions/quotas.
+- Webhook acceptance is not model completion. A crash after 202 may require redelivery. A saved failed revision remains deduplicated; manual analysis can intentionally retry it.
+- Production report storage fails closed; local mode can still fall back to memory. Do not expose local mode publicly.
+- GitHub endpoint cap: 3,000 changed files; report snapshot limit: 4 MiB. AI context remains bounded to five reviewable files, 12k serialized diff characters and 8k snippet characters.
+- MCP defaults to legacy/local reports; an explicit MCP_INSTALLATION_ID grants the trusted local database operator that scope. It is not browser authentication or a remote multi-user connector.
+- Optional embeddings do not change production retrieval. No vector database, extra model provider, auto-merge, repository execution, email service or autonomous agent loop was added.
+- Goal: zero recurring hosting cost where practical. Free/student offers have limits/expiry; no paid service or account purchase was made. Consumer subscriptions and API quotas are separate. Public deployment is still unverified.
 
-## 4. The public-launch gap: GitHub App onboarding
+## Work discipline
 
-Priority: **P0 before inviting users to connect private repositories**. Product integration work, not a claim of additional model intelligence.
-
-| Slice | Minimal implementation | Done when |
-| --- | --- | --- |
-| App registration and installation entry | Register PRism GitHub App; add an Install on GitHub CTA linked to its installation page | A test user can select repositories without manually creating a webhook |
-| Installation authentication | Server-side app credentials and short-lived installation tokens; replace the global-token-only retrieval path for App requests | Fetches are authorized for the event's installation; private key/tokens never reach the client/logs |
-| User/session and installation binding | Authenticate the dashboard visitor and verify their installation/repository access; protect callback state | An installation ID supplied by a browser is never sufficient authorization |
-| Scoped reports and events | Attach installation ownership to reports/deduplication and filter every list/detail request | Cross-installation report access fails, including guessed IDs; webhook data remains isolated |
-| Permission/lifecycle handling | Request minimum permissions; handle installation removal and repository-access changes | Removed access cannot continue reading private reports or fetching code |
-| Live onboarding test | Real deployment + test installation + non-draft PR and duplicate delivery | Complete flow works without local tunnel/software for the end user |
-| GitHub feedback posting | Optional follow-up: concise review/comment with report link, using required PR write permission | One appropriate comment per review/revision; private report links remain access-controlled |
-
-Reuse the current GitHub service, shared analysis service, webhook module, model/repository and dashboard. Keep existing manual URLs usable. App registration can use new dedicated auth code where that is a genuine responsibility; do not bolt authentication into AI prompts.
-
-Boundaries: no unrestricted GitHub-account access, auto-merge, arbitrary repository execution or guaranteed email delivery. Current events review open/updated PRs, not every merge/account event. GitHub notification behavior depends on user settings; a custom email service is outside V0 scope.
-
-## 5. AI-engineering upgrades, ordered by value
-
-E1 tooling is now implemented as described below; E2–E6 remain planned. Prefer useful, explainable additions over collecting framework names.
-
-### E1 — AI Evaluation V1 · P0 · tooling implemented; live quality baseline pending
-
-**Skill evidence:** labelled datasets, precision/recall, false alarms, error analysis and reproducible experiments.
-
-**Verification on 2 November:** 95 backend offline checks, 7 Python checks and an atomic dry-run artifact/scorer roundtrip passed. Independent review found an in-place artifact-write risk; it was fixed with synced temporary-file replacement and a failure regression test. No live Gemini/GitHub call or deployment purchase was made.
-
-**Implemented:** 16 original frozen fixtures (12 dev / 4 held-out), Python stdlib scorer, dry-run-by-default Node collector reusing the current AI service, dataset/source hashes, incremental artifacts, explicit human judgments and failure-aware metrics. Gold labels/case IDs do not enter model input. No live evaluation request has been run in this slice, so no model-quality score is claimed. Commands and judgment format: [evaluation guide](beta/DEMO_AND_EVALUATION.md#ai-evaluation-v1-frozen-code-cases). The bullets below remain the acceptance contract, not a claim that a real-provider baseline has been measured.
-
-- Curate 15–20 small, owned/licensed, frozen code-change fixtures: known bugs, clean changes, removed guards, missing context and adversarial repository instructions. Label expected bug IDs, files, acceptable line ranges and evidence; do not grade by exact generated wording.
-- Use a small Python evaluation script as a meaningful Python component. It should score saved JSON outputs without needing a new backend or framework. Add a fixture data file only because it represents an actual evaluation dataset.
-- Record dataset version, model, prompt version/config and run IDs. Keep a held-out subset; do not tune prompts against every test case.
-- Report finding precision, recall, false-discovery rate, invalid-evidence rate, request failure rate and latency. Show the sample size and limitations; define zero-denominator results explicitly rather than inventing scores.
-- Keep recorded/mock evaluation separate from an explicitly requested live model run. Offline CI must not silently spend provider credits. Preserve failed/partial runs in coverage reporting.
-
-**Files to reuse:** docs/beta/TEST_CASES.md and DEMO_AND_EVALUATION.md, AI validation/input modules. New evaluator/fixture files are justified responsibilities, not new infrastructure.
-
-**Acceptance:** one documented command reproduces metrics from a versioned saved run; a seeded wrong finding/miss changes the expected metric; failure cases are counted; no unsupported accuracy percentage appears in README/CV.
-
-**Terminology corrected:** evaluation notes now call `false-positive findings / total findings` the false-discovery rate, not conventional `FP / (FP + TN)` FPR.
-
-### E2 — Review diagnostics and experiment identity · P0
-
-**Skill evidence:** LLM observability, token budgeting and traceable prompt/model changes.
-
-Extend existing ai.service.js, model/report persistence and request tests with SDK-reported input/output token usage, prompt/schema version and an analysis/run reference. Retain existing timing/failure diagnostics. Represent unavailable usage as unknown, not zero; do not log raw sensitive prompts. Show compact request details in the existing report instead of adding an analytics dashboard.
-
-**Acceptance:** metadata survives save/reopen; unavailable provider usage is honest; mocked token fields are labelled as test evidence; version changes distinguish experiments. Do not publish estimated currency cost without a dated, verified pricing basis.
-
-### E3 — Retrieval quality experiment · P1
-
-**Skill evidence:** chunking, retrieval, grounding, embeddings and baseline comparison.
-
-Reuse the bounded context path to retrieve relevant, revision-pinned repository guidance such as README or CONTRIBUTING sections. Start with a transparent lexical baseline and a small candidate budget. Compare optional semantic embeddings against that baseline on E1 cases before changing defaults. Store source path/revision references and omission reasons. No vector database service or repository-wide clone is required for a small experiment.
-
-**Acceptance:** retrieved text can be traced to source; budgets and sensitive-content filtering still apply; baseline and embedding runs are evaluated separately. Claim better retrieval only if measurements support it. Current direct-import enrichment must not be relabelled semantic RAG.
-
-### E4 — Finding feedback · P1
-
-**Skill evidence:** human evaluation and labelled feedback collection.
-
-Add Useful / Incorrect plus an optional reason to the existing finding UI and a small validated API/persistence path. Keep reviewer annotations separate from the original generated finding. Protect ownership before public use; this is not automatic model training.
-
-**Acceptance:** feedback survives reopening, invalid values are rejected, one user cannot edit another installation's annotations and the original evidence remains intact. Human labels can inform a reviewed future evaluation set, not silently overwrite ground truth.
-
-### E5 — Read-only MCP connector · P1
-
-**Skill evidence:** typed tool contracts, protocol integration and safe tool outputs.
-
-Expose bounded saved-report list/read operations through the official MCP SDK, reusing repository/API read logic. Start locally; a remote connector needs authenticated, installation-scoped access. Keep repository content untrusted and never return credentials. No generation, GitHub write tool or autonomous agent loop in the first slice.
-
-**Acceptance:** a compatible client discovers tools, reads an authorized report, rejects malformed/unknown IDs and cannot read unauthorized reports. MCP connection does not replace the webhook event source. Shipping MCP tools alone is not evidence of autonomous agent reasoning.
-
-### E6 — Reproducible delivery and deployment · P0 before public launch
-
-**Skill evidence:** software delivery, environment handling, CI and operational judgment.
-
-- Publish the reviewed integration branch and open a PR; merge only with explicit approval. Remote `main` currently lacks the latest local V0.
-- Add offline backend/frontend checks and build to CI. Keep live model calls opt-in.
-- Configure frontend API origin/CORS and SPA fallback for `/app` and report deep links; remove the localhost-only deployment assumption.
-- Use persistent storage and a long-lived backend suitable for the current in-process webhook flow; document restart/redelivery behavior. A sleeping/free hosting tier may not suit automatic events.
-- Gate public report/analysis endpoints with authentication and permissions; enforce modest usage limits so an owner API key is not a public spend endpoint. Check secret rotation before release without displaying credentials.
-- Choose the project license, verify setup from a clean checkout and publish the real demo URL only after end-to-end testing. Containerization is optional if it solves a deployment need.
-
-**Acceptance:** clean install/check/build instructions work; public users cannot access each other's private data; deployment accepts a real signed PR event and saves an inspectable report. No fixed 14-second promise or unlimited-free-inference claim.
-
-## 6. What we intentionally will not add just for a CV keyword
-
-No backend rewrite to FastAPI, random classifier, mandatory LangChain/LangGraph, multi-agent swarm, Kubernetes, Redis queue or second database for appearance alone. Python/SQL/ML fundamentals still need separate practice; this applied-LLM project does not demonstrate model training, fine-tuning or deep-learning research.
-
-Two relevant job-description examples researched on the status date: [WonderBotz junior role](https://wonderbotz.applytojob.com/apply/RbPIL43iH6/Junior-AI-Engineer) lists programming, LLM/retrieval, evaluation and delivery skills; [Luxoft junior AI/ML role](https://career.luxoft.com/jobs/junior-aiml-engineer-28443) also requests Python/SQL, evaluation, retrieval and ML fundamentals. Requirements vary; this is a project-to-role mapping, not a guarantee of hiring or an exhaustive market survey.
-
-## 7. Working agreement for the next chunks
-
-1. Read existing code and this status before proposing a new module.
-2. Implement one acceptance-sized chunk; test it, review it and commit it before the next.
-3. Update this file with the exact implemented slice, executed evidence and remaining limits. A proposal never becomes complete just because code was generated.
-4. Use feature/v0-backend and feature/v0-frontend for application changes; combine on integration/v0-demo. Preserve main and user changes.
-5. Reuse existing modules. A new file is allowed for a real responsibility (for example labelled data or an evaluator), not to avoid reading current code.
-
-**Immediate next step:** inspect the E1 labels, verify available provider API quota, then explicitly select one live development case and human-adjudicate its output. Expand to the development set only within an agreed budget; keep held-out cases for a frozen checkpoint. The tooling exists, but a real quality baseline is still pending. GitHub App onboarding remains the subsequent product/release track; neither requirement has been dropped.
-
-
-## 8. Free deployment constraint — 2 November 2026
-
-The owner requires a zero-recurring-cost recruiter demo where practical, using free or student-eligible offers only after checking actual eligibility, limits and expiry. No paid hosting plan, auto-upgrade or new billing commitment is authorized by this roadmap. A current subscription is not proof that Gemini API usage is included; confirm provider quota/billing separately before live evaluation or public model access.
-
-No host is selected or deployed by E1. Before release, check HTTPS/webhook support, sleep behavior, persistent storage, report isolation, secret handling and spending caps. Prefer an existing saved sample for recruiter browsing so visiting the demo does not require a model request. If free hosting cannot reliably run the current webhook process, document the tradeoff rather than claiming always-on service. Student credits that expire are not a permanent free tier.
+Implement one slice, run meaningful checks, commit to its feature branch, integrate on integration/v0-demo. Preserve user changes and main. Keep this status aligned with executed evidence; detailed commands and review fixes live in the chunk ledger.

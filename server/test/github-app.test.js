@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
 import * as github from '../src/features/pullRequest/github.app.js';
 import express from 'express';
+import { generateKeyPairSync, verify } from 'node:crypto';
 import app from '../src/app.js';
 
 afterEach(() => mock.restoreAll());
@@ -11,6 +12,27 @@ test('installation access is checked against both installation and repository', 
   assert.equal(github.canReadReport(auth, { installationId: 7, pullRequest: { repository: 'owner/repo' } }), true);
   assert.equal(github.canReadReport(auth, { installationId: 8, pullRequest: { repository: 'owner/repo' } }), false);
   assert.equal(github.canReadReport(auth, { pullRequest: { repository: 'owner/repo' } }), false);
+});
+
+test('installation token uses a signed short-lived App JWT and one repository with read permissions', async () => {
+  const keys = ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_POST_REVIEW'];
+  const old = keys.map(key => process.env[key]);
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  process.env.GITHUB_APP_ID = '7';
+  process.env.GITHUB_APP_PRIVATE_KEY = privateKey.export({ format: 'pem', type: 'pkcs8' }).toString();
+  delete process.env.GITHUB_POST_REVIEW;
+  mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, 'https://api.github.com/app/installations/9/access_tokens');
+    const jwt = options.headers.Authorization.slice(7).split('.');
+    assert.equal(verify('RSA-SHA256', Buffer.from(jwt.slice(0, 2).join('.')), publicKey, Buffer.from(jwt[2], 'base64url')), true);
+    const claims = JSON.parse(Buffer.from(jwt[1], 'base64url'));
+    assert.equal(claims.iss, '7');
+    assert.ok(claims.exp - claims.iat <= 600);
+    assert.deepEqual(JSON.parse(options.body), { repositories: ['repo'], permissions: { contents: 'read', pull_requests: 'read' } });
+    return Response.json({ token: 'installation-only-test-token' });
+  });
+  try { assert.equal(await github.installationToken(9, 'owner/repo'), 'installation-only-test-token'); }
+  finally { keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; }); }
 });
 
 test('repository discovery rejects invalid/revoked tokens with safe errors', async () => {

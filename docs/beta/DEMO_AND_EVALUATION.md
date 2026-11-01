@@ -142,3 +142,17 @@ node --test server/test/evaluation.test.js
 ```
 
 Python tests deliberately seed misses, false alerts, duplicate findings, invalid evidence and malformed runs. Node tests exercise dry collection and inject a mocked analysis function for the opt-in path. Neither command uses live GitHub/Gemini, and passing them does not publish an AI accuracy score.
+
+### 2 November: implemented diagnostics, retrieval experiment and live limits
+
+The collector now preserves SDK-reported usage and prompt/schema/run identity. A 429 stops further review cases without retrying inference. Transient Windows EPERM/EBUSY/EACCES atomic renames receive a short bounded filesystem-only retry.
+
+The committed `evaluation-live-dev.json` is a partial real run: five completed, three confirmed provider failures (one 503, two 429), one interrupted case with unknown request outcome and three not run. Scoring reports qualityReady=false and null precision/recall because five delivered findings remain unadjudicated. The interrupted case must not be relabelled successful or counted as a confirmed zero-call case. No held-out request was made.
+
+Reproduce its provisional, failure-aware report without a provider:
+
+```powershell
+python -B server/scripts/evaluate_ai.py --run docs/beta/evaluation-live-dev.json
+```
+
+Retrieval has a separate original fixture (`retrieval-cases.json`) and offline artifact (`retrieval-offline.json`). Run `node server/scripts/evaluate-ai.js --retrieval-experiment --out NEW-FILE.json` for lexical hit@1 without API calls. Add `--semantic` only for an intentional embedding comparison; it makes up to two SDK calls, no automatic retry. It uses the same official Gemini SDK, explicit task types and validated cosine vectors. A mocked vector test does not establish live embedding performance or better review quality. Production retrieval remains opt-in lexical guidance; existing context limits and sensitive-content filtering still apply.
