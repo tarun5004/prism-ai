@@ -14,6 +14,38 @@ const vite = await createServer({
 after(() => vite.close());
 const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx');
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
+const app = await vite.ssrLoadModule('/src/app/App.jsx');
+
+test('resolves separate page URLs and rejects invalid report paths', () => {
+  assert.deepEqual(app.resolveRoute('/'), { page: 'overview' });
+  assert.deepEqual(app.resolveRoute('/analyses/'), { page: 'analyses' });
+  assert.deepEqual(app.resolveRoute('/analyses/legacy-1'), { page: 'review', analysisId: 'legacy-1' });
+  for (const path of ['/unknown', '/analyses/a/extra', '/analyses/%', '/analyses/a%2Fb']) assert.equal(app.resolveRoute(path).page, 'not-found');
+});
+
+test('renders only the active page instead of stacking overview, history and report', () => {
+  const overview = renderToStaticMarkup(createElement(dashboard.default, { route: { page: 'overview' } }));
+  assert.match(overview, /Open a pull request/);
+  assert.ok(!overview.includes('Recent analyses'));
+  assert.ok(!overview.includes('review-workbench'));
+  const history = renderToStaticMarkup(createElement(dashboard.default, { route: { page: 'analyses' } }));
+  assert.match(history, /Saved analyses/);
+  assert.ok(!history.includes('id="pull-request-url"'));
+  assert.ok(!history.includes('review-workbench'));
+  const report = renderToStaticMarkup(createElement(dashboard.default, { route: { page: 'review', analysisId: 'direct-link' } }));
+  assert.match(report, /Loading saved report/);
+  assert.ok(!report.includes('id="pull-request-url"'));
+  assert.ok(!report.includes('Recent analyses'));
+});
+
+test('report page has an actionable missing-report state and history uses real links', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.ReviewPage, { error: 'Analysis not found.', onRetry() {}, onNavigate() {} }));
+  assert.match(html, /Analysis not found/);
+  assert.match(html, /Try again/);
+  assert.match(html, /href="\/analyses"/);
+  const history = renderToStaticMarkup(createElement(dashboard.AnalysesPage, { reports: [{ id: 'legacy-1', status: 'completed', pullRequest: { title: 'Saved PR' } }], status: 'ready', onNavigate() {} }));
+  assert.match(history, /href="\/analyses\/legacy-1"/);
+});
 
 test('progress panel marks only stages preceding the actual backend stage as done', () => {
   const html = renderToStaticMarkup(createElement(dashboard.AnalysisProgress, { stage: 'context', elapsedSeconds: 17, visitedStages: ['fetching', 'context'] }));
