@@ -1,6 +1,6 @@
 # PRism AI — feature status and implementation roadmap
 
-Status date: **1 November 2026**. This is the current feature/status source. Earlier phase plans remain historical; the implementation ledger is [here](superpowers/plans/2026-10-31-pr-workflow-polish.md).
+Status date: **2 November 2026**. This is the current feature/status source. Earlier phase plans remain historical; the implementation ledger is [here](superpowers/plans/2026-10-31-pr-workflow-polish.md).
 
 ## 1. The product we are building
 
@@ -63,11 +63,15 @@ Boundaries: no unrestricted GitHub-account access, auto-merge, arbitrary reposit
 
 ## 5. AI-engineering upgrades, ordered by value
 
-These are a proposed sequence, not implemented features. Prefer useful, explainable additions over collecting framework names.
+E1 tooling is now implemented as described below; E2–E6 remain planned. Prefer useful, explainable additions over collecting framework names.
 
-### E1 — AI Evaluation V1 · P0 · next recommended chunk
+### E1 — AI Evaluation V1 · P0 · tooling implemented; live quality baseline pending
 
 **Skill evidence:** labelled datasets, precision/recall, false alarms, error analysis and reproducible experiments.
+
+**Verification on 2 November:** 95 backend offline checks, 7 Python checks and an atomic dry-run artifact/scorer roundtrip passed. Independent review found an in-place artifact-write risk; it was fixed with synced temporary-file replacement and a failure regression test. No live Gemini/GitHub call or deployment purchase was made.
+
+**Implemented:** 16 original frozen fixtures (12 dev / 4 held-out), Python stdlib scorer, dry-run-by-default Node collector reusing the current AI service, dataset/source hashes, incremental artifacts, explicit human judgments and failure-aware metrics. Gold labels/case IDs do not enter model input. No live evaluation request has been run in this slice, so no model-quality score is claimed. Commands and judgment format: [evaluation guide](beta/DEMO_AND_EVALUATION.md#ai-evaluation-v1-frozen-code-cases). The bullets below remain the acceptance contract, not a claim that a real-provider baseline has been measured.
 
 - Curate 15–20 small, owned/licensed, frozen code-change fixtures: known bugs, clean changes, removed guards, missing context and adversarial repository instructions. Label expected bug IDs, files, acceptable line ranges and evidence; do not grade by exact generated wording.
 - Use a small Python evaluation script as a meaningful Python component. It should score saved JSON outputs without needing a new backend or framework. Add a fixture data file only because it represents an actual evaluation dataset.
@@ -79,7 +83,7 @@ These are a proposed sequence, not implemented features. Prefer useful, explaina
 
 **Acceptance:** one documented command reproduces metrics from a versioned saved run; a seeded wrong finding/miss changes the expected metric; failure cases are counted; no unsupported accuracy percentage appears in README/CV.
 
-**Known documentation correction for this slice:** the older evaluation notes call `false-positive findings / total findings` a false-positive rate. That is a false-discovery proportion, not the conventional `FP / (FP + TN)` FPR. Correct the terminology when implementing E1.
+**Terminology corrected:** evaluation notes now call `false-positive findings / total findings` the false-discovery rate, not conventional `FP / (FP + TN)` FPR.
 
 ### E2 — Review diagnostics and experiment identity · P0
 
@@ -140,4 +144,11 @@ Two relevant job-description examples researched on the status date: [WonderBotz
 4. Use feature/v0-backend and feature/v0-frontend for application changes; combine on integration/v0-demo. Preserve main and user changes.
 5. Reuse existing modules. A new file is allowed for a real responsibility (for example labelled data or an evaluator), not to avoid reading current code.
 
-**Immediate next step:** E1, starting with agreement on a small labelled evaluation set and the metric definitions. It gives the existing review engine a measurable baseline before adding retrieval behavior or more model calls. GitHub App onboarding remains the subsequent product/release track; neither requirement has been dropped.
+**Immediate next step:** inspect the E1 labels, verify available provider API quota, then explicitly select one live development case and human-adjudicate its output. Expand to the development set only within an agreed budget; keep held-out cases for a frozen checkpoint. The tooling exists, but a real quality baseline is still pending. GitHub App onboarding remains the subsequent product/release track; neither requirement has been dropped.
+
+
+## 8. Free deployment constraint — 2 November 2026
+
+The owner requires a zero-recurring-cost recruiter demo where practical, using free or student-eligible offers only after checking actual eligibility, limits and expiry. No paid hosting plan, auto-upgrade or new billing commitment is authorized by this roadmap. A current subscription is not proof that Gemini API usage is included; confirm provider quota/billing separately before live evaluation or public model access.
+
+No host is selected or deployed by E1. Before release, check HTTPS/webhook support, sleep behavior, persistent storage, report isolation, secret handling and spending caps. Prefer an existing saved sample for recruiter browsing so visiting the demo does not require a model request. If free hosting cannot reliably run the current webhook process, document the tradeoff rather than claiming always-on service. Student credits that expire are not a permanent free tier.

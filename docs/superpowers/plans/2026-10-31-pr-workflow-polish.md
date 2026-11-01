@@ -1,5 +1,17 @@
 # PR workflow polish implementation plan
 
+## 2026-11-02 — approved E1 evaluation and zero-cost constraint
+
+Execute E1 inline in small commits. No deployment purchase, infrastructure subscription, dependency install or live provider request in this slice. Prefer free/student-eligible deployment later; eligibility, expiry, sleep limits and provider API costs must be checked before selecting a host. An existing subscription is not evidence of API credit entitlement. Do not claim a free public deployment yet.
+
+- [x] Dataset/scorer: 16 original synthetic before/after cases (12 development, 4 held-out), known bugs and clean/incomplete-context/adversarial examples. Versioned JSON fixture; Python stdlib scorer/test file. Correct finding matches need explicit human adjudication plus source/evidence/location checks; no keyword-based semantic accuracy claim. Metrics use all selected cases, account for missing/failed runs, reject duplicate IDs/invalid labels and represent undefined rates as null. Fix existing FPR terminology. Test before code, review and commit.
+- [x] Collector: one Node CLI script reusing prepareAiInput/runAiAnalysis, dry-run by default, explicit --live plus case/split required for spending. No GitHub fetch, production workflow changes, DB writes, retry or labels in model input. Freeze dataset/source hashes and model/config/run metadata. Refuse overwriting artifacts, save each case incrementally and keep failure records. Add native Node checks; commit.
+- [x] Verify offline scorer/collector and one dry-run artifact roundtrip, independent review, update roadmap/README with exact scope and next live-run step. Keep artifacts outside tracked source. Preserve user changes, main and existing behavior; integrate backend chunks without merging main.
+
+Verified: 95 backend offline tests, 7 Python stdlib metric tests, Node syntax and dry-run artifact/scorer roundtrip passed. Synthetic tests cover wrong/missed/duplicate findings, invalid evidence, failed/missing cases, stale hashes, held-out separation, no label leakage, explicit live spending controls and atomic replacement failure. Initial CLI roundtrip printing used a Unicode arrow unsupported by the host console; ASCII-only verification output fixed that test harness issue. Independent review caught in-place artifact writes; switched to synced same-directory temporary-file rename and confirmed prior artifacts survive failed replacement. No live model score, new dependency, production workflow change or hosting spend. Chunks: 692357f (fixtures/scorer), 1f0b648 (collector), 339eace (durability fix).
+
+Ruling: human judgments are required for semantic precision/recall; file/line matching alone rewards unrelated findings. Unreviewed delivered findings suppress headline quality rates. A dry-run measures wiring only, never Gemini quality. New files are limited to fixture, Python scorer/test, Node collector/test: each has a distinct job; no application service or UI is needed.
+
 ## 2026-11-01 — approved GitHub PR webhook
 
 Implement inline in verified chunks, not a new platform. Repo-scoped webhook for opened/synchronize/reopened/ready_for_review, skip drafts/closed PRs. Verify raw-body SHA256 HMAC before JSON processing; require server secret + one repository allowlist. Respond promptly, then run existing pipeline in the same long-lived Node process. No GitHub comments or auto-merge.
