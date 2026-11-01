@@ -16,7 +16,7 @@ const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx'
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 
 test('progress panel marks only stages preceding the actual backend stage as done', () => {
-  const html = renderToStaticMarkup(createElement(dashboard.AnalysisProgress, { stage: 'context', elapsedSeconds: 17 }));
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisProgress, { stage: 'context', elapsedSeconds: 17, visitedStages: ['fetching', 'context'] }));
   assert.match(html, /Building review context/);
   assert.match(html, /aria-current="step"/);
   assert.match(html, /17s elapsed/);
@@ -24,6 +24,13 @@ test('progress panel marks only stages preceding the actual backend stage as don
   assert.equal((html.match(/data-state="complete"/g) || []).length, 1);
   assert.equal((html.match(/data-state="pending"/g) || []).length, 2);
   assert.ok(!html.includes('%'));
+});
+
+test('progress never marks skipped context or AI work as completed', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisProgress, { stage: 'saving', elapsedSeconds: 2, visitedStages: ['fetching', 'saving'] }));
+  assert.equal((html.match(/data-state="complete"/g) || []).length, 1);
+  assert.equal((html.match(/data-state="skipped"/g) || []).length, 2);
+  assert.match(html, /Reviewing with AI · skipped/);
 });
 
 test('workspace places the diff beside accessible overview and findings controls', () => {
