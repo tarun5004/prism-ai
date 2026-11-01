@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import { prepareAiInput } from '../src/features/ai/ai.context.js';
 import { runAiAnalysis } from '../src/features/ai/ai.service.js';
+import { rankGuidance, containsSensitiveText } from '../src/features/ai/ai.context.js';
+import { GoogleGenAI } from '@google/genai';
 
 const datasetPath = fileURLToPath(new URL('../../docs/beta/evaluation-cases.json', import.meta.url));
 const normalize = value => value.replace(/^\uFEFF/, '').replaceAll('\r\n', '\n');
@@ -19,6 +21,8 @@ function parseOptions(args) {
     if (seen.has(flag)) throw Error('Duplicate option: ' + flag);
     seen.add(flag);
     if (flag === '--live') options.live = true;
+    else if (flag === '--retrieval-experiment') options.retrieval = true;
+    else if (flag === '--semantic') options.semantic = true;
     else if (names[flag]) {
       const value = args[++index];
       if (!value || value.startsWith('--')) throw Error('Missing value: ' + flag);
@@ -26,10 +30,59 @@ function parseOptions(args) {
     } else throw Error('Unknown option: ' + flag);
   }
   if (!options.outPath) throw Error('--out requires a new output file.');
+  if (options.semantic && !options.retrieval) throw Error('--semantic requires --retrieval-experiment.');
+  if (options.retrieval && (options.live || options.caseId || options.split)) throw Error('Retrieval experiment cannot select review generation.');
   if (options.caseId && options.split) throw Error('Choose --case or --split, not both.');
   if (options.live && !options.caseId && !options.split) throw Error('--live requires explicit --case or --split selection.');
   if (options.split && !['dev', 'heldout'].includes(options.split)) throw Error('Use dev or heldout split.');
   return options;
+}
+
+async function compareRetrieval(dataset, embed) {
+  const docs = dataset.documents;
+  const queries = dataset.queries;
+  if (!Array.isArray(docs) || !docs.length || docs.length > 20 || !Array.isArray(queries) || !queries.length || queries.length > 20
+    || JSON.stringify(dataset).length > 12000 || docs.some(doc => !['id', 'path', 'revision', 'text'].every(key => typeof doc[key] === 'string' && doc[key]) || !Number.isSafeInteger(doc.startLine) || doc.startLine < 1)
+    || new Set(docs.map(doc => doc.id)).size !== docs.length
+    || queries.some(query => typeof query.text !== 'string' || !Array.isArray(query.relevant) || !query.relevant.length || query.relevant.some(id => !docs.some(doc => doc.id === id)))
+    || containsSensitiveText(JSON.stringify(dataset))) throw Error('Invalid retrieval fixtures.');
+  const measure = selections => ({ hitAt1: selections.filter((id, index) => queries[index].relevant.includes(id)).length / queries.length, selectedSources: selections });
+  const lexical = measure(queries.map(query => docs.map(doc => ({ id: doc.id, score: rankGuidance(doc.text, query.text)[0]?.score || 0 })).sort((a, b) => b.score - a.score)[0]).map(item => item.score > 0 ? item.id : null));
+  let semantic = null;
+  if (embed) {
+    const documentVectors = await embed(docs.map(doc => doc.text), 'RETRIEVAL_DOCUMENT');
+    const queryVectors = await embed(queries.map(query => query.text), 'RETRIEVAL_QUERY');
+    const dimensions = documentVectors?.[0]?.length;
+    if (!dimensions || documentVectors?.length !== docs.length || queryVectors?.length !== queries.length
+      || [...documentVectors, ...queryVectors].some(vector => !Array.isArray(vector) || vector.length !== dimensions || !vector.every(Number.isFinite) || !vector.some(value => value !== 0))) throw Error('Invalid embedding response.');
+    const cosine = (a, b) => a.reduce((sum, value, index) => sum + value * b[index], 0) / Math.hypot(...a) / Math.hypot(...b);
+    semantic = measure(queryVectors.map(query => docs.map((doc, index) => ({ id: doc.id, score: cosine(query, documentVectors[index]) })).sort((a, b) => b.score - a.score)[0].id));
+  }
+  return { queries: queries.length, lexical, semantic, sources: docs.map(({ text, ...source }) => source), limits: 'Small synthetic relevance fixture, not PR review accuracy or evidence of improved production retrieval.' };
+}
+
+async function collectRetrievalEvaluation(options) {
+  const raw = await readFile(new URL('../../docs/beta/retrieval-cases.json', import.meta.url), 'utf8');
+  const dataset = JSON.parse(normalize(raw));
+  const run = { runId: randomUUID(), createdAt: new Date().toISOString(), datasetVersion: dataset.version, datasetSha256: hash(raw), mode: options.semantic ? 'live-embeddings' : 'offline-lexical', semanticStatus: 'not_requested', attempts: 0 };
+  const reservation = await open(options.outPath, 'wx'); await reservation.close();
+  run.results = await compareRetrieval(dataset);
+  await saveRun(options.outPath, run);
+  if (options.semantic) {
+    run.model = process.env.GEMINI_EMBEDDING_MODEL?.trim() || 'gemini-embedding-001';
+    const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, vertexai: false, httpOptions: { timeout: 20000, retryOptions: { attempts: 1 } } });
+    try {
+      run.semanticStatus = 'interrupted'; await saveRun(options.outPath, run);
+      run.results = await compareRetrieval(dataset, async (contents, taskType) => {
+        run.attempts++; await saveRun(options.outPath, run);
+        const result = await client.models.embedContent({ model: run.model, contents, config: { taskType, outputDimensionality: 768, abortSignal: AbortSignal.timeout(20000) } });
+        return result.embeddings?.map(item => item.values);
+      });
+      run.semanticStatus = 'completed';
+    } catch (error) { run.semanticStatus = 'unavailable'; run.errorCode = 'EMBEDDING_FAILED'; if (Number.isInteger(error.status) && error.status >= 400 && error.status <= 599) run.httpStatus = error.status; }
+    await saveRun(options.outPath, run);
+  }
+  return run;
 }
 
 async function saveRun(path, run, replaceFile = rename) {
@@ -136,9 +189,15 @@ async function collectEvaluation(options, analyze = runAiAnalysis) {
 async function main() {
   try {
     const options = parseOptions(process.argv.slice(2));
-    if (options.live) {
+    if (options.live || options.semantic) {
       config({ path: fileURLToPath(new URL('../.env', import.meta.url)), quiet: true });
       if (!process.env.GEMINI_API_KEY?.trim()) throw Error('GEMINI_API_KEY is required for --live. No requests made.');
+    }
+    if (options.retrieval) {
+      const run = await collectRetrievalEvaluation(options);
+      process.stdout.write(JSON.stringify({ runId: run.runId, mode: run.mode, semanticStatus: run.semanticStatus, attempts: run.attempts }) + '\n');
+      if (options.semantic && run.semanticStatus !== 'completed') process.exitCode = 1;
+      return;
     }
     const run = await collectEvaluation(options);
     process.stdout.write(JSON.stringify({ runId: run.runId, mode: run.mode, selectedCases: run.caseIds.length, unsuccessfulCases: run.cases.filter(item => ['unavailable', 'skipped'].includes(item.status)).length }) + '\n');
@@ -151,4 +210,4 @@ async function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
-export { collectEvaluation, parseOptions, saveRun, toPullRequest };
+export { collectEvaluation, parseOptions, saveRun, toPullRequest, compareRetrieval };

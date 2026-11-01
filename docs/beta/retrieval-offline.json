@@ -1,0 +1,48 @@
+{
+  "runId": "309ee646-8634-43c4-a1be-0649c0df6a6d",
+  "createdAt": "2026-11-01T19:54:23.014Z",
+  "datasetVersion": "prism-retrieval-v1",
+  "datasetSha256": "c2557172bebd8b29ec2470713b6a09a8c076566f0e8fdb1a0888947f75b156f9",
+  "mode": "offline-lexical",
+  "semanticStatus": "not_requested",
+  "attempts": 0,
+  "results": {
+    "queries": 3,
+    "lexical": {
+      "hitAt1": 1,
+      "selectedSources": [
+        "authorization",
+        "sql",
+        "pricing"
+      ]
+    },
+    "semantic": null,
+    "sources": [
+      {
+        "id": "setup",
+        "path": "README.md",
+        "revision": "synthetic-v1",
+        "startLine": 1
+      },
+      {
+        "id": "authorization",
+        "path": "CONTRIBUTING.md",
+        "revision": "synthetic-v1",
+        "startLine": 1
+      },
+      {
+        "id": "sql",
+        "path": "CONTRIBUTING.md",
+        "revision": "synthetic-v1",
+        "startLine": 5
+      },
+      {
+        "id": "pricing",
+        "path": "README.md",
+        "revision": "synthetic-v1",
+        "startLine": 8
+      }
+    ],
+    "limits": "Small synthetic relevance fixture, not PR review accuracy or evidence of improved production retrieval."
+  }
+}

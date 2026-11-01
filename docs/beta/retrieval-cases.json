@@ -1,0 +1,15 @@
+{
+  "version": "prism-retrieval-v1",
+  "provenance": "Original synthetic guidance linked to E1 concepts. Not real repository documentation or a held-out accuracy benchmark.",
+  "documents": [
+    { "id": "setup", "path": "README.md", "revision": "synthetic-v1", "startLine": 1, "text": "# Setup\nInstall dependencies before starting the local server." },
+    { "id": "authorization", "path": "CONTRIBUTING.md", "revision": "synthetic-v1", "startLine": 1, "text": "# Authorization\nOnly note owners may delete notes. Database delete operations do not check ownership." },
+    { "id": "sql", "path": "CONTRIBUTING.md", "revision": "synthetic-v1", "startLine": 5, "text": "# SQL queries\nUser input in SQL queries must use parameterized placeholders, never string concatenation." },
+    { "id": "pricing", "path": "README.md", "revision": "synthetic-v1", "startLine": 8, "text": "# Pricing\nTotal price equals unit price multiplied by quantity. Inputs are validated finite numbers." }
+  ],
+  "queries": [
+    { "caseId": "B01", "text": "note authorization delete ownership", "relevant": ["authorization"] },
+    { "caseId": "B05", "text": "SQL queries user input parameterized", "relevant": ["sql"] },
+    { "caseId": "C01", "text": "total price quantity pricing", "relevant": ["pricing"] }
+  ]
+}

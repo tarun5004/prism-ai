@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { collectEvaluation, parseOptions, saveRun, toPullRequest } from '../scripts/evaluate-ai.js';
+import { collectEvaluation, parseOptions, saveRun, toPullRequest, compareRetrieval } from '../scripts/evaluate-ai.js';
 
 async function cleanup(directory) {
   assert.equal(dirname(resolve(directory)), resolve(tmpdir()));
@@ -97,4 +97,20 @@ test('live collector stops the batch after provider quota rejection', async () =
     assert.equal(run.stopReason, 'RATE_LIMIT');
     assert.equal(run.cases[1].status, 'not_run');
   } finally { await cleanup(directory); }
+});
+
+test('retrieval compares lexical and optional vectors without sending relevance labels', async () => {
+  const dataset = { documents: [{ id: 'setup', path: 'README.md', revision: 'fixture-v1', startLine: 1, text: '# Setup\nInstall dependencies' }, { id: 'auth', path: 'CONTRIBUTING.md', revision: 'fixture-v1', startLine: 1, text: '# Authorization\nOnly owners delete notes' }], queries: [{ caseId: 'B01', text: 'owners delete notes', relevant: ['auth'] }] };
+  const offline = await compareRetrieval(dataset);
+  assert.equal(offline.lexical.hitAt1, 1);
+  assert.equal(offline.semantic, null);
+  let calls = 0;
+  const result = await compareRetrieval(dataset, async (texts, taskType) => {
+    calls++;
+    assert.ok(!JSON.stringify(texts).includes('relevant'));
+    return taskType === 'RETRIEVAL_DOCUMENT' ? [[1, 0], [0, 1]] : [[0, 1]];
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.semantic.hitAt1, 1);
+  await assert.rejects(compareRetrieval(dataset, async () => [[NaN]]), /embedding/i);
 });
