@@ -12,12 +12,35 @@ async function createAnalysis(request, response) {
     return response.status(400).json({ message: 'Pull Request URL is required.' });
   }
 
+  const streaming = typeof request.headers?.accept === 'string' && request.headers.accept.includes('application/x-ndjson');
+  const connected = () => !response.destroyed && !response.writableEnded;
+  const sendFrame = frame => {
+    if (streaming && connected()) response.write(`${JSON.stringify(frame)}\n`);
+  };
+  const progress = stage => sendFrame({ type: 'progress', stage });
+  const reply = (status, value) => {
+    if (!streaming) return response.status(status).json(value);
+    sendFrame(status === 201 ? { type: 'result', report: value }
+      : { type: 'error', message: value.message || value.error || 'Analysis could not be completed.' });
+    if (connected()) response.end();
+  };
+  if (streaming && connected()) {
+    response.status(200);
+    response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Accel-Buffering', 'no');
+    response.flushHeaders();
+  }
+
   try {
+    progress('fetching');
     const pullRequest = await fetchPullRequest(pullRequestUrl);
     const ruleFindings = runRules(pullRequest);
+    progress('context');
     // Source enrichment is transient; only validated review evidence reaches storage/API.
     const reviewInput = process.env.GEMINI_API_KEY?.trim()
       ? { ...pullRequest, reviewContext: await fetchReviewContext(pullRequest) } : pullRequest;
+    progress('reviewing');
     const aiResult = await runAiAnalysis(reviewInput);
     const analysis = {
       id: randomUUID(),
@@ -33,12 +56,13 @@ async function createAnalysis(request, response) {
       ...(aiResult.error ? { aiError: aiResult.error } : {})
     };
 
-    return response.status(201).json(await saveAnalysis(analysis));
+    progress('saving');
+    return reply(201, await saveAnalysis(analysis));
   } catch (error) {
     if (!(error instanceof PullRequestError)) {
-      return response.status(500).json({ message: 'Analysis could not be saved or completed. Please try again.' });
+      return reply(500, { message: 'Analysis could not be saved or completed. Please try again.' });
     }
-    if (error.statusCode === 400) return response.status(400).json({ message: error.message });
+    if (error.statusCode === 400) return reply(400, { message: error.message });
     const failedAnalysis = {
       id: randomUUID(),
       status: 'failed',
@@ -52,9 +76,9 @@ async function createAnalysis(request, response) {
     try {
       await saveAnalysis(failedAnalysis);
     } catch {
-      return response.status(500).json({ message: 'The failed analysis could not be saved. Please try again.' });
+      return reply(500, { message: 'The failed analysis could not be saved. Please try again.' });
     }
-    return response.status(error.statusCode).json(failedAnalysis);
+    return reply(error.statusCode, failedAnalysis);
   }
 }
 
