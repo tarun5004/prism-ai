@@ -78,6 +78,21 @@ function FeaturePreview({ feature }) {
   </div>;
 }
 
+function FeatureShowcase({ activeIndex, onSelect }) {
+  return <section className="landing-showcase landing-width" aria-label="Explore PRism features">
+    {features.map((feature, index) => <article className="showcase-card" data-expanded={activeIndex === index} key={feature.name}
+      onPointerEnter={event => { if (event.pointerType !== 'touch') onSelect(index); }}>
+      <button type="button" className="showcase-card-trigger" aria-expanded={activeIndex === index} aria-controls={`feature-card-${index}`}
+        onFocus={() => onSelect(index)} onClick={() => onSelect(index)}>
+        <span>0{index + 1}</span><strong>{feature.name}</strong><span aria-hidden="true">↗</span>
+      </button>
+      <div id={`feature-card-${index}`} aria-hidden={activeIndex !== index} inert={activeIndex !== index} className="showcase-card-content">
+        <div className="showcase-card-inner"><FeaturePreview feature={feature} /></div>
+      </div>
+    </article>)}
+  </section>;
+}
+
 function LandingPage({ onNavigate }) {
   const [activeFeature, setActiveFeature] = useState(0);
   const [activeContext, setActiveContext] = useState(0);
@@ -85,19 +100,19 @@ function LandingPage({ onNavigate }) {
   const trial = className => <RouteLink className={className} to="/app" onNavigate={onNavigate}>Try it for free <span aria-hidden="true">↗</span></RouteLink>;
   return <div className="landing">
     <a className="skip-link" href="#landing-main">Skip to content</a>
-    <header className="landing-header"><nav className="landing-nav landing-width" aria-label="Main navigation"><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate} aria-label="PRism AI home"><span className="brand-mark">P</span>PRism AI</RouteLink><div className="landing-nav-links"><a href="#features">Features</a><a href="#how-it-works">How it works</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div>{trial('landing-cta landing-cta-small')}</nav></header>
+    <header className="landing-header"><nav className="landing-nav landing-width" aria-label="Main navigation"><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate} aria-label="PRism AI home"><span className="brand-mark">P</span>PRism AI</RouteLink><div className="landing-nav-links"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="https://github.com/tarun5004/prism-ai" target="_blank" rel="noopener noreferrer">View source ↗</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div>{trial('landing-cta landing-cta-small')}</nav></header>
     <main id="landing-main">
       <section className="landing-hero landing-width"><div><p className="landing-eyebrow">PULL REQUEST INTELLIGENCE</p><h1 tabIndex={-1}>Understand the change.<br /><span>Before you merge.</span></h1></div><div className="hero-copy"><p>Code changes fast.<br />Make sense of the diff, the context and the risk—with evidence you can inspect.</p>{trial('landing-cta')}<small>Personal demo · Bring a GitHub PR URL</small></div></section>
-      <section className="landing-showcase landing-width" aria-label="Explore PRism features"><div className="showcase-controls">{features.map((feature, index) => <button type="button" key={feature.name} aria-pressed={activeFeature === index} aria-controls="feature-preview" onClick={() => setActiveFeature(index)}><span>0{index + 1}</span>{feature.name}<span className="showcase-active-label">{activeFeature === index ? ' the change' : ''}</span></button>)}</div><div id="feature-preview" className="showcase-stage"><FeaturePreview feature={features[activeFeature]} /></div></section>
+      <FeatureShowcase activeIndex={activeFeature} onSelect={setActiveFeature} />
       <div className="landing-capabilities landing-width"><span>Built for a clearer review</span><span>GitHub PRs</span><span>Unified diffs</span><span>Gemini + rules</span><span>Saved reports</span></div>
       <section className="landing-statement landing-width"><div className="context-lines" aria-hidden="true">{[0, 1, 2, 3, 4].map(index => <i key={index} />)}</div><div><p className="landing-eyebrow">LESS GUESSWORK. MORE CONTEXT.</p><h2>A diff shows what changed.<br />A review helps you understand why it matters.</h2><p className="landing-muted">Move from changed lines to potential impact, with clear evidence and honest limits.</p></div></section>
       <section id="features" className="landing-width landing-feature-section"><p className="landing-eyebrow">01 / REVIEW WITH EVIDENCE</p><h2>See the code. Inspect the reasoning.</h2><p className="landing-section-intro">Your diff and review belong together. Explore findings without losing the lines they refer to.</p><div className="landing-feature-grid"><div className="feature-frame"><FeaturePreview feature={features[0]} /></div><div className="feature-benefits">{features.map(feature => <article key={feature.name}><h3>{feature.tag}</h3><p>{feature.description}</p></article>)}</div></div></section>
       <section id="how-it-works" className="landing-width landing-context-section"><p className="landing-eyebrow">02 / HOW IT WORKS</p><h2>Context in. Grounded feedback out.</h2><p className="landing-section-intro">A focused review of the PR—not a claim to understand your entire repository.</p><div className="context-explorer"><div className="context-options" aria-label="Review context steps">{contextSteps.map((step, index) => <button type="button" key={step.name} aria-pressed={activeContext === index} aria-controls="context-detail" onClick={() => setActiveContext(index)}><span className="mono-label">0{index + 1}</span><strong>{step.name}</strong></button>)}</div><div id="context-detail" className="context-detail"><div className="context-pipeline" aria-label="Selected context flow">{context.nodes.map((node, index) => <div key={node}><span>0{index + 1}</span><strong>{node}</strong></div>)}</div><h3>{context.title}</h3><p>{context.description}</p><span className="preview-chip">Human review before merging</span></div></div></section>
       <section className="landing-width landing-final-cta"><div><p className="landing-eyebrow">OPEN A PULL REQUEST. GET A CLEARER PICTURE.</p><h2>Make your next review count.</h2></div>{trial('landing-cta')}</section>
     </main>
-    <footer className="landing-footer landing-width"><div className="footer-links"><div><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate}>PRism AI</RouteLink><p>Understand changes.<br />Review with evidence.</p></div><div><h3>Explore</h3><a href="#features">Features</a><a href="#how-it-works">How it works</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div><div><h3>Built with clarity</h3><p>Evidence-backed feedback</p><p>Visible context limits</p><p>AI guidance, human judgment</p></div></div><div className="footer-wordmark" aria-hidden="true">PRism AI</div><div className="footer-bottom"><span>PRism AI · Personal demo project</span><span>AI feedback is advisory. Verify before merging.</span></div></footer>
+    <footer className="landing-footer landing-width"><div className="footer-links"><div><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate}>PRism AI</RouteLink><p>Understand changes.<br />Review with evidence.</p></div><div><h3>Explore</h3><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="https://github.com/tarun5004/prism-ai" target="_blank" rel="noopener noreferrer">View source ↗</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div><div><h3>Built with clarity</h3><p>Evidence-backed feedback</p><p>Visible context limits</p><p>AI guidance, human judgment</p></div></div><div className="footer-wordmark" aria-hidden="true">PRism AI</div><div className="footer-bottom"><span>PRism AI · Personal demo project</span><span>AI feedback is advisory. Verify before merging.</span></div></footer>
   </div>;
 }
 
-export { resolveRoute, LandingPage };
+export { resolveRoute, LandingPage, FeatureShowcase };
 export default App;
