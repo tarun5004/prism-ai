@@ -184,6 +184,31 @@ function AnalysisReport({ analysis }) {
     );
 }
 
+function AnalysisProgress({ stage = 'connecting', elapsedSeconds = 0 }) {
+    const stages = [
+        { id: 'fetching', label: 'Reading PR changes', message: 'Fetching the pull request and its changed files.' },
+        { id: 'context', label: 'Building review context', message: 'Your context is being read. Please wait while relevant code is collected.' },
+        { id: 'reviewing', label: 'Reviewing with AI', message: 'AI is reviewing the prepared context for potential bugs and impact.' },
+        { id: 'saving', label: 'Saving your report', message: 'Saving validated findings and code changes.' }
+    ];
+    const active = stages.findIndex(item => item.id === stage);
+    const current = stages[active] || { label: 'Connecting to PRism', message: 'Waiting for your review request to begin.' };
+    return <section className="analysis-progress" aria-labelledby="progress-title">
+        <div className="progress-heading">
+            <div role="status" aria-live="polite"><LoaderCircle className="spin" size={19} aria-hidden="true" /><div><h3 id="progress-title">{current.label}</h3><p>{current.message}</p></div></div>
+            <span className="elapsed-time">{elapsedSeconds}s elapsed</span>
+        </div>
+        <ol className="progress-stages" aria-label="Analysis stages">{stages.map((item, index) => {
+            const state = active < 0 || index > active ? 'pending' : index === active ? 'active' : 'complete';
+            return <li key={item.id} data-state={state} aria-current={state === 'active' ? 'step' : undefined}>
+                {state === 'complete' ? <CheckCircle2 size={16} aria-hidden="true" /> : state === 'active' ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <span className="step-number" aria-hidden="true">{index + 1}</span>}
+                <span>{item.label}</span>
+            </li>;
+        })}</ol>
+        <p className="progress-note">Response time varies with PR size and AI availability. Your report will appear when it is ready.</p>
+    </section>;
+}
+
 function DashboardPage() {
     const [pullRequestUrl, setPullRequestUrl] = useState('');
     const [analysis, setAnalysis] = useState(null);
@@ -195,6 +220,10 @@ function DashboardPage() {
     const [historyError, setHistoryError] = useState('');
     const activeRequest = useRef(0);
     const historyRequest = useRef(0);
+    const reviewRequest = useRef(null);
+    const startedAt = useRef(0);
+    const [progressStage, setProgressStage] = useState('connecting');
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     async function refreshHistory() {
         const sequence = ++historyRequest.current;
@@ -216,23 +245,39 @@ function DashboardPage() {
 
     useEffect(() => {
         refreshHistory();
-        return () => { historyRequest.current++; activeRequest.current++; };
+        return () => { historyRequest.current++; activeRequest.current++; reviewRequest.current?.abort(); };
     }, []);
+
+    useEffect(() => {
+        if (!isSubmitting) return;
+        const timer = setInterval(() => setElapsedSeconds(Math.floor((performance.now() - startedAt.current) / 1000)), 1000);
+        return () => clearInterval(timer);
+    }, [isSubmitting]);
 
     async function submitAnalysis(event) {
         event.preventDefault();
+        if (reviewRequest.current) return;
         const sequence = ++activeRequest.current;
+        const controller = new AbortController();
+        reviewRequest.current = controller;
+        startedAt.current = performance.now();
+        setElapsedSeconds(0);
+        setProgressStage('connecting');
         setErrorMessage('');
         setOpeningId(null);
         setIsSubmitting(true);
         try {
-            const result = await createAnalysis(pullRequestUrl.trim());
+            const result = await createAnalysis(pullRequestUrl.trim(), {
+                signal: controller.signal,
+                onProgress: stage => { if (sequence === activeRequest.current) setProgressStage(stage); }
+            });
             if (sequence !== activeRequest.current) return;
             setAnalysis(result);
             setRecentAnalyses(current => [result, ...current.filter(item => item.id !== result.id)].slice(0, 20));
         } catch (error) {
             if (sequence === activeRequest.current) { setErrorMessage(error.message); refreshHistory(); }
         } finally {
+            if (reviewRequest.current === controller) reviewRequest.current = null;
             if (sequence === activeRequest.current) setIsSubmitting(false);
         }
     }
@@ -265,12 +310,12 @@ function DashboardPage() {
                 <header className="topbar"><div><p className="eyebrow">Workspace / Reviews</p><h1>Pull request workspace</h1><p className="muted-text">Code changes, grounded feedback, and your next review decision.</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
                 <section className="submit-panel" aria-labelledby="submit-title">
                     <div className="panel-heading"><div className="heading-icon"><GitPullRequest size={20} /></div><div><p className="section-label">New review</p><h2 id="submit-title">Open a pull request</h2></div></div>
-                    <form className="submit-form" onSubmit={submitAnalysis}>
+                    <form className="submit-form" onSubmit={submitAnalysis} aria-busy={isSubmitting}>
                         <label htmlFor="pull-request-url">GitHub Pull Request URL</label>
-                        <div className="input-row"><input id="pull-request-url" type="url" placeholder="https://github.com/org/repository/pull/42" value={pullRequestUrl} onChange={event => setPullRequestUrl(event.target.value)} required /><button type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{isSubmitting ? 'Analyzing…' : 'Analyze PR'}</button></div>
-                        {isSubmitting && <p className="muted-text" role="status">Fetching changed files and running checks. AI may take up to the configured timeout; please keep this page open.</p>}
+                        <div className="input-row"><input id="pull-request-url" type="url" placeholder="https://github.com/org/repository/pull/42" value={pullRequestUrl} onChange={event => setPullRequestUrl(event.target.value)} disabled={isSubmitting} required /><button type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{isSubmitting ? 'Review in progress…' : 'Analyze PR'}</button></div>
                         {errorMessage && <p className="error-message" role="alert"><AlertTriangle size={16} />{errorMessage}</p>}
                     </form>
+                    {isSubmitting && <AnalysisProgress stage={progressStage} elapsedSeconds={elapsedSeconds} />}
                 </section>
                 {openingId && <p className="muted-text" role="status">Opening saved report…</p>}
                 {analysis ? <AnalysisReport key={analysis.id} analysis={analysis} /> : <section className="welcome-section"><div className="welcome-icon"><Sparkles size={24} /></div><div><p className="section-label">Ready when you are</p><h2>Your next analysis will appear here.</h2><p className="muted-text">Paste a PR URL to inspect saved code changes, rule-based checks, and validated AI findings when available.</p></div></section>}
@@ -289,5 +334,5 @@ function DashboardPage() {
     );
 }
 
-export { AnalysisReport, getAiStatusDetails };
+export { AnalysisReport, AnalysisProgress, getAiStatusDetails };
 export default DashboardPage;
