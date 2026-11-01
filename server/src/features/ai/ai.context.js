@@ -108,9 +108,28 @@ function prepareAiInput(pullRequest) {
     snippets.push(selected); contextCharacters += JSON.stringify(selected).length;
   }
   coverage.contextSnippets = snippets.length;
+  coverage.retrievalMode = pullRequest?.reviewContext?.scope || 'diff-only';
+  coverage.contextSources = snippets.map(snippet => ({ filePath: snippet.filePath, lineSide: snippet.lineSide, startLine: snippet.startLine, endLine: snippet.startLine + snippet.code.split('\n').length - 1, role: snippet.role, revision: snippet.lineSide === 'old' ? pullRequest.baseSha || null : pullRequest.headSha || null }));
   coverage.contextOmissions = contextOmissions;
   coverage.inputCharacters = JSON.stringify({ intent, files, snippets }).length;
   return { files, coverage, intent, snippets };
 }
 
-export { prepareAiInput };
+// Transparent lexical baseline: whole sections retain their source line numbers.
+function rankGuidance(code, query) {
+  const terms = new Set((query.toLowerCase().match(/[a-z][a-z\d]{2,}/g) || []).slice(0, 80));
+  const sections = [];
+  const lines = code.split(/\r?\n/);
+  let start = 0;
+  for (let end = 1; end <= lines.length; end++) {
+    if (end < lines.length && !/^#{1,6}\s/.test(lines[end])) continue;
+    const text = lines.slice(start, Math.min(end, start + 30)).join('\n');
+    const words = new Set(text.toLowerCase().match(/[a-z][a-z\d]{2,}/g) || []);
+    const score = [...terms].filter(term => words.has(term)).length;
+    if (score) sections.push({ startLine: start + 1, code: text, score });
+    start = end;
+  }
+  return sections.sort((a, b) => b.score - a.score || a.startLine - b.startLine).slice(0, 2);
+}
+
+export { prepareAiInput, rankGuidance };

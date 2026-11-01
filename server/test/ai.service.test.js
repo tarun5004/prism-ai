@@ -3,8 +3,17 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import * as aiService from '../src/features/ai/ai.service.js';
+import * as contextService from '../src/features/ai/ai.context.js';
 
 const expected = { status: 'ok', provider: 'gemini', message: 'Connection successful' };
+
+test('lexical guidance ranks relevant sections with exact original coordinates', () => {
+  const result = contextService.rankGuidance('# Setup\nInstall npm\n\n# Authorization\nOnly note owners can delete notes.\n\n# Styling\nUse spaces.', 'note authorization delete');
+  assert.equal(result[0].startLine, 4);
+  assert.match(result[0].code, /Only note owners/);
+  assert.ok(result[0].score > 0);
+  assert.deepEqual(contextService.rankGuidance('# Setup\nInstall npm', 'authorization'), []);
+});
 
 test('records SDK usage and experiment identity even when response validation fails', async () => {
   globalThis.fetch.mock.mockImplementation(async () => Response.json({ candidates: [], usageMetadata: {

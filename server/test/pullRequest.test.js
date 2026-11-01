@@ -7,6 +7,20 @@ const url = 'https://github.com/demo/project/pull/12';
 const metadata = { title: 'Example', html_url: url, changed_files: 101, base: { ref: 'main', sha: 'base' }, head: { ref: 'fix', sha: 'head' } };
 const file = { filename: 'new.js', previous_filename: 'old.js', status: 'renamed', additions: 1, deletions: 0, changes: 1, patch: '@@ -0,0 +1 @@\n+hello();' };
 
+test('opt-in guidance stays pinned and within the shared eight-request budget', async () => {
+  const addresses = [];
+  mock.method(globalThis, 'fetch', async address => {
+    addresses.push(String(address));
+    const code = '# Authorization\nOnly owners can delete notes.';
+    return Response.json({ encoding: 'base64', content: Buffer.from(code).toString('base64'), size: code.length });
+  });
+  const result = await fetchReviewContext({ url, title: 'Authorization for notes', baseSha: 'base', headSha: 'head', changedFiles: [] }, { guidance: true });
+  assert.equal(result.requests, 2);
+  assert.ok(addresses.every(address => address.endsWith('ref=head')));
+  assert.equal(result.snippets[0].revision, 'head');
+  assert.equal(result.snippets[0].role, 'repository-guidance');
+});
+
 test('retrieves bounded revision-pinned source windows and a direct import', async () => {
   const addresses = [];
   mock.method(globalThis, 'fetch', async address => {
