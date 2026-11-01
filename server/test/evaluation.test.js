@@ -69,3 +69,32 @@ test('failed atomic replacement preserves the preceding valid artifact and clean
     assert.deepEqual(await readdir(directory), ['run.json']);
   } finally { await cleanup(directory); }
 });
+
+test('atomic save retries only transient Windows file locks, never model requests', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'prism-eval-'));
+  let attempts = 0;
+  try {
+    const path = join(directory, 'run.json');
+    await saveRun(path, { step: 2 }, async (from, to) => {
+      if (++attempts < 3) throw Object.assign(Error('locked'), { code: 'EPERM' });
+      const { rename } = await import('node:fs/promises');
+      await rename(from, to);
+    });
+    assert.equal(attempts, 3);
+    assert.equal(JSON.parse(await readFile(path, 'utf8')).step, 2);
+  } finally { await cleanup(directory); }
+});
+
+test('live collector stops the batch after provider quota rejection', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'prism-eval-'));
+  let calls = 0;
+  try {
+    const run = await collectEvaluation({ outPath: join(directory, 'run.json'), live: true, split: 'dev' }, async () => {
+      calls++;
+      return { status: 'unavailable', findings: [], error: 'API_ERROR', diagnostics: { attempts: 1, httpStatus: 429 } };
+    });
+    assert.equal(calls, 1);
+    assert.equal(run.stopReason, 'RATE_LIMIT');
+    assert.equal(run.cases[1].status, 'not_run');
+  } finally { await cleanup(directory); }
+});

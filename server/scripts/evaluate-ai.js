@@ -44,7 +44,14 @@ async function saveRun(path, run, replaceFile = rename) {
     await temporary.sync();
     await temporary.close();
     temporary = null;
-    await replaceFile(temporaryPath, path);
+    for (let attempt = 0; ; attempt++) {
+      try { await replaceFile(temporaryPath, path); break; }
+      catch (error) {
+        // Indexers can briefly lock files on Windows. Retry the rename, never inference.
+        if (!['EPERM', 'EBUSY', 'EACCES'].includes(error.code) || attempt >= 3) throw error;
+        await new Promise(resolve => setTimeout(resolve, 25 * 2 ** attempt));
+      }
+    }
   } finally {
     if (temporary) await temporary.close();
     if (created) await unlink(temporaryPath).catch(error => { if (error.code !== 'ENOENT') throw error; });
@@ -120,6 +127,7 @@ async function collectEvaluation(options, analyze = runAiAnalysis) {
         Object.assign(record, { status: 'unavailable', errorCode: 'COLLECTOR_ERROR', durationMs: Math.round(performance.now() - started) });
       }
       await save();
+      if (record.diagnostics?.httpStatus === 429) { run.stopReason = 'RATE_LIMIT'; await save(); break; }
     }
   }
   return run;

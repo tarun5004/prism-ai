@@ -1,0 +1,341 @@
+{
+  "schemaVersion": 1,
+  "runId": "b52a5865-797a-4895-a4df-26eb93cfa6f3",
+  "createdAt": "2026-11-01T19:49:18.846Z",
+  "mode": "live",
+  "datasetVersion": "prism-eval-v1",
+  "datasetSha256": "87f04717e1a1717f8668a767f32e5fb95d304cc0ea02353aa3172892687213cf",
+  "split": "dev",
+  "caseIds": [
+    "B01",
+    "B02",
+    "B03",
+    "B04",
+    "B05",
+    "B06",
+    "B07",
+    "B08",
+    "C01",
+    "C02",
+    "C03",
+    "C04"
+  ],
+  "engine": {
+    "aiServiceSha256": "750bc75536160b9c0c506594cfbf94e87c65ab1ebf3ec7b01095779f774cf3e5",
+    "aiContextSha256": "541f3190a91492041c1a4809c9fa8cc900a72dafb60c5c7829d2b5c3de9b8f36",
+    "configuredModel": "gemini-3.6-flash"
+  },
+  "cases": [
+    {
+      "caseId": "B01",
+      "status": "completed",
+      "findings": [
+        {
+          "title": "Missing owner authorization check in removeNote",
+          "severity": "high",
+          "filePath": "src/notes.js",
+          "lineNumber": 2,
+          "explanation": "The authorization check verifying `note.ownerId === actor.id` was removed from `removeNote`. Since `db.deleteNote` performs no authorization check according to intent contract, any actor passed to `removeNote` can delete any note.",
+          "suggestedFix": "Restore the owner check `if (note.ownerId !== actor.id) throw new Error(\"Forbidden\");` before invoking `db.deleteNote`.",
+          "evidence": "  return db.deleteNote(note.id);",
+          "category": "ai-review",
+          "confidence": "low",
+          "affectedFiles": [
+            "src/notes.js"
+          ],
+          "recommendedAction": "Restore the owner check `if (note.ownerId !== actor.id) throw new Error(\"Forbidden\");` before invoking `db.deleteNote`.",
+          "source": "ai"
+        }
+      ],
+      "attempts": 1,
+      "durationMs": 4007,
+      "rejectedFindings": 0,
+      "errorCode": null,
+      "model": "gemini-3.6-flash",
+      "timeoutMs": 120000,
+      "diagnostics": {
+        "attempts": 1,
+        "runId": "e5f64417-da7e-4613-b280-81cf17578334",
+        "promptVersion": "pr-review-v1",
+        "schemaVersion": "review-v1",
+        "usage": {
+          "inputTokens": 421,
+          "outputTokens": 540,
+          "thinkingTokens": null,
+          "totalTokens": 961
+        },
+        "timeoutMs": 120000,
+        "durationMs": 4006
+      }
+    },
+    {
+      "caseId": "B02",
+      "status": "completed",
+      "findings": [
+        {
+          "title": "Incorrect Arithmetic Operation in Total Calculation",
+          "severity": "high",
+          "filePath": "src/pricing.js",
+          "lineNumber": 2,
+          "explanation": "The function `total` uses division (`price / quantity`) instead of multiplication (`price * quantity`), which produces an incorrect total price and risks division by zero if quantity is 0.",
+          "suggestedFix": "Change `return price / quantity;` to `return price * quantity;` to correctly compute the product of unit price and quantity.",
+          "evidence": "  return price / quantity;",
+          "category": "ai-review",
+          "confidence": "low",
+          "affectedFiles": [
+            "src/pricing.js"
+          ],
+          "recommendedAction": "Change `return price / quantity;` to `return price * quantity;` to correctly compute the product of unit price and quantity.",
+          "source": "ai"
+        }
+      ],
+      "attempts": 1,
+      "durationMs": 3051,
+      "rejectedFindings": 0,
+      "errorCode": null,
+      "model": "gemini-3.6-flash",
+      "timeoutMs": 120000,
+      "diagnostics": {
+        "attempts": 1,
+        "runId": "5dc2d30d-8459-4b5f-999d-d65c0161651b",
+        "promptVersion": "pr-review-v1",
+        "schemaVersion": "review-v1",
+        "usage": {
+          "inputTokens": 355,
+          "outputTokens": 453,
+          "thinkingTokens": null,
+          "totalTokens": 808
+        },
+        "timeoutMs": 120000,
+        "durationMs": 3050
+      }
+    },
+    {
+      "caseId": "B03",
+      "status": "completed",
+      "findings": [
+        {
+          "title": "Off-by-one loop index out of bounds error",
+          "severity": "high",
+          "filePath": "src/uppercase.js",
+          "lineNumber": 3,
+          "explanation": "The loop condition `i <= items.length` allows `i` to reach `items.length`, accessing `items[items.length]` which is `undefined`. Calling `.toUpperCase()` on `undefined` will throw a `TypeError: Cannot read properties of undefined (reading 'toUpperCase')` at runtime.",
+          "suggestedFix": "Change the loop condition back to `i < items.length` so that it stays within valid array bounds.",
+          "evidence": "  for (let i = 0; i <= items.length; i++) out.push(items[i].toUpperCase());",
+          "category": "ai-review",
+          "confidence": "low",
+          "affectedFiles": [
+            "src/uppercase.js"
+          ],
+          "recommendedAction": "Change the loop condition back to `i < items.length` so that it stays within valid array bounds.",
+          "source": "ai"
+        }
+      ],
+      "attempts": 1,
+      "durationMs": 3596,
+      "rejectedFindings": 0,
+      "errorCode": null,
+      "model": "gemini-3.6-flash",
+      "timeoutMs": 120000,
+      "diagnostics": {
+        "attempts": 1,
+        "runId": "ce2d28a1-782a-4d39-a88c-f0c633efa965",
+        "promptVersion": "pr-review-v1",
+        "schemaVersion": "review-v1",
+        "usage": {
+          "inputTokens": 471,
+          "outputTokens": 560,
+          "thinkingTokens": null,
+          "totalTokens": 1031
+        },
+        "timeoutMs": 120000,
+        "durationMs": 3595
+      }
+    },
+    {
+      "caseId": "B04",
+      "status": "completed",
+      "findings": [
+        {
+          "title": "Unhandled promise from database insertion",
+          "severity": "high",
+          "filePath": "src/storage.js",
+          "lineNumber": 2,
+          "explanation": "The `await` keyword was removed from `db.insert(row)`. Because `db.insert` returns a Promise, failing to await it means `store` will resolve with `{ saved: true }` before insertion finishes, and any insertion errors/rejections will be unhandled rather than rejecting the `store` promise.",
+          "suggestedFix": "Restore `await` before `db.insert(row)` so that `store` waits for insertion to complete and properly propagates errors.",
+          "evidence": "  db.insert(row);",
+          "category": "ai-review",
+          "confidence": "low",
+          "affectedFiles": [
+            "src/storage.js"
+          ],
+          "recommendedAction": "Restore `await` before `db.insert(row)` so that `store` waits for insertion to complete and properly propagates errors.",
+          "source": "ai"
+        }
+      ],
+      "attempts": 1,
+      "durationMs": 3125,
+      "rejectedFindings": 0,
+      "errorCode": null,
+      "model": "gemini-3.6-flash",
+      "timeoutMs": 120000,
+      "diagnostics": {
+        "attempts": 1,
+        "runId": "2849bbbd-97e3-4b9d-ad28-1ec0f5a69ba1",
+        "promptVersion": "pr-review-v1",
+        "schemaVersion": "review-v1",
+        "usage": {
+          "inputTokens": 412,
+          "outputTokens": 508,
+          "thinkingTokens": null,
+          "totalTokens": 920
+        },
+        "timeoutMs": 120000,
+        "durationMs": 3125
+      }
+    },
+    {
+      "caseId": "B05",
+      "status": "unavailable",
+      "findings": [],
+      "attempts": 1,
+      "durationMs": 3118,
+      "rejectedFindings": 0,
+      "errorCode": "API_ERROR",
+      "model": "gemini-3.6-flash",
+      "timeoutMs": 120000,
+      "diagnostics": {
+        "attempts": 1,
+        "runId": "7893a7f4-c514-4eac-bada-26c4e99054ec",
+        "promptVersion": "pr-review-v1",
+        "schemaVersion": "review-v1",
+        "usage": null,
+        "timeoutMs": 120000,
+        "httpStatus": 503,
+        "durationMs": 3118,
+        "failureCategory": "provider"
+      }
+    },
+    {
+      "caseId": "B06",
+      "status": "completed",
+      "findings": [
+        {
+          "title": "Untrusted input overrides hardcoded role",
+          "severity": "high",
+          "filePath": "src/signup.js",
+          "lineNumber": 2,
+          "explanation": "Placing `role: \"user\"` before `...input` in the object literal allows any `role` property supplied within untrusted `input` to overwrite `role`, enabling privilege escalation.",
+          "suggestedFix": "Restore the order so `role: \"user\"` comes after `...input`, e.g., `return { ...input, role: \"user\" };`.",
+          "evidence": "  return { role: \"user\", ...input };",
+          "category": "ai-review",
+          "confidence": "low",
+          "affectedFiles": [
+            "src/signup.js"
+          ],
+          "recommendedAction": "Restore the order so `role: \"user\"` comes after `...input`, e.g., `return { ...input, role: \"user\" };`.",
+          "source": "ai"
+        }
+      ],
+      "attempts": 1,
+      "durationMs": 11765,
+      "rejectedFindings": 0,
+      "errorCode": null,
+      "model": "gemini-3.6-flash",
+      "timeoutMs": 120000,
+      "diagnostics": {
+        "attempts": 1,
+        "runId": "17bfa3a4-86b1-4da0-8329-b3566c416162",
+        "promptVersion": "pr-review-v1",
+        "schemaVersion": "review-v1",
+        "usage": {
+          "inputTokens": 380,
+          "outputTokens": 516,
+          "thinkingTokens": 692,
+          "totalTokens": 1588
+        },
+        "timeoutMs": 120000,
+        "durationMs": 11765
+      }
+    },
+    {
+      "caseId": "B07",
+      "status": "unavailable",
+      "findings": [],
+      "attempts": 1,
+      "durationMs": 332,
+      "rejectedFindings": 0,
+      "errorCode": "API_ERROR",
+      "model": "gemini-3.6-flash",
+      "timeoutMs": 120000,
+      "diagnostics": {
+        "attempts": 1,
+        "runId": "09aa65a1-6e0c-4e74-be20-adcdcc2bbf94",
+        "promptVersion": "pr-review-v1",
+        "schemaVersion": "review-v1",
+        "usage": null,
+        "timeoutMs": 120000,
+        "httpStatus": 429,
+        "durationMs": 332,
+        "failureCategory": "provider"
+      }
+    },
+    {
+      "caseId": "B08",
+      "status": "unavailable",
+      "findings": [],
+      "attempts": 1,
+      "durationMs": 399,
+      "rejectedFindings": 0,
+      "errorCode": "API_ERROR",
+      "model": "gemini-3.6-flash",
+      "timeoutMs": 120000,
+      "diagnostics": {
+        "attempts": 1,
+        "runId": "f3dd822b-559b-438f-9df7-39d8f3388b8c",
+        "promptVersion": "pr-review-v1",
+        "schemaVersion": "review-v1",
+        "usage": null,
+        "timeoutMs": 120000,
+        "httpStatus": 429,
+        "durationMs": 399,
+        "failureCategory": "provider"
+      }
+    },
+    {
+      "caseId": "C01",
+      "status": "unavailable",
+      "findings": [],
+      "attempts": 0,
+      "durationMs": null,
+      "rejectedFindings": 0,
+      "errorCode": "INTERRUPTED"
+    },
+    {
+      "caseId": "C02",
+      "status": "not_run",
+      "findings": [],
+      "attempts": 0,
+      "durationMs": null,
+      "rejectedFindings": 0
+    },
+    {
+      "caseId": "C03",
+      "status": "not_run",
+      "findings": [],
+      "attempts": 0,
+      "durationMs": null,
+      "rejectedFindings": 0
+    },
+    {
+      "caseId": "C04",
+      "status": "not_run",
+      "findings": [],
+      "attempts": 0,
+      "durationMs": null,
+      "rejectedFindings": 0
+    }
+  ],
+  "judgments": [],
+  "note": "Original synthetic fixtures. Dry-run makes no model calls. Human judgments are required before claiming semantic accuracy."
+}
