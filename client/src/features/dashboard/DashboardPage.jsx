@@ -338,7 +338,7 @@ function DashboardPage({ route = { page: 'overview' }, onNavigate, userId }) {
                 <header className="topbar"><div><p className="eyebrow">Workspace / {route.page === 'overview' ? 'New review' : 'Analyses'}</p><h1 tabIndex={-1}>{pageTitles[route.page] || 'Page not found'}</h1><p className="muted-text">{route.page === 'overview' ? 'Bring a pull request into focus with code changes and grounded feedback.' : route.page === 'analyses' ? 'Reopen a saved report and inspect its exact revision.' : 'Inspect the saved diff, context and advisory findings.'}</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
                 {route.page === 'overview' && <OverviewPage pullRequestUrl={pullRequestUrl} onUrlChange={setPullRequestUrl} onSubmit={submitAnalysis} isSubmitting={isSubmitting} error={errorMessage} progressStage={progressStage} elapsedSeconds={elapsedSeconds} receivedStages={receivedStages} onNavigate={onNavigate} />}
                 {route.page === 'analyses' && <AnalysesPage reports={recentAnalyses} status={historyStatus} error={historyError} onReload={refreshHistory} onNavigate={onNavigate} />}
-                {route.page === 'review' && <ReviewPage analysis={currentReport} error={reportError?.analysisId === route.analysisId ? reportError.message : ''} onRetry={() => setReportReload(value => value + 1)} onNavigate={onNavigate} />}
+                {route.page === 'review' && <ReviewPage userId={userId} analysis={currentReport} error={reportError?.analysisId === route.analysisId ? reportError.message : ''} onRetry={() => setReportReload(value => value + 1)} onNavigate={onNavigate} />}
                 {route.page === 'not-found' && <section className="welcome-section"><div><h2>This page does not exist</h2><p className="muted-text">Choose a destination from the navigation or start a new review.</p><RouteLink className="text-button" to="/app" onNavigate={onNavigate}>Back to new review</RouteLink></div></section>}
             </main>
         </div>
@@ -382,7 +382,7 @@ function AnalysesPage({ reports = [], status = 'loading', error, onReload, onNav
     </section>;
 }
 
-function ReviewPage({ analysis, error, onRetry, onNavigate }) {
+function ReviewPage({ analysis, error, onRetry, onNavigate, userId }) {
     return <>
         <RouteLink className="text-button back-link" to="/analyses" onNavigate={onNavigate}>← All analyses</RouteLink>
         {error ? <section className="welcome-section" role="alert"><AlertTriangle size={21} /><div><h2>Report could not be opened</h2><p className="muted-text">{error}</p><button type="button" className="text-button" onClick={onRetry}>Try again</button></div></section>

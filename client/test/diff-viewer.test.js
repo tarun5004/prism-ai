@@ -17,6 +17,15 @@ const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx'
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 const app = await vite.ssrLoadModule('/src/app/App.jsx');
 
+test('loaded report page receives the connected reviewer identity', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.ReviewPage, { userId: '42', analysis: {
+    id: 'loaded-report', status: 'completed', pullRequest: {}, findings: [{ title: 'Potential bug', severity: 'medium' }],
+    feedback: { '0_42': { verdict: 'useful', reason: 'Reviewed by account 42' } }
+  } }));
+  assert.match(html, /Reviewed by account 42/);
+  assert.match(html, /Potential bug/);
+});
+
 test('finding feedback and provider usage are visible without overwriting evidence', () => {
   const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
     id: 'feedback-ui', status: 'completed', pullRequest: {}, findings: [{ title: 'Bug', severity: 'high', evidence: 'return bad;', source: 'ai' }],
