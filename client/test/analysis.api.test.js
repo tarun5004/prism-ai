@@ -1,8 +1,27 @@
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
-import { loadAnalysis, loadRecentAnalyses, createAnalysis } from '../src/features/dashboard/analysis.api.js';
+import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis } from '../src/features/dashboard/analysis.api.js';
 
 afterEach(() => mock.restoreAll());
+
+test('sample review reads saved history once, prefers an AI review and handles empty/error states', async () => {
+  const rules = { id: 'rules', status: 'completed', pullRequest: {}, findings: [] };
+  const ai = { ...rules, id: 'ai', aiStatus: 'partial', aiReview: { summary: 'Saved review' } };
+  const request = mock.method(globalThis, 'fetch', async (_url, options) => {
+    assert.equal(options?.method, undefined, 'Sample must never create an analysis');
+    return Response.json([{ ...rules, id: 'failed', status: 'failed' }, rules, ai]);
+  });
+  assert.deepEqual(await loadSampleAnalysis(), ai);
+  assert.equal(request.mock.callCount(), 1);
+  request.mock.mockImplementation(async () => Response.json([rules]));
+  assert.deepEqual(await loadSampleAnalysis(), rules);
+  request.mock.mockImplementation(async () => Response.json([{ ...rules, status: 'failed' }]));
+  assert.equal(await loadSampleAnalysis(), null);
+  request.mock.mockImplementation(async () => Response.json([{ ...rules, id: '../bad' }]));
+  assert.equal(await loadSampleAnalysis(), null);
+  request.mock.mockImplementation(async () => { throw new Error('offline'); });
+  await assert.rejects(loadSampleAnalysis(), /backend is running/);
+});
 test('report/history requests reject HTTP failures and malformed responses', async () => {
   const request = mock.method(globalThis, 'fetch', async () => Response.json({ message: 'Analysis not found.' }, { status: 404 }));
   await assert.rejects(loadAnalysis('missing'), /Analysis not found/);

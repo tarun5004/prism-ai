@@ -70,10 +70,16 @@ async function request(path, options, failureMessage, onProgress) {
   return result;
 }
 
-async function loadRecentAnalyses() {
-  const result = await request('', undefined, 'Recent analyses could not be loaded.');
+async function loadRecentAnalyses({ signal } = {}) {
+  const result = await request('', signal ? { signal } : undefined, 'Recent analyses could not be loaded.');
   if (!Array.isArray(result) || !result.every(isReport)) throw new Error('The server returned an invalid response for history.');
   return result;
+}
+
+async function loadSampleAnalysis(options) {
+  const reports = (await loadRecentAnalyses(options)).filter(report => report.status === 'completed' && /^[a-z\d_-]{1,128}$/i.test(report.id));
+  return reports.find(report => ['completed', 'partial'].includes(report.aiStatus) && report.aiReview?.summary)
+    || reports[0] || null;
 }
 
 async function loadAnalysis(id) {
@@ -91,4 +97,4 @@ async function createAnalysis(pullRequestUrl, { onProgress, signal } = {}) {
   return result;
 }
 
-export { createAnalysis, loadAnalysis, loadRecentAnalyses };
+export { createAnalysis, loadAnalysis, loadRecentAnalyses, loadSampleAnalysis };

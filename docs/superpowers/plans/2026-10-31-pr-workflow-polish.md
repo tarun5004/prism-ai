@@ -1,5 +1,11 @@
 # PR workflow polish implementation plan
 
+## 2026-11-01 — subtle card depth and real saved sample
+
+Completed in existing files: layered card shadows, perspective tilt and selected-card lift; mobile/reduced-motion disable transforms. Hero sample button lazily calls the existing history API, selects a completed report with a safe route ID (preferring contextual AI review), then navigates to its saved report. Loading disables duplicate clicks; empty/error states remain actionable through the existing trial button; unmount aborts the pending read. No automatic generation, hardcoded report IDs, new endpoints/files/dependencies or backend edits.
+
+Verification: sample-selection check failed before implementation; 33 frontend checks passed afterward, including completed/failed reports, AI preference, malformed IDs, empty history and network failure. Production build passed. Read-only local sample selection and retrieval succeeded against an actual saved report with partial AI status. No GitHub/Gemini calls. Visual 3D/interaction QA remains unverified without an available browser surface. Self-review checked request cleanup, duplicate guard and truthful saved-report status.
+
 ## 2026-11-01 — hover-expanding hero cards and source link
 
 Completed focused follow-up in existing App.jsx/styles.css/tests: each feature owns a bordered card and preview; mouse/pen entry, keyboard focus or touch click selects it. Flex-width transitions on desktop and collapsible rows on narrow screens respect existing reduced-motion rules. Collapsed previews are inert and excluded from the accessibility tree; native trigger buttons remain reachable. Navbar/footer source links use the verified local origin remote `https://github.com/tarun5004/prism-ai` (repository availability was not queried).
