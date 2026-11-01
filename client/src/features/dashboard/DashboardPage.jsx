@@ -160,7 +160,7 @@ function AnalysisReport({ analysis }) {
                                 <span className="muted-text" role="status">{visibleFindings.length} of {findings.length} shown</span>
                             </div>}
                             <div className="findings-list">
-                                {visibleFindings.length === 0 ? <div className="no-findings"><CheckCircle2 size={22} /><p>{findings.length > 0 ? 'No findings match these filters.' : !successful ? 'No completed findings are available.' : analysis.aiStatus === 'completed' ? 'No validated findings were returned. This is advisory and does not guarantee the PR is safe.' : 'No rule-based findings were returned. Check the AI status below.'}</p></div> : visibleFindings.map((finding, index) => {
+                                {visibleFindings.length === 0 ? <div className="no-findings"><CheckCircle2 size={22} /><p>{findings.length > 0 ? 'No findings match these filters.' : !successful ? 'No completed findings are available.' : analysis.aiStatus === 'completed' ? 'No validated findings were returned. This is advisory and does not guarantee the PR is safe.' : 'No rule-based findings were returned. Check the AI status above.'}</p></div> : visibleFindings.map((finding, index) => {
                                     const location = findDiffLocation(files, finding);
                                     return <article className="finding-card" key={`${finding.source}-${finding.filePath}-${finding.lineNumber}-${index}`}>
                                         <div className={`finding-icon ${finding.severity}`}><ShieldAlert size={18} /></div>
@@ -184,7 +184,7 @@ function AnalysisReport({ analysis }) {
     );
 }
 
-function AnalysisProgress({ stage = 'connecting', elapsedSeconds = 0 }) {
+function AnalysisProgress({ stage = 'connecting', elapsedSeconds = 0, visitedStages = [] }) {
     const stages = [
         { id: 'fetching', label: 'Reading PR changes', message: 'Fetching the pull request and its changed files.' },
         { id: 'context', label: 'Building review context', message: 'Your context is being read. Please wait while relevant code is collected.' },
@@ -199,10 +199,10 @@ function AnalysisProgress({ stage = 'connecting', elapsedSeconds = 0 }) {
             <span className="elapsed-time">{elapsedSeconds}s elapsed</span>
         </div>
         <ol className="progress-stages" aria-label="Analysis stages">{stages.map((item, index) => {
-            const state = active < 0 || index > active ? 'pending' : index === active ? 'active' : 'complete';
+            const state = active < 0 || index > active ? 'pending' : index === active ? 'active' : visitedStages.includes(item.id) ? 'complete' : 'skipped';
             return <li key={item.id} data-state={state} aria-current={state === 'active' ? 'step' : undefined}>
-                {state === 'complete' ? <CheckCircle2 size={16} aria-hidden="true" /> : state === 'active' ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <span className="step-number" aria-hidden="true">{index + 1}</span>}
-                <span>{item.label}</span>
+                {state === 'complete' ? <CheckCircle2 size={16} aria-hidden="true" /> : state === 'active' ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <span className="step-number" aria-hidden="true">{state === 'skipped' ? '–' : index + 1}</span>}
+                <span>{item.label}{state === 'skipped' ? ' · skipped' : ''}</span>
             </li>;
         })}</ol>
         <p className="progress-note">Response time varies with PR size and AI availability. Your report will appear when it is ready.</p>
@@ -222,7 +222,8 @@ function DashboardPage() {
     const historyRequest = useRef(0);
     const reviewRequest = useRef(null);
     const startedAt = useRef(0);
-    const [progressStage, setProgressStage] = useState('connecting');
+    const [receivedStages, setReceivedStages] = useState([]);
+    const progressStage = receivedStages.at(-1) || 'connecting';
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     async function refreshHistory() {
@@ -262,14 +263,14 @@ function DashboardPage() {
         reviewRequest.current = controller;
         startedAt.current = performance.now();
         setElapsedSeconds(0);
-        setProgressStage('connecting');
+        setReceivedStages([]);
         setErrorMessage('');
         setOpeningId(null);
         setIsSubmitting(true);
         try {
             const result = await createAnalysis(pullRequestUrl.trim(), {
                 signal: controller.signal,
-                onProgress: stage => { if (sequence === activeRequest.current) setProgressStage(stage); }
+                onProgress: stage => { if (sequence === activeRequest.current) setReceivedStages(current => [...current, stage]); }
             });
             if (sequence !== activeRequest.current) return;
             setAnalysis(result);
@@ -315,7 +316,7 @@ function DashboardPage() {
                         <div className="input-row"><input id="pull-request-url" type="url" placeholder="https://github.com/org/repository/pull/42" value={pullRequestUrl} onChange={event => setPullRequestUrl(event.target.value)} disabled={isSubmitting} required /><button type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{isSubmitting ? 'Review in progress…' : 'Analyze PR'}</button></div>
                         {errorMessage && <p className="error-message" role="alert"><AlertTriangle size={16} />{errorMessage}</p>}
                     </form>
-                    {isSubmitting && <AnalysisProgress stage={progressStage} elapsedSeconds={elapsedSeconds} />}
+                    {isSubmitting && <AnalysisProgress stage={progressStage} elapsedSeconds={elapsedSeconds} visitedStages={receivedStages} />}
                 </section>
                 {openingId && <p className="muted-text" role="status">Opening saved report…</p>}
                 {analysis ? <AnalysisReport key={analysis.id} analysis={analysis} /> : <section className="welcome-section"><div className="welcome-icon"><Sparkles size={24} /></div><div><p className="section-label">Ready when you are</p><h2>Your next analysis will appear here.</h2><p className="muted-text">Paste a PR URL to inspect saved code changes, rule-based checks, and validated AI findings when available.</p></div></section>}
