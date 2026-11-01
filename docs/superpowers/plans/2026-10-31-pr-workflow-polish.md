@@ -157,3 +157,12 @@ Review focus: unavailable imports, secrets in retrieved code/PR intent, oversize
 - Real end-to-end request through the actual client stream parser, running backend, GitHub, Gemini 3.6 Flash and MongoDB succeeded. Fetching arrived at 190ms, context at 1869ms, reviewing at 4346ms and saving at 10160ms. Valid partial review saved as analysis 875cade1-0ad6-4e29-8376-6a7f2bd6f67f; read-back matched. Total observed time 10212ms; AI request 5810ms, attempts 1. These are observations, not response-time guarantees.
 - The actual saved live report and active progress state rendered through the updated React workspace successfully. Browser inventory was empty and opening the in-app browser returned unavailable; interactive click/layout QA is not claimed.
 - No new application/test files, dependencies, background infrastructure, webhook or MCP implementation. Existing user changes remain unstaged, secrets are absent from committed diffs and main is unchanged.
+
+## 2026-11-02 — Approved continuous roadmap execution
+User authorized remaining roadmap features in small tested commits; defer account registration, credential entry, license selection and physical/live onboarding verification. No main merge or paid deployment.
+Priority/tasks: (1) E2 SDK token usage + prompt/schema/run identity; (2) E3 opt-in lexical repository guidance and reproducible retrieval comparison; (3) authenticated GitHub App/session and installation-scoped reports; (4) E4 separate finding feedback API/UI; (5) E5 local read-only official-SDK MCP; (6) E6 configurable deployment origins, offline CI, usage guard and setup documentation; (7) integrated checks + independent review.
+Ruling: keep existing checkout and mandated feature branches; preserve unstaged .env.example, AGENT.md and RULE.md. No worktree/dependency duplication needed for sequential work.
+Ruling: no embeddings provider added without an evaluated benefit. Ship explicit lexical baseline experiment; do not claim semantic RAG or improved accuracy.
+Ruling: preserve local single-user mode; production requires authenticated sessions and MongoDB. GitHub App credentials/manual registration remain owner actions, while code paths receive offline contract tests.
+Task 1: in progress — actual provider usage only; absent counts remain null.
+Task 1: backend complete — SDK-only usage (unknown=null), UUID run identity, prompt/schema versions persist through schema and evaluation artifacts. Targeted Node checks 71/71 passed; two new usage regressions observed RED then GREEN. No live call needed.

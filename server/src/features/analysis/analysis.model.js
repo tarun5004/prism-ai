@@ -21,6 +21,10 @@ const analysisSchema = new mongoose.Schema(
     aiCoverage: { type: mongoose.Schema.Types.Mixed },
     aiReview: { type: mongoose.Schema.Types.Mixed },
     aiDiagnostics: {
+      runId: String,
+      promptVersion: String,
+      schemaVersion: String,
+      usage: { type: new mongoose.Schema({ inputTokens: Number, outputTokens: Number, thinkingTokens: Number, totalTokens: Number }, { _id: false }), default: undefined },
       durationMs: { type: Number },
       timeoutMs: { type: Number },
       attempts: { type: Number },
