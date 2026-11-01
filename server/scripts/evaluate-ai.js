@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { open, readFile } from 'node:fs/promises';
+import { open, readFile, rename, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
@@ -30,6 +30,25 @@ function parseOptions(args) {
   if (options.live && !options.caseId && !options.split) throw Error('--live requires explicit --case or --split selection.');
   if (options.split && !['dev', 'heldout'].includes(options.split)) throw Error('Use dev or heldout split.');
   return options;
+}
+
+async function saveRun(path, run, replaceFile = rename) {
+  const temporaryPath = path + '.' + randomUUID() + '.tmp';
+  const content = JSON.stringify(run, null, 2) + '\n';
+  let temporary;
+  let created = false;
+  try {
+    temporary = await open(temporaryPath, 'wx');
+    created = true;
+    await temporary.writeFile(content);
+    await temporary.sync();
+    await temporary.close();
+    temporary = null;
+    await replaceFile(temporaryPath, path);
+  } finally {
+    if (temporary) await temporary.close();
+    if (created) await unlink(temporaryPath).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  }
 }
 
 function toPullRequest(item) {
@@ -76,43 +95,33 @@ async function collectEvaluation(options, analyze = runAiAnalysis) {
     note: 'Original synthetic fixtures. Dry-run makes no model calls. Human judgments are required before claiming semantic accuracy.'
   };
   // Exclusive create protects a previous experiment. Save each case so a later failure cannot erase it.
-  const output = await open(options.outPath, 'wx');
-  const save = async () => {
-    const bytes = Buffer.from(JSON.stringify(run, null, 2) + '\n');
-    let offset = 0;
-    while (offset < bytes.length) {
-      const { bytesWritten } = await output.write(bytes, offset, bytes.length - offset, offset);
-      offset += bytesWritten;
-    }
-    await output.truncate(bytes.length);
-    await output.sync();
-  };
-  try {
-    await save();
-    if (options.live) {
-      for (const [index, input] of inputs.entries()) {
-        const record = run.cases[index];
-        Object.assign(record, { status: 'unavailable', errorCode: 'INTERRUPTED' });
-        await save();
-        const started = performance.now();
-        try {
-          const result = await analyze(input);
-          if (!['completed', 'partial', 'unavailable', 'skipped'].includes(result?.status) || !Array.isArray(result.findings)) throw Error('Invalid analysis result');
-          Object.assign(record, {
-            status: result.status, findings: result.findings, model: result.model || null,
-            attempts: result.diagnostics?.attempts || 0, durationMs: Math.round(performance.now() - started),
-            timeoutMs: result.diagnostics?.timeoutMs || null,
-            rejectedFindings: result.coverage?.rejectedFindings || 0,
-            errorCode: result.error || null
-          });
-        } catch {
-          Object.assign(record, { status: 'unavailable', errorCode: 'COLLECTOR_ERROR', durationMs: Math.round(performance.now() - started) });
-        }
-        await save();
+  const reservation = await open(options.outPath, 'wx');
+  await reservation.close();
+  const save = () => saveRun(options.outPath, run);
+  await save();
+  if (options.live) {
+    for (const [index, input] of inputs.entries()) {
+      const record = run.cases[index];
+      Object.assign(record, { status: 'unavailable', errorCode: 'INTERRUPTED' });
+      await save();
+      const started = performance.now();
+      try {
+        const result = await analyze(input);
+        if (!['completed', 'partial', 'unavailable', 'skipped'].includes(result?.status) || !Array.isArray(result.findings)) throw Error('Invalid analysis result');
+        Object.assign(record, {
+          status: result.status, findings: result.findings, model: result.model || null,
+          attempts: result.diagnostics?.attempts || 0, durationMs: Math.round(performance.now() - started),
+          timeoutMs: result.diagnostics?.timeoutMs || null,
+          rejectedFindings: result.coverage?.rejectedFindings || 0,
+          errorCode: result.error || null
+        });
+      } catch {
+        Object.assign(record, { status: 'unavailable', errorCode: 'COLLECTOR_ERROR', durationMs: Math.round(performance.now() - started) });
       }
+      await save();
     }
-    return run;
-  } finally { await output.close(); }
+  }
+  return run;
 }
 
 async function main() {
@@ -133,4 +142,4 @@ async function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
-export { collectEvaluation, parseOptions, toPullRequest };
+export { collectEvaluation, parseOptions, saveRun, toPullRequest };

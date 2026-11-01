@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { collectEvaluation, parseOptions, toPullRequest } from '../scripts/evaluate-ai.js';
+import { collectEvaluation, parseOptions, saveRun, toPullRequest } from '../scripts/evaluate-ai.js';
 
 async function cleanup(directory) {
   assert.equal(dirname(resolve(directory)), resolve(tmpdir()));
@@ -57,4 +57,15 @@ test('CLI requires an explicit live selection and output, rejects accidental fla
   assert.throws(() => parseOptions(['--out', 'x.json', '--typo']), /Unknown/);
   assert.throws(() => parseOptions(['--out', 'x.json', '--case', 'B01', '--case', 'B02']), /Duplicate/);
   assert.equal(parseOptions(['--out', 'x.json', '--case', 'B01']).live, false);
+});
+
+test('failed atomic replacement preserves the preceding valid artifact and cleans its temp file', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'prism-eval-'));
+  const path = join(directory, 'run.json');
+  try {
+    await saveRun(path, { step: 1 });
+    await assert.rejects(saveRun(path, { step: 2 }, async () => { throw Error('simulated rename failure'); }), /simulated/);
+    assert.deepEqual(JSON.parse(await readFile(path, 'utf8')), { step: 1 });
+    assert.deepEqual(await readdir(directory), ['run.json']);
+  } finally { await cleanup(directory); }
 });
