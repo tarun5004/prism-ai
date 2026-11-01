@@ -4,6 +4,7 @@ import { Router } from 'express';
 const sessions = new Map();
 const pending = new Map();
 const reviewCounts = new Map();
+const posting = new Set();
 const appMode = () => Boolean(process.env.GITHUB_APP_ID);
 const failure = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const cookie = (request, name) => request.headers.cookie?.split(';').map(value => value.trim()).find(value => value.startsWith(name + '='))?.slice(name.length + 1);
@@ -86,9 +87,36 @@ async function installationToken(installationId, repository) {
   let jwt;
   try { jwt = unsigned + '.' + sign('RSA-SHA256', Buffer.from(unsigned), process.env.GITHUB_APP_PRIVATE_KEY?.replaceAll('\\n', '\n')).toString('base64url'); }
   catch { throw failure(503, 'GitHub App signing is not configured.'); }
-  const result = await githubRequest(`/app/installations/${installationId}/access_tokens`, jwt, { repositories: [repository.split('/')[1]], permissions: { contents: 'read', pull_requests: 'read' } });
+  const result = await githubRequest(`/app/installations/${installationId}/access_tokens`, jwt, { repositories: [repository.split('/')[1]], permissions: { contents: 'read', pull_requests: process.env.GITHUB_POST_REVIEW === 'true' ? 'write' : 'read' } });
   if (typeof result.token !== 'string' || !result.token) throw failure(502, 'Installation access unavailable.');
   return result.token;
+}
+
+async function postReviewSummary(report, token) {
+  if (process.env.GITHUB_POST_REVIEW !== 'true' || !report.installationId) return { status: 'skipped' };
+  const match = report.pullRequest?.url?.match(/^https:\/\/github\.com\/([a-z\d-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/i);
+  if (!match || !report.pullRequest.baseSha || !report.pullRequest.headSha || !token || !/^[a-z\d_-]{1,128}$/i.test(report.id)) return { status: 'unavailable', errorCode: 'INVALID_SCOPE' };
+  const revision = createHash('sha256').update(`${report.installationId}:${match[1].toLowerCase()}/${match[2].toLowerCase()}:${report.pullRequest.baseSha}:${report.pullRequest.headSha}`).digest('hex');
+  const marker = `<!-- prism-ai:${revision} -->`;
+  if (posting.has(revision)) return { status: 'unavailable', errorCode: 'POST_IN_PROGRESS' };
+  posting.add(revision);
+  try {
+    const origin = new URL(process.env.APP_ORIGIN);
+    if (origin.origin !== process.env.APP_ORIGIN || !['https:', 'http:'].includes(origin.protocol)) throw Error('origin');
+    const path = `/repos/${match[1]}/${match[2]}/issues/${match[3]}/comments`;
+    for (let page = 1; page <= 3; page++) {
+      const comments = await githubRequest(`${path}?per_page=100&page=${page}`, token);
+      if (!Array.isArray(comments)) throw Error('comments');
+      if (comments.some(comment => comment.user?.login === `${process.env.GITHUB_APP_SLUG}[bot]` && typeof comment.body === 'string' && comment.body.includes(marker))) return { status: 'existing' };
+      if (comments.length < 100) break;
+      if (page === 3) return { status: 'unavailable', errorCode: 'COMMENT_SCAN_LIMIT' };
+    }
+    const status = report.aiStatus === 'completed' ? 'AI review completed' : report.aiStatus === 'partial' ? 'AI review partial' : 'AI review unavailable; deterministic analysis remains available';
+    const body = `${marker}\n### PRism AI advisory review\n${status}.\n\n${report.findings.length} advisory finding(s). This is not merge approval.\n\n[Open the access-controlled report](${origin.origin}/analyses/${report.id})`;
+    await githubRequest(path, token, { body });
+    return { status: 'posted' };
+  } catch { return { status: 'unavailable', errorCode: 'GITHUB_POST_FAILED' }; }
+  finally { posting.delete(revision); }
 }
 
 function createGitHubRoutes() {
@@ -143,4 +171,4 @@ function createGitHubRoutes() {
   return router;
 }
 
-export { appMode, requireSession, canReadReport, userRepositories, installationToken, createGitHubRoutes, consumeReviewBudget };
+export { appMode, requireSession, canReadReport, userRepositories, installationToken, createGitHubRoutes, consumeReviewBudget, postReviewSummary };

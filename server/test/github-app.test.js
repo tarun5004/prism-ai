@@ -18,6 +18,25 @@ test('repository discovery rejects invalid/revoked tokens with safe errors', asy
   await assert.rejects(github.userRepositories('test-token'), error => !error.message.includes('secret') && error.statusCode === 401);
 });
 
+test('optional GitHub summary deduplicates a revision and preserves honest AI failure wording', async () => {
+  const old = [process.env.GITHUB_POST_REVIEW, process.env.APP_ORIGIN, process.env.GITHUB_APP_SLUG];
+  process.env.GITHUB_POST_REVIEW = 'true'; process.env.APP_ORIGIN = 'https://demo.example'; process.env.GITHUB_APP_SLUG = 'prism';
+  let posted;
+  mock.method(globalThis, 'fetch', async (_url, options) => {
+    if (options.method === 'POST') { posted = JSON.parse(options.body).body; return Response.json({}); }
+    return Response.json(posted ? [{ body: posted, user: { login: 'prism[bot]' } }] : []);
+  });
+  const report = { id: 'summary-test', installationId: 7, status: 'completed', aiStatus: 'unavailable', findings: [], pullRequest: { url: 'https://github.com/demo/repo/pull/2', baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40) } };
+  try {
+    assert.equal((await github.postReviewSummary(report, 'token')).status, 'posted');
+    assert.match(posted, /AI review unavailable/);
+    assert.equal((await github.postReviewSummary(report, 'token')).status, 'existing');
+    assert.equal(globalThis.fetch.mock.calls.filter(call => call.arguments[1].method === 'POST').length, 1);
+  } finally {
+    ['GITHUB_POST_REVIEW', 'APP_ORIGIN', 'GITHUB_APP_SLUG'].forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; });
+  }
+});
+
 test('public mode fails closed without App config and never serves HTML for unknown API routes', async () => {
   const previous = process.env.NODE_ENV;
   process.env.NODE_ENV = 'production';

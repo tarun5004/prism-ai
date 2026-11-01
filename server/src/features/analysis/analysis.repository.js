@@ -52,4 +52,11 @@ async function saveFindingFeedback(id, index, userId, annotation) {
   return report;
 }
 
-export { findAnalysis, listAnalyses, saveAnalysis, saveFindingFeedback };
+async function saveGitHubFeedback(id, feedback) {
+  if (mongoose.connection.readyState === 1) return Analysis.findOneAndUpdate({ id }, { $set: { githubFeedback: feedback } }, { new: true }).lean();
+  const report = analyses.get(id);
+  if (report) report.githubFeedback = feedback;
+  return report;
+}
+
+export { findAnalysis, listAnalyses, saveAnalysis, saveFindingFeedback, saveGitHubFeedback };

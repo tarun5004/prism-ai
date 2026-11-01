@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { runAiAnalysis } from '../ai/ai.service.js';
 import { prepareAiInput } from '../ai/ai.context.js';
 import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
-import { saveAnalysis } from './analysis.repository.js';
+import { saveAnalysis, saveGitHubFeedback } from './analysis.repository.js';
+import { postReviewSummary } from '../pullRequest/github.app.js';
 import { runRules } from './analysis.rules.js';
 
 // Shared by manual requests and verified GitHub events.
@@ -38,7 +39,13 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     };
 
     progress('saving');
-    return { status: 201, body: await saveAnalysis(analysis) };
+    const saved = await saveAnalysis(analysis);
+    if (installationId && process.env.GITHUB_POST_REVIEW === 'true') {
+      const feedback = await postReviewSummary(saved, githubToken);
+      try { return { status: 201, body: await saveGitHubFeedback(id, feedback) || saved }; }
+      catch { return { status: 201, body: { ...saved, githubFeedback: { status: 'unavailable', errorCode: 'STATUS_SAVE_FAILED' } } }; }
+    }
+    return { status: 201, body: saved };
   } catch (error) {
     if (!(error instanceof PullRequestError)) {
       return { status: 500, body: { message: 'Analysis could not be saved or completed. Please try again.' } };
