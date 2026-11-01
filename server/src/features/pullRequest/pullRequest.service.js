@@ -1,4 +1,5 @@
 import { posix } from 'node:path';
+import { rankGuidance } from '../ai/ai.context.js';
 
 const githubApiBaseUrl = 'https://api.github.com';
 
@@ -57,10 +58,10 @@ async function requestGitHub(address, options, maxBytes) {
   }
 }
 
-async function fetchPullRequest(pullRequestUrl) {
+async function fetchPullRequest(pullRequestUrl, { token = process.env.GITHUB_TOKEN } = {}) {
   const { owner, repository, number } = parsePullRequestUrl(pullRequestUrl);
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'prism-ai-beta' };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
   // One deadline bounds the entire retrieval, including pagination. No retries.
   const options = { headers, signal: AbortSignal.timeout(30000) };
   const address = `${githubApiBaseUrl}/repos/${owner}/${repository}/pulls/${number}`;
@@ -129,7 +130,7 @@ async function fetchPullRequest(pullRequestUrl) {
 }
 
 // Best-effort context enrichment. A missing source must not discard the saved diff.
-async function fetchReviewContext(pullRequest) {
+async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_GUIDANCE === 'lexical', token = process.env.GITHUB_TOKEN } = {}) {
   const result = { scope: 'bounded-js-ts-imports', snippets: [], omitted: [], requests: 0 };
   if (!pullRequest.headSha || !pullRequest.baseSha) {
     result.omitted.push({ reason: 'revision-unavailable' });
@@ -137,7 +138,7 @@ async function fetchReviewContext(pullRequest) {
   }
   const { owner, repository } = parsePullRequestUrl(pullRequest.url);
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'prism-ai-beta' };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
   const options = { headers, signal: AbortSignal.timeout(20000) };
   const seen = new Set();
   const imports = [];
@@ -196,6 +197,17 @@ async function fetchReviewContext(pullRequest) {
         result.snippets.push({ filePath: path, lineSide: item.lineSide, startLine: 1, code: code.split(/\r?\n/).slice(0, 60).join('\n'), role: 'direct-import' });
         break;
       } catch { result.omitted.push({ filePath: path, reason: 'import-unavailable' }); }
+    }
+  }
+  if (guidance) {
+    result.scope = 'bounded-js-ts-imports+lexical-guidance-v1';
+    for (const path of ['README.md', 'CONTRIBUTING.md']) {
+      try {
+        const code = await readSource(path, pullRequest.headSha);
+        const sections = rankGuidance(code, [pullRequest.title, pullRequest.description, ...candidates.map(file => file.path)].join(' '));
+        for (const section of sections) result.snippets.push({ filePath: path, lineSide: 'new', startLine: section.startLine, code: section.code, role: 'repository-guidance', revision: pullRequest.headSha });
+        if (!sections.length) result.omitted.push({ filePath: path, reason: 'no-lexical-match' });
+      } catch { result.omitted.push({ filePath: path, reason: 'guidance-unavailable-or-limited' }); }
     }
   }
   return result;

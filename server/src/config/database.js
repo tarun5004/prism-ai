@@ -12,7 +12,7 @@ async function connectToDatabase() {
     console.log('MongoDB connected.');
     return true;
   } catch (error) {
-    console.warn(`MongoDB unavailable; using in-memory analysis storage. ${error.message}`);
+    console.warn('MongoDB unavailable; using in-memory analysis storage.');
     return false;
   }
 }

@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { randomUUID } from 'node:crypto';
 import { prepareAiInput } from './ai.context.js';
 
 const findingFields = {
@@ -36,7 +37,7 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
   const { files, coverage, intent, snippets } = prepareAiInput(pullRequest);
   const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
   const validTimeout = Number.isInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 120000;
-  const diagnostics = { attempts: 0, ...(validTimeout ? { timeoutMs } : {}) };
+  const diagnostics = { attempts: 0, runId: randomUUID(), promptVersion: 'pr-review-v1', schemaVersion: 'review-v1', usage: null, ...(validTimeout ? { timeoutMs } : {}) };
   const result = (status, findings = [], error, review) => {
     const failureCategory = error === 'API_ERROR'
       ? (diagnostics.networkCode ? 'network' : diagnostics.httpStatus ? 'provider' : 'request')
@@ -85,6 +86,10 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
     return result('unavailable', [], signal.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError' ? 'TIMEOUT' : 'API_ERROR');
   }
 
+  if (response.usageMetadata) {
+    const count = field => Number.isSafeInteger(response.usageMetadata[field]) && response.usageMetadata[field] >= 0 ? response.usageMetadata[field] : null;
+    diagnostics.usage = { inputTokens: count('promptTokenCount'), outputTokens: count('candidatesTokenCount'), thinkingTokens: count('thoughtsTokenCount'), totalTokens: count('totalTokenCount') };
+  }
   let output;
   try {
     if (response.candidates?.[0]?.finishReason !== 'STOP') throw new Error('Incomplete output');

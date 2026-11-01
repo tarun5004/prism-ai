@@ -7,15 +7,18 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node --test",
+    "mcp": "node scripts/mcp.js",
     "test:gemini": "node scripts/gemini-smoke.js"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "mongoose": "^8.18.0",
-    "prism-ai": "file:.."
+    "prism-ai": "file:..",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
