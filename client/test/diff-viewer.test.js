@@ -69,6 +69,28 @@ test('internal home navigation avoids reload and preserves modified-click behavi
   assert.equal(destinations.length, 1);
 });
 
+test('feature cards open on pointer hover, keyboard focus and touch click', () => {
+  const selected = [];
+  const tree = app.FeatureShowcase({ activeIndex: 0, onSelect: index => selected.push(index) });
+  const cards = tree.props.children;
+  assert.equal(cards.length, 4);
+  cards[2].props.onPointerEnter({ pointerType: 'mouse' });
+  cards[1].props.onPointerEnter({ pointerType: 'touch' });
+  cards[2].props.children[0].props.onFocus();
+  cards[3].props.children[0].props.onClick();
+  assert.deepEqual(selected, [2, 2, 3]);
+  const html = renderToStaticMarkup(createElement(app.FeatureShowcase, { activeIndex: 2, onSelect() {} }));
+  assert.equal((html.match(/aria-expanded="true"/g) || []).length, 1);
+  assert.match(html, /id="feature-card-2" aria-hidden="false"/);
+  assert.equal((html.match(/aria-hidden="true" inert=""/g) || []).length, 3);
+});
+
+test('landing links to the actual configured source repository', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /href="https:\/\/github.com\/tarun5004\/prism-ai"/);
+  assert.match(html, /View source/);
+});
+
 test('renders only the active page instead of stacking overview, history and report', () => {
   const overview = renderToStaticMarkup(createElement(dashboard.default, { route: { page: 'overview' } }));
   assert.match(overview, /Open a pull request/);

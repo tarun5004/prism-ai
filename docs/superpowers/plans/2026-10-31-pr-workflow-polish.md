@@ -1,5 +1,11 @@
 # PR workflow polish implementation plan
 
+## 2026-11-01 — hover-expanding hero cards and source link
+
+Completed focused follow-up in existing App.jsx/styles.css/tests: each feature owns a bordered card and preview; mouse/pen entry, keyboard focus or touch click selects it. Flex-width transitions on desktop and collapsible rows on narrow screens respect existing reduced-motion rules. Collapsed previews are inert and excluded from the accessibility tree; native trigger buttons remain reachable. Navbar/footer source links use the verified local origin remote `https://github.com/tarun5004/prism-ai` (repository availability was not queried).
+
+New interaction/source-link checks failed before implementation; all 32 frontend checks and production build passed afterward. Self-review checked controlled state, unique panel IDs, touch fallback, safe external links and removal of obsolete showcase styles. No new files, dependencies, backend changes or external API calls. Actual browser animation/visual QA remains unverified because no browser surface is available. Extra UI suggestions are deferred to the user.
+
 ## 2026-11-01 — approved dark introduction page
 
 User approved implementation after reference analysis. Use PRism AI branding, charcoal/orange styling and existing local fonts. Screenshots were captured at 60–70% zoom: use readable fluid sizing at normal zoom, not screenshot-sized text. Landing at `/`, workspace at `/app`, history/report URLs unchanged. No invented customers, review metrics, login, webhook or MCP claims. Keep running workspace state while visiting the introduction. No new application files or dependencies are needed.
