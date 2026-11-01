@@ -1,8 +1,19 @@
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
-import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis } from '../src/features/dashboard/analysis.api.js';
+import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis, saveFindingFeedback } from '../src/features/dashboard/analysis.api.js';
 
 afterEach(() => mock.restoreAll());
+
+test('feedback uses original finding index and same-origin authenticated requests', async () => {
+  const report = { id: 'one', status: 'completed', pullRequest: {}, findings: [] };
+  const request = mock.method(globalThis, 'fetch', async () => Response.json(report));
+  assert.deepEqual(await saveFindingFeedback('one', 3, 'incorrect', 'Wrong assumption'), report);
+  const [url, options] = request.mock.calls[0].arguments;
+  assert.equal(url, '/api/analyses/one/findings/3/feedback');
+  assert.equal(options.credentials, 'include');
+  assert.equal(options.method, 'PUT');
+  assert.equal(JSON.parse(options.body).verdict, 'incorrect');
+});
 
 test('sample review reads saved history once, prefers an AI review and handles empty/error states', async () => {
   const rules = { id: 'rules', status: 'completed', pullRequest: {}, findings: [] };

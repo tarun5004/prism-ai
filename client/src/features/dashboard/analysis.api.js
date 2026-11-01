@@ -1,4 +1,4 @@
-const apiBaseUrl = 'http://localhost:5000/api';
+const apiBaseUrl = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
 function isReport(value) {
   return value && typeof value.id === 'string' && ['completed', 'failed'].includes(value.status)
@@ -56,7 +56,7 @@ async function readProgress(response, onProgress) {
 async function request(path, options, failureMessage, onProgress) {
   let response;
   try {
-    response = await fetch(`${apiBaseUrl}/analyses${path}`, options);
+    response = await fetch(`${apiBaseUrl}/analyses${path}`, { ...options, credentials: 'include' });
   } catch {
     if (options?.signal?.aborted) throw new Error('The review request was cancelled.');
     throw new Error('Could not reach PRism. Check that the backend is running.');
@@ -97,4 +97,26 @@ async function createAnalysis(pullRequestUrl, { onProgress, signal } = {}) {
   return result;
 }
 
-export { createAnalysis, loadAnalysis, loadRecentAnalyses, loadSampleAnalysis };
+async function saveFindingFeedback(id, findingIndex, verdict, reason = '') {
+  const result = await request(`/${encodeURIComponent(id)}/findings/${findingIndex}/feedback`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verdict, reason })
+  }, 'Feedback could not be saved.');
+  if (!isReport(result)) throw new Error('The server returned invalid feedback data.');
+  return result;
+}
+
+async function loadGitHubSession() {
+  const response = await fetch(`${apiBaseUrl}/github/session`, { credentials: 'include' });
+  if (!response.ok) throw new Error('GitHub connection status is unavailable.');
+  const result = await response.json();
+  if (typeof result.enabled !== 'boolean' || typeof result.authenticated !== 'boolean') throw new Error('Invalid connection status.');
+  return result;
+}
+
+async function logoutGitHub() {
+  const response = await fetch(`${apiBaseUrl}/github/logout`, { method: 'POST', credentials: 'include' });
+  if (!response.ok) throw new Error('Sign out failed. Please try again.');
+}
+
+const githubLoginUrl = `${apiBaseUrl}/github/login`;
+export { createAnalysis, loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, saveFindingFeedback, loadGitHubSession, logoutGitHub, githubLoginUrl };

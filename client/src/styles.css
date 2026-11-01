@@ -911,3 +911,13 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   .showcase-card, .showcase-card[data-expanded="true"] { transform: none; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+/* Connection and feedback controls share the existing graphite/orange palette. */
+.connection-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 13px; }
+.connection-bar a, .connection-welcome a { color: var(--accent); }
+.connection-bar button, .finding-feedback button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.connection-welcome { max-width: 680px; margin: 100px auto; padding: 24px; }
+.finding-feedback { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 8px; font-size: 12px; }
+.finding-feedback label { display: grid; gap: 6px; }
+.finding-feedback textarea { width: 100%; max-width: 100%; padding: 8px; background: var(--page-bg); border: 1px solid var(--border); color: var(--ink); border-radius: 6px; font: inherit; resize: vertical; }
+.finding-feedback button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.finding-feedback button:disabled, .connection-bar button:disabled { cursor: wait; opacity: 0.6; }

@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowUpRight, CheckCircle2, ClipboardCheck, FileCode2, GitPullRequest, LoaderCircle, ShieldAlert, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import DiffViewer, { findDiffLocation } from './DiffViewer.jsx';
-import { createAnalysis, loadAnalysis, loadRecentAnalyses } from './analysis.api.js';
+import { createAnalysis, loadAnalysis, loadRecentAnalyses, saveFindingFeedback } from './analysis.api.js';
 
 function getAiStatusDetails(analysis) {
     if (analysis.status === 'failed') {
@@ -64,7 +64,30 @@ function ReviewReference({ reference, files, onNavigate }) {
     </div>;
 }
 
-function AnalysisReport({ analysis }) {
+function FindingFeedback({ analysisId, findingIndex, annotation }) {
+    const [reason, setReason] = useState(annotation?.reason || '');
+    const [verdict, setVerdict] = useState(annotation?.verdict || '');
+    const [saving, setSaving] = useState(false);
+    const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
+    async function save(nextVerdict) {
+        if (saving) return;
+        setSaving(true); setMessage(''); setError('');
+        try {
+            await saveFindingFeedback(analysisId, findingIndex, nextVerdict, reason);
+            setVerdict(nextVerdict); setMessage('Feedback saved. Original finding unchanged.');
+        } catch (failure) { setError(failure.message); }
+        finally { setSaving(false); }
+    }
+    return <div className="finding-feedback">
+        <label>Optional feedback reason<textarea maxLength={500} value={reason} onChange={event => setReason(event.target.value)} rows={2} /></label>
+        <div><button type="button" disabled={saving} aria-pressed={verdict === 'useful'} onClick={() => save('useful')}>Useful</button>{' '}<button type="button" disabled={saving} aria-pressed={verdict === 'incorrect'} onClick={() => save('incorrect')}>Incorrect</button></div>
+        <span role="status">{saving ? 'Saving feedback…' : message}</span>
+        {error && <p role="alert" className="error-message">{error}</p>}
+    </div>;
+}
+
+function AnalysisReport({ analysis, userId = 'local' }) {
     const [activeView, setActiveView] = useState('overview');
     const [sourceFilter, setSourceFilter] = useState('all');
     const [severityFilter, setSeverityFilter] = useState('all');
@@ -125,6 +148,9 @@ function AnalysisReport({ analysis }) {
                                 {analysis.aiCoverage && <p>{analysis.aiCoverage.contextSnippets || 0} source windows included; {analysis.aiCoverage.contextOmissions?.length || 0} context omissions. Direct-import retrieval is limited and does not trace every caller.</p>}
                                 {analysis.aiStatus === 'partial' && analysis.aiError === 'INVALID_REVIEW' && <p>The AI explanation was rejected because its structure or code references could not be validated.</p>}
                                 {diagnostics && <details className="ai-diagnostics"><summary>Request details</summary><p>
+                                    Prompt {diagnostics.promptVersion || 'not recorded'} · Schema {diagnostics.schemaVersion || 'not recorded'}<br />
+                                    Input tokens: {diagnostics.usage?.inputTokens ?? 'unknown'} · Output: {diagnostics.usage?.outputTokens ?? 'unknown'} · Thinking: {diagnostics.usage?.thinkingTokens ?? 'unknown'}<br />
+                                    {diagnostics.runId && <>Run: <code>{diagnostics.runId}</code><br /></>}
                                     {Number.isFinite(diagnostics.durationMs) && `${(diagnostics.durationMs / 1000).toFixed(1)}s elapsed. `}
                                     {Number.isFinite(diagnostics.timeoutMs) && `${diagnostics.timeoutMs / 1000}s timeout. `}
                                     {Number.isInteger(diagnostics.httpStatus) && `Provider HTTP ${diagnostics.httpStatus}. `}
@@ -172,6 +198,7 @@ function AnalysisReport({ analysis }) {
                                             <div className="affected-files"><FileCode2 size={14} />{finding.filePath || finding.affectedFiles?.join(' · ') || 'Location not recorded'}</div>
                                             {location ? <button type="button" className="text-button" onClick={() => setFocusLocation({ filePath: finding.filePath, lineNumber: finding.lineNumber, lineSide: finding.lineSide || 'new' })}>View {finding.lineSide || 'new'} line {finding.lineNumber} in diff <ArrowUpRight size={14} /></button> : finding.filePath && <p className="location-note">A matching saved diff line is unavailable.</p>}
                                             <div className="action-line"><span>Suggested check</span>{finding.suggestedFix || finding.recommendedAction || 'Verify the finding before making changes.'}</div>
+                                            <FindingFeedback key={`${analysis.id}-${findings.indexOf(finding)}-${userId}`} analysisId={analysis.id} findingIndex={findings.indexOf(finding)} annotation={analysis.feedback?.[`${findings.indexOf(finding)}_${userId}`]} />
                                         </div>
                                     </article>;
                                 })}
@@ -209,7 +236,7 @@ function AnalysisProgress({ stage = 'connecting', elapsedSeconds = 0, visitedSta
     </section>;
 }
 
-function DashboardPage({ route = { page: 'overview' }, onNavigate }) {
+function DashboardPage({ route = { page: 'overview' }, onNavigate, userId }) {
     const [pullRequestUrl, setPullRequestUrl] = useState('');
     const [analysis, setAnalysis] = useState(null);
     const [recentAnalyses, setRecentAnalyses] = useState([]);
@@ -359,7 +386,7 @@ function ReviewPage({ analysis, error, onRetry, onNavigate }) {
     return <>
         <RouteLink className="text-button back-link" to="/analyses" onNavigate={onNavigate}>← All analyses</RouteLink>
         {error ? <section className="welcome-section" role="alert"><AlertTriangle size={21} /><div><h2>Report could not be opened</h2><p className="muted-text">{error}</p><button type="button" className="text-button" onClick={onRetry}>Try again</button></div></section>
-            : analysis ? <AnalysisReport key={analysis.id} analysis={analysis} />
+            : analysis ? <AnalysisReport key={analysis.id} analysis={analysis} userId={userId} />
                 : <p className="report-loading muted-text" role="status"><LoaderCircle className="spin" size={18} />Loading saved report…</p>}
     </>;
 }

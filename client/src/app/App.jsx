@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DashboardPage, { RouteLink } from '../features/dashboard/DashboardPage.jsx';
-import { loadSampleAnalysis } from '../features/dashboard/analysis.api.js';
+import { loadSampleAnalysis, loadGitHubSession, logoutGitHub, githubLoginUrl } from '../features/dashboard/analysis.api.js';
 
 function resolveRoute(pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -18,6 +18,22 @@ function resolveRoute(pathname) {
 }
 
 function App() {
+  const [session, setSession] = useState(null);
+  const [connectionError, setConnectionError] = useState('');
+  const [connectionBusy, setConnectionBusy] = useState(false);
+  const refreshSession = useCallback(async () => {
+    setConnectionBusy(true); setConnectionError('');
+    try { setSession(await loadGitHubSession()); }
+    catch (error) { setConnectionError(error.message); }
+    finally { setConnectionBusy(false); }
+  }, []);
+  useEffect(() => { void refreshSession(); }, [refreshSession]);
+  async function signOut() {
+    setConnectionBusy(true); setConnectionError('');
+    try { await logoutGitHub(); setSession(previous => ({ ...previous, authenticated: false, login: null, userId: null })); }
+    catch (error) { setConnectionError(error.message); }
+    finally { setConnectionBusy(false); }
+  }
   const [pathname, setPathname] = useState(() => typeof window === 'undefined' ? '/' : window.location.pathname);
   const route = resolveRoute(pathname);
   const [workspaceVisited, setWorkspaceVisited] = useState(() => resolveRoute(pathname).page !== 'landing');
@@ -52,9 +68,17 @@ function App() {
   }, [pathname]);
 
   return <>
+    {(session?.enabled || connectionError) && <div className="connection-bar">
+      <span>{session?.authenticated ? `Connected as ${session.login}` : 'Connect GitHub to review your installed repositories.'}</span>
+      {session?.installUrl && <a href={session.installUrl}>Install on GitHub ↗</a>}
+      {session?.authenticated ? <button type="button" disabled={connectionBusy} onClick={signOut}>Sign out</button> : <a href={githubLoginUrl}>Connect GitHub</a>}
+      {connectionError && <><span role="alert">{connectionError}</span><button type="button" disabled={connectionBusy} onClick={refreshSession}>Retry connection</button></>}
+    </div>}
     {route.page === 'landing' && <LandingPage onNavigate={navigate} />}
     {/* Keep an active review mounted when its user visits the introduction. */}
-    {(workspaceVisited || route.page !== 'landing') && <div hidden={route.page === 'landing'}><DashboardPage route={route.page === 'landing' ? lastWorkspaceRoute.current : route} onNavigate={navigate} /></div>}
+    {(workspaceVisited || route.page !== 'landing') && (session && (!session.enabled || session.authenticated)
+      ? <div hidden={route.page === 'landing'}><DashboardPage route={route.page === 'landing' ? lastWorkspaceRoute.current : route} onNavigate={navigate} userId={session.userId || 'local'} /></div>
+      : route.page !== 'landing' && <main className="connection-welcome"><h1>GitHub workspace</h1><p role="status">{!session ? connectionError || 'Checking connection…' : 'Install PRism on selected repositories, then connect GitHub to open your private workspace.'}</p>{session?.enabled && <a href={githubLoginUrl}>Connect GitHub</a>}</main>)}
   </>;
 }
 

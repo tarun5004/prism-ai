@@ -17,6 +17,18 @@ const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx'
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 const app = await vite.ssrLoadModule('/src/app/App.jsx');
 
+test('finding feedback and provider usage are visible without overwriting evidence', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
+    id: 'feedback-ui', status: 'completed', pullRequest: {}, findings: [{ title: 'Bug', severity: 'high', evidence: 'return bad;', source: 'ai' }],
+    aiDiagnostics: { usage: { inputTokens: 123, outputTokens: 45 }, promptVersion: 'pr-review-v1', schemaVersion: 'review-v1', runId: 'run' }
+  } }));
+  assert.match(html, /Useful/);
+  assert.match(html, /Incorrect/);
+  assert.match(html, /Optional feedback reason/);
+  assert.match(html, /123/);
+  assert.match(html, /return bad;/);
+});
+
 test('charcoal theme keeps text, primary actions and diff states readable', () => {
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   assert.match(css, /color-scheme:\s*dark/);
