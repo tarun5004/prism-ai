@@ -105,7 +105,7 @@ function DiffViewer({ files = [], focusLocation = null }) {
                 aria-controls="selected-file-diff"
                 onClick={() => setSelectedPath(file.path)}
               >
-                <span className="diff-file-path">{file.path}</span>
+                <span className="diff-file-path" title={file.path}>{file.path}</span>
                 <span className="diff-file-meta">
                   <span>{file.status === 'removed' ? 'deleted' : file.status || 'unknown'}</span>
                   {Number.isFinite(file.additions) && <span className="diff-additions">+{file.additions}</span>}
