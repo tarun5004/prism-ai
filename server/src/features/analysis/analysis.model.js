@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const analysisSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true },
+    installationId: { type: Number, index: true },
     status: { type: String, required: true },
     createdAt: { type: String, required: true },
     pullRequest: { type: mongoose.Schema.Types.Mixed, required: true },

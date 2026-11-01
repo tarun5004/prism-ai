@@ -58,10 +58,10 @@ async function requestGitHub(address, options, maxBytes) {
   }
 }
 
-async function fetchPullRequest(pullRequestUrl) {
+async function fetchPullRequest(pullRequestUrl, { token = process.env.GITHUB_TOKEN } = {}) {
   const { owner, repository, number } = parsePullRequestUrl(pullRequestUrl);
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'prism-ai-beta' };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
   // One deadline bounds the entire retrieval, including pagination. No retries.
   const options = { headers, signal: AbortSignal.timeout(30000) };
   const address = `${githubApiBaseUrl}/repos/${owner}/${repository}/pulls/${number}`;
@@ -130,7 +130,7 @@ async function fetchPullRequest(pullRequestUrl) {
 }
 
 // Best-effort context enrichment. A missing source must not discard the saved diff.
-async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_GUIDANCE === 'lexical' } = {}) {
+async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_GUIDANCE === 'lexical', token = process.env.GITHUB_TOKEN } = {}) {
   const result = { scope: 'bounded-js-ts-imports', snippets: [], omitted: [], requests: 0 };
   if (!pullRequest.headSha || !pullRequest.baseSha) {
     result.omitted.push({ reason: 'revision-unavailable' });
@@ -138,7 +138,7 @@ async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_G
   }
   const { owner, repository } = parsePullRequestUrl(pullRequest.url);
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'prism-ai-beta' };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
   const options = { headers, signal: AbortSignal.timeout(20000) };
   const seen = new Set();
   const imports = [];

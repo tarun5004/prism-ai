@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { analyzePullRequest } from '../analysis/analysis.service.js';
 import { findAnalysis } from '../analysis/analysis.repository.js';
+import { appMode, installationToken, consumeReviewBudget } from './github.app.js';
 
 const actions = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review']);
 const repositoryPattern = /^[a-z\d-]+\/[\w.-]+$/i;
@@ -13,7 +14,7 @@ function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysi
   return function handleGitHubWebhook(request, response) {
     const secret = process.env.GITHUB_WEBHOOK_SECRET?.trim();
     const repository = process.env.GITHUB_WEBHOOK_REPOSITORY?.trim().toLowerCase();
-    if (!secret || !repositoryPattern.test(repository || '')) {
+    if (!secret || (!appMode() && !repositoryPattern.test(repository || ''))) {
       return response.status(503).json({ message: 'GitHub webhook is not configured.' });
     }
     if (!Buffer.isBuffer(request.body)) return response.status(415).json({ message: 'Send application/json.' });
@@ -42,12 +43,15 @@ function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysi
       || typeof deliveryId !== 'string' || !/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(deliveryId)) {
       return response.status(400).json({ message: 'Invalid Pull Request event.' });
     }
-    if (payload.repository.full_name.toLowerCase() !== repository) return response.status(403).json({ message: 'Repository is not enabled for this webhook.' });
+    const eventRepository = payload.repository.full_name.toLowerCase();
+    if (!repositoryPattern.test(eventRepository) || (!appMode() && eventRepository !== repository)) return response.status(403).json({ message: 'Repository is not enabled for this webhook.' });
+    const installationId = appMode() ? payload.installation?.id : undefined;
+    if (appMode() && (!Number.isSafeInteger(installationId) || installationId < 1)) return response.status(400).json({ message: 'Missing installation.' });
     if (pr.draft || pr.state !== 'open') return response.status(200).json({ status: 'ignored' });
 
     const baseSha = pr.base.sha.toLowerCase();
     const headSha = pr.head.sha.toLowerCase();
-    const id = 'webhook-' + createHash('sha256').update(`${repository}#${payload.number}:${baseSha}:${headSha}`).digest('hex');
+    const id = 'webhook-' + createHash('sha256').update(`${installationId ? installationId + ':' : ''}${eventRepository}#${payload.number}:${baseSha}:${headSha}`).digest('hex');
     if (active.has(id)) return response.status(202).json({ status: 'duplicate', analysisId: id });
     if (active.size >= 2) return response.status(503).json({ message: 'Webhook reviewer is busy. Redeliver this event later.' });
     active.add(id);
@@ -61,10 +65,16 @@ function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysi
           log({ ...details, status: 'duplicate' });
           return;
         }
-        const result = await analyze(`https://github.com/${repository}/pull/${payload.number}`, {
+        if (installationId && !consumeReviewBudget('installation:' + installationId)) {
+          log({ ...details, status: 'failed', errorCode: 'REVIEW_LIMIT' });
+          return;
+        }
+        const githubToken = installationId ? await installationToken(installationId, eventRepository) : undefined;
+        const result = await analyze(`https://github.com/${eventRepository}/pull/${payload.number}`, {
           id,
+          installationId, githubToken,
           expectedRevision: { baseSha, headSha },
-          trigger: { type: 'github_webhook', deliveryId, action: payload.action, repository, baseSha, headSha }
+          trigger: { type: 'github_webhook', deliveryId, action: payload.action, repository: eventRepository, baseSha, headSha }
         });
         log({ ...details, status: result.body.status === 'completed' ? 'completed' : 'failed', httpStatus: result.status, aiStatus: result.body.aiStatus });
       } catch {
