@@ -35,4 +35,16 @@ async function findAnalysis(analysisId) {
   return analyses.get(analysisId);
 }
 
-export { findAnalysis, listAnalyses, saveAnalysis };
+async function saveFindingFeedback(id, index, userId, annotation) {
+  if (!Number.isSafeInteger(index) || index < 0 || !/^(local|\d+)$/.test(userId)) throw Error('Invalid feedback key.');
+  const key = `${index}_${userId}`;
+  if (mongoose.connection.readyState === 1) {
+    return Analysis.findOneAndUpdate({ id, [`findings.${index}`]: { $exists: true } }, { $set: { [`feedback.${key}`]: annotation } }, { new: true }).lean();
+  }
+  const report = analyses.get(id);
+  if (!report || !report.findings[index]) return null;
+  report.feedback = { ...report.feedback, [key]: annotation };
+  return report;
+}
+
+export { findAnalysis, listAnalyses, saveAnalysis, saveFindingFeedback };

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
-import { createAnalysis } from '../src/features/analysis/analysis.controller.js';
+import { createAnalysis, setFindingFeedback } from '../src/features/analysis/analysis.controller.js';
 import { findAnalysis, listAnalyses, saveAnalysis } from '../src/features/analysis/analysis.repository.js';
 import Analysis from '../src/features/analysis/analysis.model.js';
 import { analyzePullRequest } from '../src/features/analysis/analysis.service.js';
@@ -10,6 +10,19 @@ let originalModel;
 const file = { filename: 'src/math.service.js', status: 'modified', additions: 1, deletions: 1, changes: 2, patch: '@@ -1 +1 @@\n-return value * 2;\n+return value / 2;' };
 const finding = { title: 'Unexpected division', severity: 'medium', filePath: file.filename, lineNumber: 1, explanation: 'The result now halves instead of doubles.', suggestedFix: 'Confirm the intended behavior before restoring multiplication.', evidence: 'return value / 2;' };
 const review = { summary: 'The calculation now divides.', walkthrough: [{ filePath: file.filename, description: 'Replaces multiplication with division.', evidenceRefs: [{ filePath: file.filename, lineSide: 'new', lineNumber: 1, evidence: finding.evidence }] }], impacts: [], limitations: ['Callers were not analyzed.'] };
+
+test('feedback is validated and saved separately without changing generated evidence', async () => {
+  const report = { id: 'feedback-test', status: 'completed', createdAt: new Date().toISOString(), pullRequest: {}, findings: [finding] };
+  await saveAnalysis(report);
+  const response = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+  await setFindingFeedback({ params: { analysisId: report.id, findingIndex: '0' }, body: { verdict: 'useful', reason: 'Confirmed by code review' } }, response);
+  assert.equal(response.body.feedback['0_local'].verdict, 'useful');
+  assert.deepEqual(response.body.findings, [finding]);
+  await setFindingFeedback({ params: { analysisId: report.id, findingIndex: '0' }, body: { verdict: 'wrong-value' } }, response);
+  assert.equal(response.code, 400);
+  await setFindingFeedback({ params: { analysisId: report.id, findingIndex: '9' }, body: { verdict: 'useful' } }, response);
+  assert.equal(response.code, 404);
+});
 
 beforeEach(() => {
   originalKey = process.env.GEMINI_API_KEY;

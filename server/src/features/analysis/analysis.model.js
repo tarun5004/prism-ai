@@ -8,6 +8,7 @@ const analysisSchema = new mongoose.Schema(
     createdAt: { type: String, required: true },
     pullRequest: { type: mongoose.Schema.Types.Mixed, required: true },
     findings: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    feedback: { type: mongoose.Schema.Types.Mixed, default: {} },
     trigger: {
       type: { type: String, enum: ['github_webhook'] },
       deliveryId: String,

@@ -1,5 +1,5 @@
 import { analyzePullRequest } from './analysis.service.js';
-import { findAnalysis, listAnalyses } from './analysis.repository.js';
+import { findAnalysis, listAnalyses, saveFindingFeedback } from './analysis.repository.js';
 import { canReadReport, consumeReviewBudget } from '../pullRequest/github.app.js';
 
 // Create a report from one Pull Request URL and save the normalized beta result.
@@ -58,4 +58,19 @@ async function getAnalysis(request, response) {
   return response.json(analysis);
 }
 
-export { createAnalysis, getAnalyses, getAnalysis };
+async function setFindingFeedback(request, response) {
+  const { verdict, reason = '' } = request.body || {};
+  const index = Number(request.params.findingIndex);
+  if (!/^\d{1,4}$/.test(request.params.findingIndex) || !Number.isSafeInteger(index)
+    || !['useful', 'incorrect'].includes(verdict) || typeof reason !== 'string' || reason.length > 500) {
+    return response.status(400).json({ message: 'Use useful or incorrect with an optional reason up to 500 characters.' });
+  }
+  const report = await findAnalysis(request.params.analysisId);
+  if (!report || !canReadReport(request.auth, report) || !report.findings[index]) return response.status(404).json({ message: 'Finding not found.' });
+  const userId = request.auth?.userId || 'local';
+  const saved = await saveFindingFeedback(report.id, index, userId, { verdict, reason: reason.trim(), updatedAt: new Date().toISOString(), userId });
+  if (!saved) return response.status(404).json({ message: 'Finding not found.' });
+  return response.json(saved);
+}
+
+export { createAnalysis, getAnalyses, getAnalysis, setFindingFeedback };
