@@ -10,6 +10,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
   try {
     progress('fetching');
     const pullRequest = await fetchPullRequest(pullRequestUrl, { token: githubToken });
+    if (installationId && typeof pullRequest.repository === 'string') pullRequest.repository = pullRequest.repository.toLowerCase();
     if (expectedRevision && (pullRequest.baseSha !== expectedRevision.baseSha || pullRequest.headSha !== expectedRevision.headSha)) {
       throw new PullRequestError('PR revision changed before webhook review. Use the latest event or analyze the PR manually.', 409);
     }

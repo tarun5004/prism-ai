@@ -24,6 +24,12 @@ test('feedback is validated and saved separately without changing generated evid
   assert.equal(response.code, 404);
 });
 
+test('history scopes before limiting and cannot be displaced by other installations', async () => {
+  for (let index = 0; index < 22; index++) await saveAnalysis({ id: 'scope-history-' + index, installationId: index === 0 ? 701 : 702, status: 'completed', createdAt: new Date(Date.now() + index).toISOString(), pullRequest: { repository: 'scope/repo' }, findings: [] });
+  const reports = await listAnalyses({ repositories: [{ installationId: 701, repository: 'scope/repo' }] });
+  assert.deepEqual(reports.map(report => report.id), ['scope-history-0']);
+});
+
 beforeEach(() => {
   originalKey = process.env.GEMINI_API_KEY;
   originalModel = process.env.GEMINI_MODEL;

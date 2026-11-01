@@ -8,6 +8,7 @@ import { createWebhookHandler } from './features/pullRequest/pullRequest.webhook
 import { createGitHubRoutes, requireSession } from './features/pullRequest/github.app.js';
 
 const app = express();
+app.use('/api', (request, response, next) => { response.set('Cache-Control', 'no-store'); next(); });
 
 app.use(cors({ origin: process.env.APP_ORIGIN || 'http://localhost:5173', credentials: true }));
 // HMAC covers the original bytes; JSON middleware must not consume them first.

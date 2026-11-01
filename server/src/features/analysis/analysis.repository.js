@@ -16,14 +16,19 @@ async function saveAnalysis(analysis) {
 }
 
 // Return recent analyses from the configured store for the dashboard history list.
-async function listAnalyses() {
+async function listAnalyses({ repositories, installationId, localOnly = false } = {}) {
+  const query = repositories ? { $or: repositories.map(item => ({ installationId: item.installationId, 'pullRequest.repository': item.repository })) }
+    : installationId ? { installationId } : localOnly ? { installationId: { $exists: false } } : {};
+  if (repositories && !repositories.length) return [];
   if (mongoose.connection.readyState === 1) {
-    return Analysis.find().sort({ createdAt: -1 }).limit(20).lean();
+    return Analysis.find(query).sort({ createdAt: -1 }).limit(20).lean();
   }
 
-  return Array.from(analyses.values()).sort(
+  return Array.from(analyses.values()).filter(report => repositories
+    ? repositories.some(item => item.installationId === report.installationId && item.repository === report.pullRequest?.repository?.toLowerCase())
+    : installationId ? report.installationId === installationId : !localOnly || !report.installationId).sort(
     (firstAnalysis, secondAnalysis) => new Date(secondAnalysis.createdAt) - new Date(firstAnalysis.createdAt)
-  );
+  ).slice(0, 20);
 }
 
 // Find one stored analysis by its beta identifier.

@@ -40,6 +40,7 @@ const analysisSchema = new mongoose.Schema(
   { versionKey: false }
 );
 
+analysisSchema.index({ installationId: 1, 'pullRequest.repository': 1, createdAt: -1 });
 const Analysis = mongoose.models.Analysis || mongoose.model('Analysis', analysisSchema);
 
 export default Analysis;

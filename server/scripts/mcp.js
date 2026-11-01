@@ -17,7 +17,7 @@ function createReportServer({ list = listAnalyses, find = findAnalysis, installa
   const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
   server.registerTool('list_reports', { description: 'List up to 20 saved report summaries in the configured local scope.', inputSchema: {}, annotations }, async () => {
     try {
-      return reply({ reports: (await list()).filter(allowed).slice(0, 20).map(report => ({ id: report.id, status: report.status, title: text(report.pullRequest?.title), repository: text(report.pullRequest?.repository), aiStatus: report.aiStatus })) });
+      return reply({ reports: (await list({ installationId, localOnly: !installationId })).filter(allowed).slice(0, 20).map(report => ({ id: report.id, status: report.status, title: text(report.pullRequest?.title), repository: text(report.pullRequest?.repository), aiStatus: report.aiStatus })) });
     } catch { return notFound(); }
   });
   server.registerTool('read_report', { description: 'Read a bounded saved review. No generation, patches, secrets or GitHub writes.', inputSchema: { id: z.string().regex(/^[a-z\d_-]{1,128}$/i) }, annotations }, async ({ id }) => {

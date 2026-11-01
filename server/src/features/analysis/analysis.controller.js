@@ -44,7 +44,7 @@ async function createAnalysis(request, response) {
 
 // Return recent beta analyses for the dashboard history list.
 async function getAnalyses(request, response) {
-  response.json((await listAnalyses()).filter(report => canReadReport(request.auth, report)));
+  response.json((await listAnalyses(request.auth)).filter(report => canReadReport(request.auth, report)));
 }
 
 // Return one previously saved beta analysis.
