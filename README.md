@@ -139,6 +139,9 @@ Manual submission defaults to JSON. With `Accept: application/x-ndjson`, it stre
 # Backend offline suite: GitHub/Gemini calls are mocked in integration tests
 npm test --prefix server
 
+# E1 offline metric checks (Python standard library only)
+python -B -m unittest discover -s server/test -p evaluation_test.py
+
 # Frontend API, rendering and diff checks; uses existing Vite JSX transformation
 cd client
 node --test test/analysis.api.test.js test/diff-viewer.test.js
@@ -150,7 +153,7 @@ npm run build
 
 `npm run test:gemini --prefix server` is a separate **live provider smoke test**. It consumes a real API request; it is not part of the offline suite.
 
-Recorded verification from the implementation sessions: **91 backend tests**, **33 frontend checks**, backend syntax/local health and frontend production build passed. A temporary MongoDB check preserved patches/provenance and rejected a persisted webhook duplicate. These are recorded runs, not claims that this documentation edit reran them. The author also reported a live GitHub webhook → AI report flow and a successful redelivery check; that is manual demo evidence, not a labelled accuracy benchmark. Browser-driven visual/interaction QA remains incomplete.
+Recorded verification: **95 backend tests** and **7 Python evaluation tests** passed on 2 November 2026, including the atomic-artifact regression. A no-provider dry-run artifact/scorer roundtrip passed. Earlier implementation sessions recorded **33 frontend checks**, backend syntax/local health and frontend production build; frontend code was unchanged by E1 and those frontend checks were not rerun in this slice. A temporary MongoDB check preserved patches/provenance and rejected a persisted webhook duplicate. These are recorded runs, not claims that this documentation edit reran them. The author also reported a live GitHub webhook → AI report flow and a successful redelivery check; that is manual demo evidence, not a labelled accuracy benchmark. Browser-driven visual/interaction QA remains incomplete.
 
 ## Know the limits before reading the results
 
@@ -163,8 +166,10 @@ Recorded verification from the implementation sessions: **91 backend tests**, **
 
 ## What comes next
 
-**AI Evaluation V1**: use labelled bug and clean-change examples to measure review quality before adding more AI behavior. Then add actual token/prompt-version diagnostics, compare retrieval approaches and collect finding feedback.
+**AI Evaluation V1 tooling is implemented:** 16 frozen synthetic code cases, an offline Python scorer and an opt-in Node collector. Dry-run is the default; semantic precision/recall require human judgments. No live model-quality benchmark has been recorded yet. Start with the [evaluation guide](docs/beta/DEMO_AND_EVALUATION.md#ai-evaluation-v1-frozen-code-cases), then add actual token/prompt-version diagnostics, compare retrieval approaches and collect finding feedback.
 
 In parallel, the recruiter-facing product path is **Install on GitHub → select repositories → authorize → automatic PR review**. That needs GitHub App installation authentication, installation-scoped access and secure report visibility before a public launch. MCP is an additional AI-client interface, not a replacement for GitHub event delivery.
+
+Deployment goal: a zero-recurring-cost recruiter demo, subject to verified free/student eligibility and operational limits. No paid host or public deployment was created by this evaluation slice. Provider API quota/billing is separate from consumer subscriptions.
 
 Track acceptance criteria and completed work in [FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md). Older phase/beta documents describe earlier milestones; use the roadmap as the current status source.
