@@ -132,4 +132,5 @@ function rankGuidance(code, query) {
   return sections.sort((a, b) => b.score - a.score || a.startLine - b.startLine).slice(0, 2);
 }
 
-export { prepareAiInput, rankGuidance };
+const containsSensitiveText = value => credentialText.test(value) || shellCredential.test(value);
+export { prepareAiInput, rankGuidance, containsSensitiveText };
