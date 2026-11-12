@@ -39,6 +39,17 @@ test('missing provider usage remains unknown instead of zero', async () => {
   assert.equal(result.diagnostics.usage, null);
 });
 
+test('request size measures the full sanitized serialized context without storing raw code', async () => {
+  respondWith('{}');
+  const result = await aiService.runAiAnalysis({ ...reviewPr, title: 'Review café changes' });
+  const body = JSON.parse(globalThis.fetch.mock.calls[0].arguments[1].body);
+  const contents = body.contents[0].parts[0].text;
+  assert.equal(result.diagnostics.inputCharacters, contents.length);
+  assert.equal(result.diagnostics.inputBytes, Buffer.byteLength(contents, 'utf8'));
+  assert.ok(result.diagnostics.inputBytes > result.diagnostics.inputCharacters);
+  assert.ok(!JSON.stringify(result.diagnostics).includes('café'));
+});
+
 test('default review deadline is 120 seconds in SDK headers and diagnostics', async () => {
   respondWith(JSON.stringify({ findings: [] }));
   const result = await aiService.runAiAnalysis({ changedFiles: [{ path: 'a.js', additions: 1, deletions: 0, patch: '@@ -0,0 +1 @@\n+hello();' }] });

@@ -27,6 +27,8 @@ const analysisSchema = new mongoose.Schema(
       pipeline: mongoose.Schema.Types.Mixed,
       tracing: mongoose.Schema.Types.Mixed,
       runId: String,
+      inputCharacters: Number,
+      inputBytes: Number,
       promptVersion: String,
       schemaVersion: String,
       usage: { type: new mongoose.Schema({ inputTokens: Number, outputTokens: Number, thinkingTokens: Number, totalTokens: Number }, { _id: false }), default: undefined },

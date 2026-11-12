@@ -54,6 +54,11 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
   if (files.length === 0) return result('skipped', [], 'NO_REVIEWABLE_DIFF');
   if (!validTimeout) return result('unavailable', [], 'INVALID_TIMEOUT');
   const signal = AbortSignal.timeout(timeoutMs);
+  // Measure the exact sanitized model input, including intent, snippets and memory.
+  // Store counts only; keeping a second raw prompt would expose repository content.
+  const contents = JSON.stringify({ intent, files, snippets, memory });
+  diagnostics.inputCharacters = contents.length;
+  diagnostics.inputBytes = Buffer.byteLength(contents, 'utf8');
   let response;
 
   try {
@@ -62,7 +67,7 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
     diagnostics.attempts = 1;
     response = await client.models.generateContent({
       model,
-      contents: JSON.stringify({ intent, files, snippets, memory }),
+      contents,
       config: {
         abortSignal: signal,
         maxOutputTokens: 4096,
