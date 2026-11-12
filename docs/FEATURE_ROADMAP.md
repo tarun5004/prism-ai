@@ -62,3 +62,37 @@ This is **not** a full accuracy benchmark. Judgments remain empty, so precision/
 ## Work discipline
 
 Implement one slice, run meaningful checks, commit to its feature branch, integrate on integration/v0-demo. Preserve user changes and main. Keep this status aligned with executed evidence; detailed commands and review fixes live in the chunk ledger.
+
+## AI capability audit and priorities
+
+Updated after the 12 November live verification. Framework names and implemented concepts are distinct; the rows below supersede earlier blocked/not-run notes where explicitly stated.
+
+| Capability | Actual implementation / evidence | Decision for this demo |
+| --- | --- | --- |
+| Model calls and structured code review | Direct official Gemini SDK in `ai.service.js`; live smoke and B01 review succeeded, separate real PR generation returned 504 | Keep existing SDK; provider availability remains unresolved |
+| Repository code/docs context | Revision-pinned source windows, selected imports, opt-in lexical README/CONTRIBUTING retrieval in existing services | Keep bounded retrieval; no whole-repository index claim |
+| Serialization and tokens | Sanitized contents character/UTF-8 byte counts, validated JSON output, provider token metadata; raw prompts not stored | Implemented; byte counts exclude schema/system instructions |
+| Tracing and latency | Local stage timings and metadata-only Langfuse OTLP exporter | Implemented; real Langfuse project ingestion still needs configured credentials/verification |
+| Embeddings | Existing SDK/cosine experiment: two live batches succeeded; lexical and semantic both hit 3/3 owned relevance queries | Experimental only; no measured advantage on this tiny set |
+| Chroma / persistent embedding store | Not implemented; no revision-scoped persistent vector index | Defer until repository-wide retrieval is a real requirement; would need a separate datastore/runtime |
+| LangChain models/tools/retrievers | No LangChain dependency; direct SDK and small existing functions implement the current linear path | Defer adapter migration; it would duplicate working integration without solving 503/504 |
+| LangGraph state/checkpoints/resume | No LangGraph; existing service sequences GitHub, retrieval, memory, model and save with explicit branches | Durable checkpoint/resume is missing; defer until interruptible multi-step work is required |
+| Queue / pods | Two in-process webhook jobs; no durable queue, automatic retries, Kubernetes or pods | Restart recovery still requires redelivery; no scalable infrastructure needed for this demo |
+| Previous versions / feedback memory | Scoped saved revisions and at most three useful prior labels, with current evidence validation | Implemented and offline tested; not model training or general chat memory |
+| MCP protocol/server | Official SDK stdio server, scoped list/read reports; new demo-only read_demo_report verified through real child-process handshake/discovery/call | Compatible local stdio clients only; desktop setup, remote OAuth connector and public registry listing remain separate |
+
+### Ordered next work
+
+1. **P0 — stable live demonstration:** retain the verified recorded sample; observe model availability before promising live review reliability. Do not inflate timeout or add frameworks as a speculative fix. A separate model comparison is a possible next diagnostic, not an implemented fallback.
+2. **P0 — owner acceptance:** hosting, GitHub App credentials/onboarding, desktop MCP setup and real Langfuse ingestion. Do not claim these passed from mocked tests.
+3. **P1 — review usefulness:** human adjudication of frozen findings, then additional dev evaluation. Small relevance fixtures are not a bug-detection score.
+4. **P2 — conditional architecture:** persistent semantic retrieval if broader code search is needed; checkpointed graph/queue if resumable work becomes necessary; LangChain only if it simplifies those integrations. These are deliberately unimplemented, not silently claimed complete.
+
+### Current evidence
+
+- Model discovery: configured model listed. Structured smoke: 16,113 ms, successful. Owned B01: 4,267 ms, completed with validated finding/walkthrough and token metadata.
+- Real GitHub test PR HTTP flow: health 200, analysis 201, four GitHub requests, one model request, one saved file/patch, read-back 200 matching the diff. AI status unavailable with upstream HTTP504 after 119,392 ms; contents 966 characters/bytes. Storage for this check was isolated process memory, not a new MongoDB verification.
+- Updated [live artifact](beta/evaluation-live-dev.json) preserves original evaluation plus demoCapture and retrievalCheck. No precision/recall claim without human labels.
+- 122 backend, 38 frontend, 7 Python checks and production build passed. No new package or application file. Independent read-only review found no important/critical issue in diagnostics/MCP/capture changes.
+
+Official references: [Gemini troubleshooting](https://ai.google.dev/gemini-api/docs/troubleshooting), [LangGraph stateful orchestration](https://docs.langchain.com/oss/javascript/langgraph/overview), [Chroma embedding storage/search](https://docs.trychroma.com/docs/overview/introduction), [MCP client/server architecture](https://modelcontextprotocol.io/docs/learn/architecture).
