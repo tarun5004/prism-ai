@@ -152,6 +152,7 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                                 {diagnostics && <details className="ai-diagnostics"><summary>Request details</summary><p>
                                     Prompt {diagnostics.promptVersion || 'not recorded'} · Schema {diagnostics.schemaVersion || 'not recorded'}<br />
                                     Input tokens: {diagnostics.usage?.inputTokens ?? 'unknown'} · Output: {diagnostics.usage?.outputTokens ?? 'unknown'} · Thinking: {diagnostics.usage?.thinkingTokens ?? 'unknown'}<br />
+                                    {Number.isSafeInteger(diagnostics.inputCharacters) && Number.isSafeInteger(diagnostics.inputBytes) && <>Context: {diagnostics.inputCharacters} characters · {diagnostics.inputBytes} UTF-8 bytes (excluding instructions/schema)<br /></>}
                                     {diagnostics.runId && <>Run: <code>{diagnostics.runId}</code><br /></>}
                                     {Number.isFinite(diagnostics.durationMs) && `${(diagnostics.durationMs / 1000).toFixed(1)}s elapsed. `}
                                     {Number.isFinite(diagnostics.timeoutMs) && `${diagnostics.timeoutMs / 1000}s timeout. `}

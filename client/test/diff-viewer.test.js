@@ -40,12 +40,14 @@ test('loaded report page receives the connected reviewer identity', () => {
 test('finding feedback and provider usage are visible without overwriting evidence', () => {
   const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
     id: 'feedback-ui', status: 'completed', pullRequest: {}, findings: [{ title: 'Bug', severity: 'high', evidence: 'return bad;', source: 'ai' }],
-    aiDiagnostics: { usage: { inputTokens: 123, outputTokens: 45 }, promptVersion: 'pr-review-v1', schemaVersion: 'review-v1', runId: 'run' }
+    aiDiagnostics: { usage: { inputTokens: 123, outputTokens: 45 }, inputCharacters: 456, inputBytes: 470, promptVersion: 'pr-review-v1', schemaVersion: 'review-v1', runId: 'run' }
   } }));
   assert.match(html, /Useful/);
   assert.match(html, /Incorrect/);
   assert.match(html, /Optional feedback reason/);
   assert.match(html, /123/);
+  assert.match(html, /456 characters/);
+  assert.match(html, /470 UTF-8 bytes/);
   assert.match(html, /return bad;/);
 });
 
