@@ -24,6 +24,8 @@ const analysisSchema = new mongoose.Schema(
     aiCoverage: { type: mongoose.Schema.Types.Mixed },
     aiReview: { type: mongoose.Schema.Types.Mixed },
     aiDiagnostics: {
+      pipeline: mongoose.Schema.Types.Mixed,
+      tracing: mongoose.Schema.Types.Mixed,
       runId: String,
       promptVersion: String,
       schemaVersion: String,

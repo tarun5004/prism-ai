@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { runAiAnalysis } from '../ai/ai.service.js';
+import { runAiAnalysis, exportReviewTrace } from '../ai/ai.service.js';
 import { prepareAiInput, buildReviewMemory } from '../ai/ai.context.js';
 import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
 import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis } from './analysis.repository.js';
@@ -8,9 +8,22 @@ import { runRules } from './analysis.rules.js';
 
 // Shared by manual requests and verified GitHub events.
 async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = randomUUID(), trigger, expectedRevision, installationId, githubToken } = {}) {
+  const pipeline = { startedAt: new Date().toISOString(), stages: [] };
+  // This small wrapper records real stages; optional failures remain visible in the report.
+  async function measure(name, work) {
+    const stage = { name, startedAt: new Date().toISOString(), status: 'completed' };
+    const started = performance.now();
+    pipeline.stages.push(stage);
+    try {
+      const value = await work();
+      if (name === 'model') stage.status = value.status === 'unavailable' ? 'failed' : value.status;
+      return value;
+    } catch (error) { stage.status = 'failed'; throw error; }
+    finally { stage.durationMs = Math.round(performance.now() - started); }
+  }
   try {
     progress('fetching');
-    const pullRequest = await fetchPullRequest(pullRequestUrl, { token: githubToken });
+    const pullRequest = await measure('github', () => fetchPullRequest(pullRequestUrl, { token: githubToken }));
     if (installationId && typeof pullRequest.repository === 'string') pullRequest.repository = pullRequest.repository.toLowerCase();
     if (typeof pullRequest.key === 'string') pullRequest.key = pullRequest.key.toLowerCase();
     if (expectedRevision && (pullRequest.baseSha !== expectedRevision.baseSha || pullRequest.headSha !== expectedRevision.headSha)) {
@@ -21,12 +34,12 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     if (aiEnabled) progress('context');
     // Source enrichment is transient; only validated review evidence reaches storage/API.
     const reviewInput = aiEnabled
-      ? { ...pullRequest, reviewContext: await fetchReviewContext(pullRequest, { token: githubToken }) } : pullRequest;
+      ? { ...pullRequest, reviewContext: await measure('retrieval', () => fetchReviewContext(pullRequest, { token: githubToken })) } : pullRequest;
     if (aiEnabled) {
-      try { reviewInput.reviewMemory = buildReviewMemory(await findPreviousAnalysis(pullRequest, installationId), pullRequest); }
+      try { reviewInput.reviewMemory = buildReviewMemory(await measure('memory', () => findPreviousAnalysis(pullRequest, installationId)), pullRequest); }
       catch { reviewInput.reviewMemory = null; } // Optional memory cannot discard a current review.
     }
-    const aiResult = await runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') });
+    const aiResult = await measure('model', () => runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') }));
     const analysis = {
       id,
       ...(installationId ? { installationId } : {}),
@@ -38,10 +51,11 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
       aiStatus: aiResult.status,
       aiModel: aiResult.model,
       aiCoverage: aiResult.coverage,
-      aiDiagnostics: aiResult.diagnostics,
+      aiDiagnostics: { ...aiResult.diagnostics, pipeline },
       ...(aiResult.review ? { aiReview: aiResult.review } : {}),
       ...(aiResult.error ? { aiError: aiResult.error } : {})
     };
+    analysis.aiDiagnostics.tracing = await exportReviewTrace(analysis);
 
     progress('saving');
     const saved = await saveAnalysis(analysis);
@@ -63,10 +77,12 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
       createdAt: new Date().toISOString(),
       pullRequest: { url: pullRequestUrl, ...(installationId ? { repository: pullRequestUrl.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\//i)?.[1] } : {}) },
       findings: [],
+      aiDiagnostics: { pipeline },
       ...(trigger ? { trigger } : {}),
       error: error.message,
       errorCode: error.code
     };
+    failedAnalysis.aiDiagnostics.tracing = await exportReviewTrace(failedAnalysis);
 
     try {
       await saveAnalysis(failedAnalysis);

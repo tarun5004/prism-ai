@@ -122,6 +122,8 @@ test('controller saves AI findings alongside deterministic findings', async () =
   assert.equal(report.pullRequest.reviewContext, undefined);
   assert.equal(report.aiCoverage.analyzedFiles, 1);
   assert.equal(report.aiDiagnostics.attempts, 1);
+  assert.deepEqual(report.aiDiagnostics.pipeline.stages.map(stage => stage.name), ['github', 'retrieval', 'memory', 'model']);
+  assert.ok(report.aiDiagnostics.pipeline.stages.every(stage => stage.durationMs >= 0));
   assert.ok(Number.isInteger(report.aiDiagnostics.durationMs));
   assert.ok(report.findings.some(finding => finding.source === 'rule'));
   assert.equal(report.findings.find(finding => finding.source === 'ai').evidence, 'return value / 2;');

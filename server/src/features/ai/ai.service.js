@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
-import { randomUUID } from 'node:crypto';
-import { prepareAiInput } from './ai.context.js';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { prepareAiInput, containsSensitiveText } from './ai.context.js';
 
 const findingFields = {
   title: { type: 'string' },
@@ -240,4 +240,46 @@ async function checkGeminiConnection({ timeoutMs = 30000 } = {}) {
   }
 }
 
-export { checkGeminiConnection, runAiAnalysis };
+// Optional metadata-only OTLP export. A tracing outage must never erase a review.
+async function exportReviewTrace(analysis) {
+  if (process.env.LANGFUSE_ENABLED !== 'true') return { status: 'disabled' };
+  if (!process.env.LANGFUSE_PUBLIC_KEY || !process.env.LANGFUSE_SECRET_KEY) return { status: 'unavailable', errorCode: 'TRACE_CONFIGURATION' };
+  const traceId = randomBytes(16).toString('hex');
+  try {
+    const origin = new URL(process.env.LANGFUSE_BASE_URL || 'https://cloud.langfuse.com');
+    if (origin.origin !== origin.href.replace(/\/$/, '') || (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(origin.hostname)))) throw Error('Invalid trace destination');
+    const pipeline = analysis.aiDiagnostics?.pipeline;
+    const start = Date.parse(pipeline?.startedAt);
+    if (!Number.isFinite(start)) throw Error('Missing trace timing');
+    const rootId = randomBytes(8).toString('hex');
+    const attribute = (key, value) => ({ key, value: typeof value === 'number' ? { doubleValue: value } : { stringValue: String(value) } });
+    const common = [attribute('langfuse.trace.name', 'prism.review'), attribute('langfuse.version', analysis.aiDiagnostics?.promptVersion || 'unrecorded')];
+    const nano = milliseconds => String(BigInt(Math.trunc(milliseconds)) * 1000000n);
+    const root = { traceId, spanId: rootId, name: 'prism.review', kind: 1, startTimeUnixNano: nano(start), endTimeUnixNano: nano(Math.max(start, Date.now())), attributes: [...common, attribute('langfuse.observation.type', 'span')], status: { code: analysis.status === 'failed' || analysis.aiStatus === 'unavailable' ? 2 : 1 } };
+    const spans = [root];
+    for (const stage of (pipeline.stages || []).slice(0, 4)) {
+      if (!['github', 'retrieval', 'memory', 'model'].includes(stage.name) || !Number.isFinite(stage.durationMs) || stage.durationMs < 0 || !Number.isFinite(Date.parse(stage.startedAt))) continue;
+      const attributes = [...common, attribute('langfuse.observation.type', stage.name === 'model' ? 'generation' : stage.name === 'retrieval' ? 'retriever' : 'span')];
+      if (stage.name === 'model') {
+        if (typeof analysis.aiModel === 'string' && !containsSensitiveText(analysis.aiModel)) attributes.push(attribute('gen_ai.request.model', analysis.aiModel.slice(0, 100)));
+        for (const [name, field] of [['input_tokens', 'inputTokens'], ['output_tokens', 'outputTokens']]) {
+          const count = analysis.aiDiagnostics?.usage?.[field];
+          if (Number.isSafeInteger(count) && count >= 0) attributes.push(attribute('gen_ai.usage.' + name, count));
+        }
+      }
+      const start = Date.parse(stage.startedAt);
+      spans.push({ traceId, spanId: randomBytes(8).toString('hex'), parentSpanId: rootId, name: 'prism.' + stage.name, kind: 1, startTimeUnixNano: nano(start), endTimeUnixNano: nano(start + stage.durationMs), attributes, status: { code: stage.status === 'failed' ? 2 : stage.status === 'skipped' ? 0 : 1 } });
+    }
+    const response = await fetch(origin.origin + '/api/public/otel/v1/traces', {
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(2000),
+      headers: { 'Content-Type': 'application/json', 'x-langfuse-ingestion-version': '4', Authorization: 'Basic ' + Buffer.from(process.env.LANGFUSE_PUBLIC_KEY + ':' + process.env.LANGFUSE_SECRET_KEY).toString('base64') },
+      body: JSON.stringify({ resourceSpans: [{ resource: { attributes: [attribute('service.name', 'prism-ai')] }, scopeSpans: [{ scope: { name: 'prism-review' }, spans }] }] })
+    });
+    if (!response.ok) throw Error('Trace rejected');
+    const result = await response.json();
+    if (Number(result.partialSuccess?.rejectedSpans || 0) > 0) throw Error('Trace partially rejected');
+    return { status: 'exported', traceId };
+  } catch { return { status: 'unavailable', errorCode: 'TRACE_EXPORT_FAILED', traceId }; }
+}
+
+export { checkGeminiConnection, runAiAnalysis, exportReviewTrace };

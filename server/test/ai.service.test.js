@@ -47,7 +47,7 @@ test('default review deadline is 120 seconds in SDK headers and diagnostics', as
   assert.equal(new Headers(options.headers).get('x-server-timeout'), '120');
   assert.equal(globalThis.fetch.mock.callCount(), 1);
 });
-const environmentKeys = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_API_URL', 'AI_API_KEY'];
+const environmentKeys = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_API_URL', 'AI_API_KEY', 'LANGFUSE_ENABLED', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL'];
 let originalEnvironment;
 
 beforeEach(() => {
@@ -57,6 +57,7 @@ beforeEach(() => {
   delete process.env.GEMINI_TIMEOUT_MS;
   delete process.env.AI_API_URL;
   delete process.env.AI_API_KEY;
+  for (const key of environmentKeys.filter(key => key.startsWith('LANGFUSE_'))) delete process.env[key];
   // Offline tests must never fall through to a real provider request.
   mock.method(globalThis, 'fetch', async () => { throw new Error('Unexpected network request'); });
 });
@@ -82,6 +83,31 @@ const contextualReview = {
   impacts: [{ description: 'Callers expecting double may receive half.', evidenceRefs: [{ filePath: 'src/math.js', lineSide: 'new', lineNumber: 2, evidence: '  return value / 2;' }] }],
   limitations: ['Callers were not supplied.']
 };
+
+test('optional Langfuse export sends linked OTLP spans without repository or reviewer content', async () => {
+  assert.equal((await aiService.exportReviewTrace({})).status, 'disabled');
+  process.env.LANGFUSE_ENABLED = 'true'; process.env.LANGFUSE_PUBLIC_KEY = 'test-public'; process.env.LANGFUSE_SECRET_KEY = 'test-secret';
+  globalThis.fetch.mock.mockImplementation(async (url, options) => {
+    assert.equal(url, 'https://cloud.langfuse.com/api/public/otel/v1/traces');
+    assert.equal(options.headers['x-langfuse-ingestion-version'], '4');
+    const spans = JSON.parse(options.body).resourceSpans[0].scopeSpans[0].spans;
+    assert.equal(spans.length, 2);
+    assert.equal(spans[1].parentSpanId, spans[0].spanId);
+    assert.ok(spans.every(span => /^[a-f\d]{32}$/.test(span.traceId)));
+    assert.ok(!options.body.includes('private-code'));
+    return Response.json({});
+  });
+  const result = await aiService.exportReviewTrace({ aiStatus: 'completed', aiModel: 'gemini-test', pullRequest: { description: 'private-code' }, findings: [{ explanation: 'private-code' }], aiDiagnostics: { promptVersion: 'pr-review-v2', usage: { inputTokens: 12, outputTokens: 4 }, pipeline: { startedAt: new Date().toISOString(), stages: [{ name: 'model', startedAt: new Date().toISOString(), durationMs: 12, status: 'completed' }] } } });
+  assert.equal(result.status, 'exported');
+});
+
+test('trace export failures return a safe status without throwing away analysis', async () => {
+  process.env.LANGFUSE_ENABLED = 'true'; process.env.LANGFUSE_PUBLIC_KEY = 'test-public'; process.env.LANGFUSE_SECRET_KEY = 'test-secret';
+  globalThis.fetch.mock.mockImplementation(async () => { throw new Error('private-sdk-error'); });
+  const result = await aiService.exportReviewTrace({ aiDiagnostics: { pipeline: { startedAt: new Date().toISOString(), stages: [] } } });
+  assert.equal(result.status, 'unavailable');
+  assert.ok(!JSON.stringify(result).includes('private-sdk-error'));
+});
 
 test('returns a grounded summary, walkthrough, impacts and advisory recommendation', async () => {
   respondWith(JSON.stringify({ findings: [validFinding], review: contextualReview }));
