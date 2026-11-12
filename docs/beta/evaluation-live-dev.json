@@ -337,5 +337,166 @@
     }
   ],
   "judgments": [],
-  "note": "Original synthetic fixtures. Dry-run makes no model calls. Human judgments are required before claiming semantic accuracy."
+  "note": "Original synthetic fixtures. Dry-run makes no model calls. Human judgments are required before claiming semantic accuracy.",
+  "demoCapture": {
+    "schemaVersion": 1,
+    "runId": "20805e54-37c8-4874-88bf-6dbea274a0ea",
+    "createdAt": "2026-11-12T17:51:52.034Z",
+    "mode": "live",
+    "datasetVersion": "prism-eval-v1",
+    "datasetSha256": "87f04717e1a1717f8668a767f32e5fb95d304cc0ea02353aa3172892687213cf",
+    "split": "dev",
+    "caseIds": [
+      "B01"
+    ],
+    "engine": {
+      "aiServiceSha256": "4ea73ef6f73190f3afce209bc1d45b807d18d851482aab91ecb3a66c923360e0",
+      "aiContextSha256": "cef862760a3a3eed0d6f293a0bae6ea3afd4b11283e067da0d4b83971d096364",
+      "configuredModel": "gemini-3.6-flash"
+    },
+    "cases": [
+      {
+        "caseId": "B01",
+        "status": "completed",
+        "findings": [
+          {
+            "title": "Authorization check removed from note deletion",
+            "severity": "high",
+            "filePath": "src/notes.js",
+            "lineNumber": 2,
+            "explanation": "The authorization check comparing note.ownerId to actor.id was removed. Because db.deleteNote performs no authorization directly (per intent/contract), removing this check allows any actor to delete notes owned by other users.",
+            "suggestedFix": "Re-add the ownership validation check `if (note.ownerId !== actor.id) throw new Error(\"Forbidden\");` before invoking `db.deleteNote(note.id)`.",
+            "evidence": "  if (note.ownerId !== actor.id) throw new Error(\"Forbidden\");",
+            "lineSide": "old",
+            "category": "ai-review",
+            "confidence": "low",
+            "affectedFiles": [
+              "src/notes.js"
+            ],
+            "recommendedAction": "Re-add the ownership validation check `if (note.ownerId !== actor.id) throw new Error(\"Forbidden\");` before invoking `db.deleteNote(note.id)`.",
+            "source": "ai"
+          }
+        ],
+        "attempts": 1,
+        "durationMs": 4267,
+        "rejectedFindings": 0,
+        "errorCode": null,
+        "model": "gemini-3.6-flash",
+        "timeoutMs": 120000,
+        "diagnostics": {
+          "attempts": 1,
+          "runId": "0b50a54a-1ccc-4976-aec6-d69d8c718a75",
+          "promptVersion": "pr-review-v2",
+          "schemaVersion": "review-v1",
+          "usage": {
+            "inputTokens": 466,
+            "outputTokens": 558,
+            "thinkingTokens": null,
+            "totalTokens": 1024
+          },
+          "timeoutMs": 120000,
+          "durationMs": 4267
+        },
+        "review": {
+          "summary": "The PR removes the owner authorization check inside `removeNote`, directly invoking `db.deleteNote` regardless of whether `actor.id` matches `note.ownerId`.",
+          "walkthrough": [
+            {
+              "filePath": "src/notes.js",
+              "description": "Removed authorization check `note.ownerId !== actor.id` in `removeNote` function.",
+              "evidenceRefs": [
+                {
+                  "filePath": "src/notes.js",
+                  "lineSide": "old",
+                  "lineNumber": 2,
+                  "evidence": "  if (note.ownerId !== actor.id) throw new Error(\"Forbidden\");"
+                },
+                {
+                  "filePath": "src/notes.js",
+                  "lineSide": "new",
+                  "lineNumber": 2,
+                  "evidence": "  return db.deleteNote(note.id);"
+                }
+              ]
+            }
+          ],
+          "impacts": [
+            {
+              "description": "If `removeNote` is called by unprivileged actors, it will bypass authorization and trigger `db.deleteNote` for arbitrary notes.",
+              "evidenceRefs": [
+                {
+                  "filePath": "src/notes.js",
+                  "lineSide": "new",
+                  "lineNumber": 2,
+                  "evidence": "  return db.deleteNote(note.id);"
+                }
+              ]
+            }
+          ],
+          "limitations": [
+            "Repository callers and full database context were not provided.",
+            "Repository tests were not executed. Context is limited to supplied diffs, source windows and selected direct imports."
+          ],
+          "recommendation": "changes_requested"
+        }
+      }
+    ],
+    "judgments": [],
+    "note": "Original synthetic fixtures. Dry-run makes no model calls. Human judgments are required before claiming semantic accuracy."
+  },
+  "retrievalCheck": {
+    "runId": "991ddc65-f4d6-44d8-9513-2d9f01ad6bb5",
+    "createdAt": "2026-11-12T17:53:30.665Z",
+    "datasetVersion": "prism-retrieval-v1",
+    "datasetSha256": "c2557172bebd8b29ec2470713b6a09a8c076566f0e8fdb1a0888947f75b156f9",
+    "mode": "live-embeddings",
+    "semanticStatus": "completed",
+    "attempts": 2,
+    "results": {
+      "queries": 3,
+      "lexical": {
+        "hitAt1": 1,
+        "selectedSources": [
+          "authorization",
+          "sql",
+          "pricing"
+        ]
+      },
+      "semantic": {
+        "hitAt1": 1,
+        "selectedSources": [
+          "authorization",
+          "sql",
+          "pricing"
+        ]
+      },
+      "sources": [
+        {
+          "id": "setup",
+          "path": "README.md",
+          "revision": "synthetic-v1",
+          "startLine": 1
+        },
+        {
+          "id": "authorization",
+          "path": "CONTRIBUTING.md",
+          "revision": "synthetic-v1",
+          "startLine": 1
+        },
+        {
+          "id": "sql",
+          "path": "CONTRIBUTING.md",
+          "revision": "synthetic-v1",
+          "startLine": 5
+        },
+        {
+          "id": "pricing",
+          "path": "README.md",
+          "revision": "synthetic-v1",
+          "startLine": 8
+        }
+      ],
+      "limits": "Small synthetic relevance fixture, not PR review accuracy or evidence of improved production retrieval."
+    },
+    "model": "gemini-embedding-001"
+  }
 }
