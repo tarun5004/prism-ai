@@ -282,4 +282,4 @@ async function exportReviewTrace(analysis) {
   } catch { return { status: 'unavailable', errorCode: 'TRACE_EXPORT_FAILED', traceId }; }
 }
 
-export { checkGeminiConnection, runAiAnalysis, exportReviewTrace };
+export { checkGeminiConnection, runAiAnalysis, exportReviewTrace, validateFindings, validateReview };

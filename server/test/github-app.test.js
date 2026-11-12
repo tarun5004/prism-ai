@@ -84,6 +84,30 @@ test('public mode fails closed without App config and never serves HTML for unkn
   }
 });
 
+test('demo-only deployment serves one captured fixture while private report and generation routes stay closed', async () => {
+  const previous = [process.env.NODE_ENV, process.env.DEMO_ONLY];
+  process.env.NODE_ENV = 'production'; process.env.DEMO_ONLY = 'true';
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const response = await fetch(base + '/api/demo/report');
+    assert.equal(response.status, 200);
+    const sample = await response.json();
+    assert.equal(sample.sample.fixtureId, 'B01');
+    assert.ok(sample.findings.length > 0);
+    assert.match(sample.pullRequest.changedFiles[0].patch, /db.deleteNote/);
+    assert.equal((await fetch(base + '/api/analyses')).status, 503);
+    assert.equal((await fetch(base + '/api/analyses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pullRequestUrl: 'https://github.com/demo/repo/pull/1' }) })).status, 503);
+    assert.equal((await fetch(base + '/api/demo/report/other')).status, 404);
+    const session = await (await fetch(base + '/api/github/session')).json();
+    assert.equal(session.demoOnly, true);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    ['NODE_ENV', 'DEMO_ONLY'].forEach((key, index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; });
+  }
+});
+
 test('OAuth binds state to a browser, sends PKCE, hides tokens and blocks cross-origin writes', async () => {
   const keys = ['GITHUB_APP_ID', 'GITHUB_APP_CLIENT_ID', 'GITHUB_APP_CLIENT_SECRET', 'APP_ORIGIN'];
   const old = keys.map(key => process.env[key]);

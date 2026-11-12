@@ -173,8 +173,9 @@ async function collectEvaluation(options, analyze = runAiAnalysis) {
           attempts: result.diagnostics?.attempts || 0, durationMs: Math.round(performance.now() - started),
           timeoutMs: result.diagnostics?.timeoutMs || null,
           rejectedFindings: result.coverage?.rejectedFindings || 0,
-          errorCode: result.error || null
-          , diagnostics: result.diagnostics || null
+          errorCode: result.error || null,
+          diagnostics: result.diagnostics || null,
+          review: result.review || null
         });
       } catch {
         Object.assign(record, { status: 'unavailable', errorCode: 'COLLECTOR_ERROR', durationMs: Math.round(performance.now() - started) });

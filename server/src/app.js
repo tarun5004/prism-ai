@@ -6,6 +6,7 @@ import analysisRoutes from './features/analysis/analysis.routes.js';
 import healthRoutes from './features/health/health.routes.js';
 import { createWebhookHandler } from './features/pullRequest/pullRequest.webhook.js';
 import { createGitHubRoutes, requireSession } from './features/pullRequest/github.app.js';
+import { getDemoReport } from './features/analysis/analysis.controller.js';
 
 const app = express();
 app.use('/api', (request, response, next) => { response.set('Cache-Control', 'no-store'); next(); });
@@ -13,6 +14,7 @@ app.use('/api', (request, response, next) => { response.set('Cache-Control', 'no
 app.use(cors({ origin: process.env.APP_ORIGIN || 'http://localhost:5173', credentials: true }));
 // HMAC covers the original bytes; JSON middleware must not consume them first.
 app.post('/api/webhooks/github', (request, response, next) => {
+  if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
   if (process.env.NODE_ENV === 'production' && (!process.env.GITHUB_APP_ID || mongoose.connection.readyState !== 1)) return response.status(503).json({ message: 'Webhook storage or App configuration is unavailable.' });
   next();
 }, express.raw({ type: 'application/json', limit: '1mb' }), createWebhookHandler());
@@ -21,6 +23,7 @@ app.use('/api/webhooks/github', (error, request, response, next) => {
 });
 app.use(express.json());
 app.use('/api/health', healthRoutes);
+app.get('/api/demo/report', getDemoReport);
 app.use('/api/github', createGitHubRoutes());
 app.use('/api/analyses', requireSession, (request, response, next) => {
   if (process.env.NODE_ENV === 'production' && mongoose.connection.readyState !== 1) return response.status(503).json({ message: 'Persistent report storage is unavailable.' });

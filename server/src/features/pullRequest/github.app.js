@@ -65,6 +65,7 @@ function canReadReport(auth, report) {
 }
 
 async function requireSession(request, response, next) {
+  if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
   if (!appMode()) {
     if (process.env.NODE_ENV === 'production') return response.status(503).json({ message: 'Public access requires GitHub App configuration.' });
     return next();
@@ -128,9 +129,11 @@ function createGitHubRoutes() {
     prune(sessions);
     const session = sessions.get(cookie(request, 'prism_session'));
     const slug = process.env.GITHUB_APP_SLUG;
-    response.set('Cache-Control', 'no-store').json({ enabled: appMode() || process.env.NODE_ENV === 'production', authenticated: Boolean(session), userId: session?.userId || null, login: session?.login || null, installUrl: /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
+    const demoOnly = process.env.DEMO_ONLY === 'true';
+    response.set('Cache-Control', 'no-store').json({ demoOnly, enabled: !demoOnly && (appMode() || process.env.NODE_ENV === 'production'), authenticated: !demoOnly && Boolean(session), userId: !demoOnly ? session?.userId || null : null, login: !demoOnly ? session?.login || null : null, installUrl: !demoOnly && /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
   });
   router.get('/login', (request, response) => {
+    if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
     if (!appMode() || !process.env.GITHUB_APP_CLIENT_ID || !process.env.GITHUB_APP_CLIENT_SECRET || !process.env.APP_ORIGIN) return response.status(503).json({ message: 'GitHub App login is not configured.' });
     prune(pending);
     if (pending.size >= 100) return response.status(429).json({ message: 'Please try signing in later.' });
@@ -142,6 +145,7 @@ function createGitHubRoutes() {
     response.redirect('https://github.com/login/oauth/authorize?' + params);
   });
   router.get('/callback', async (request, response) => {
+    if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
     prune(pending);
     const state = request.query.state;
     const entry = typeof state === 'string' && pending.get(state);

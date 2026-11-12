@@ -1,5 +1,6 @@
-import { randomUUID } from 'node:crypto';
-import { runAiAnalysis, exportReviewTrace } from '../ai/ai.service.js';
+import { randomUUID, createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { runAiAnalysis, exportReviewTrace, validateFindings, validateReview } from '../ai/ai.service.js';
 import { prepareAiInput, buildReviewMemory } from '../ai/ai.context.js';
 import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
 import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis } from './analysis.repository.js';
@@ -93,4 +94,29 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
   }
 }
 
-export { analyzePullRequest };
+// Public sample reads only owned, committed fixtures and captured output, never private reports.
+async function loadDemoReport() {
+  const normalize = value => value.replace(/^\uFEFF/, '').replaceAll('\r\n', '\n');
+  const raw = normalize(await readFile(new URL('../../../../docs/beta/evaluation-cases.json', import.meta.url), 'utf8'));
+  const archive = JSON.parse(await readFile(new URL('../../../../docs/beta/evaluation-live-dev.json', import.meta.url), 'utf8'));
+  const run = archive.demoCapture || archive;
+  if (run.mode !== 'live' || run.datasetSha256 !== createHash('sha256').update(raw).digest('hex')) throw Error('Sample source mismatch');
+  const fixture = JSON.parse(raw).cases.find(item => item.id === 'B01');
+  const captured = run.cases.find(item => item.caseId === 'B01' && ['completed', 'partial'].includes(item.status));
+  if (!fixture || !captured) throw Error('Captured sample unavailable');
+  const pullRequest = { title: fixture.title, description: fixture.description, repository: 'Owned evaluation fixture', filesComplete: true,
+    changedFiles: fixture.files.map(file => ({ path: file.path, status: file.oldLines.length ? 'modified' : 'added', additions: file.newLines.length, deletions: file.oldLines.length, patch: `@@ -${file.oldLines.length ? 1 : 0},${file.oldLines.length} +${file.newLines.length ? 1 : 0},${file.newLines.length} @@\n` + [...file.oldLines.map(line => '-' + line), ...file.newLines.map(line => '+' + line)].join('\n') + '\n' })) };
+  const prepared = prepareAiInput(pullRequest);
+  const findings = validateFindings(captured.findings, prepared.files);
+  if (findings.length !== captured.findings.length || !prepared.files.length) throw Error('Sample evidence mismatch');
+  const review = captured.review ? validateReview(captured.review, prepared.files, []) : null;
+  if (captured.review && !review) throw Error('Sample review mismatch');
+  if (review) review.recommendation = captured.review.recommendation;
+  return { id: 'demo-b01', status: 'completed', createdAt: run.createdAt, pullRequest, findings: [...runRules(pullRequest), ...findings],
+    aiStatus: captured.status, aiModel: captured.model, aiCoverage: prepared.coverage,
+    ...(review ? { aiReview: review } : {}),
+    aiDiagnostics: { durationMs: captured.durationMs, attempts: captured.attempts, timeoutMs: captured.timeoutMs, usage: captured.diagnostics?.usage || null, promptVersion: captured.diagnostics?.promptVersion, schemaVersion: captured.diagnostics?.schemaVersion, runId: captured.diagnostics?.runId },
+    sample: { fixtureId: 'B01', capturedAt: run.createdAt, readOnly: true, description: 'Recorded Gemini review of an owned synthetic fixture. No new model request is made when opening this sample.' } };
+}
+
+export { analyzePullRequest, loadDemoReport };

@@ -1,4 +1,4 @@
-import { analyzePullRequest } from './analysis.service.js';
+import { analyzePullRequest, loadDemoReport } from './analysis.service.js';
 import { findAnalysis, listAnalyses, saveFindingFeedback } from './analysis.repository.js';
 import { canReadReport, consumeReviewBudget } from '../pullRequest/github.app.js';
 
@@ -73,4 +73,9 @@ async function setFindingFeedback(request, response) {
   return response.json(saved);
 }
 
-export { createAnalysis, getAnalyses, getAnalysis, setFindingFeedback };
+async function getDemoReport(request, response) {
+  try { response.json(await loadDemoReport()); }
+  catch { response.status(503).json({ message: 'The recorded demo is unavailable. Please try again later.' }); }
+}
+
+export { createAnalysis, getAnalyses, getAnalysis, setFindingFeedback, getDemoReport };
