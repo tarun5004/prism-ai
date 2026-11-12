@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import DashboardPage, { RouteLink } from '../features/dashboard/DashboardPage.jsx';
-import { loadSampleAnalysis, loadGitHubSession, logoutGitHub, githubLoginUrl } from '../features/dashboard/analysis.api.js';
+import DashboardPage, { RouteLink, DemoPage } from '../features/dashboard/DashboardPage.jsx';
+import { loadGitHubSession, logoutGitHub, githubLoginUrl } from '../features/dashboard/analysis.api.js';
 
 function resolveRoute(pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
   if (path === '/') return { page: 'landing' };
+  if (path === '/demo') return { page: 'demo' };
   if (path === '/app') return { page: 'overview' };
   if (path === '/analyses') return { page: 'analyses' };
   const match = path.match(/^\/analyses\/([^/]+)$/);
@@ -36,7 +37,7 @@ function App() {
   }
   const [pathname, setPathname] = useState(() => typeof window === 'undefined' ? '/' : window.location.pathname);
   const route = resolveRoute(pathname);
-  const [workspaceVisited, setWorkspaceVisited] = useState(() => resolveRoute(pathname).page !== 'landing');
+  const [workspaceVisited, setWorkspaceVisited] = useState(() => !['landing', 'demo'].includes(resolveRoute(pathname).page));
   const lastWorkspaceRoute = useRef(route);
   const navigate = useCallback(path => {
     const destination = new URL(path, window.location.origin);
@@ -58,12 +59,12 @@ function App() {
 
   useEffect(() => {
     const page = resolveRoute(pathname).page;
-    if (page !== 'landing') {
+    if (page !== 'landing' && page !== 'demo') {
       lastWorkspaceRoute.current = resolveRoute(pathname);
       setWorkspaceVisited(true);
     }
-    document.title = `${{ landing: 'Understand every change', overview: 'New review', analyses: 'Saved analyses', review: 'PR review', 'not-found': 'Page not found' }[page]} · PRism AI`;
-    document.querySelector(page === 'landing' ? '.landing h1' : '.dashboard-shell h1')?.focus({ preventScroll: true });
+    document.title = `${{ landing: 'Understand every change', demo: 'Recorded review', overview: 'New review', analyses: 'Saved analyses', review: 'PR review', 'not-found': 'Page not found' }[page]} · PRism AI`;
+    document.querySelector(page === 'landing' ? '.landing h1' : page === 'demo' ? '.public-demo h1' : '.dashboard-shell h1')?.focus({ preventScroll: true });
     window.scrollTo(0, 0);
   }, [pathname]);
 
@@ -75,10 +76,11 @@ function App() {
       {connectionError && <><span role="alert">{connectionError}</span><button type="button" disabled={connectionBusy} onClick={refreshSession}>Retry connection</button></>}
     </div>}
     {route.page === 'landing' && <LandingPage onNavigate={navigate} />}
+    {route.page === 'demo' && <DemoPage onNavigate={navigate} />}
     {/* Keep an active review mounted when its user visits the introduction. */}
-    {(workspaceVisited || route.page !== 'landing') && (session && (!session.enabled || session.authenticated)
-      ? <div hidden={route.page === 'landing'}><DashboardPage route={route.page === 'landing' ? lastWorkspaceRoute.current : route} onNavigate={navigate} userId={session.userId || 'local'} /></div>
-      : route.page !== 'landing' && <main className="connection-welcome"><h1>GitHub workspace</h1><p role="status">{!session ? connectionError || 'Checking connection…' : 'Install PRism on selected repositories, then connect GitHub to open your private workspace.'}</p>{session?.enabled && <a href={githubLoginUrl}>Connect GitHub</a>}</main>)}
+    {(workspaceVisited || !['landing', 'demo'].includes(route.page)) && (session && !session.demoOnly && (!session.enabled || session.authenticated)
+      ? <div hidden={['landing', 'demo'].includes(route.page)}><DashboardPage route={['landing', 'demo'].includes(route.page) ? lastWorkspaceRoute.current : route} onNavigate={navigate} userId={session.userId || 'local'} /></div>
+      : !['landing', 'demo'].includes(route.page) && <main className="connection-welcome"><h1>GitHub workspace</h1><p role="status">{!session ? connectionError || 'Checking connection…' : session.demoOnly ? 'This hosted demo offers a recorded review. Live repository access is disabled.' : 'Install PRism on selected repositories, then connect GitHub to open your private workspace.'}</p>{session?.enabled && <a href={githubLoginUrl}>Connect GitHub</a>} <RouteLink to="/demo" onNavigate={navigate}>Explore recorded review →</RouteLink></main>)}
   </>;
 }
 
@@ -121,34 +123,13 @@ function FeatureShowcase({ activeIndex, onSelect }) {
 function LandingPage({ onNavigate }) {
   const [activeFeature, setActiveFeature] = useState(0);
   const [activeContext, setActiveContext] = useState(0);
-  const [sampleLoading, setSampleLoading] = useState(false);
-  const [sampleMessage, setSampleMessage] = useState('');
-  const sampleRequest = useRef(null);
-  useEffect(() => () => sampleRequest.current?.abort(), []);
-  async function openSample() {
-    if (sampleRequest.current) return;
-    const controller = new AbortController();
-    sampleRequest.current = controller;
-    setSampleLoading(true);
-    setSampleMessage('');
-    try {
-      const report = await loadSampleAnalysis({ signal: controller.signal });
-      if (controller.signal.aborted) return;
-      if (report) onNavigate?.('/analyses/' + encodeURIComponent(report.id));
-      else setSampleMessage('No completed saved review yet. Analyze a PR first to create one.');
-    } catch {
-      if (!controller.signal.aborted) setSampleMessage('Saved reviews could not be loaded. Check the backend, then try again.');
-    } finally {
-      if (!controller.signal.aborted) { sampleRequest.current = null; setSampleLoading(false); }
-    }
-  }
   const context = contextSteps[activeContext];
   const trial = className => <RouteLink className={className} to="/app" onNavigate={onNavigate}>Try it for free <span aria-hidden="true">↗</span></RouteLink>;
   return <div className="landing">
     <a className="skip-link" href="#landing-main">Skip to content</a>
     <header className="landing-header"><nav className="landing-nav landing-width" aria-label="Main navigation"><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate} aria-label="PRism AI home"><span className="brand-mark">P</span>PRism AI</RouteLink><div className="landing-nav-links"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="https://github.com/tarun5004/prism-ai" target="_blank" rel="noopener noreferrer">View source ↗</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div>{trial('landing-cta landing-cta-small')}</nav></header>
     <main id="landing-main">
-      <section className="landing-hero landing-width"><div><p className="landing-eyebrow">PULL REQUEST INTELLIGENCE</p><h1 tabIndex={-1}>Understand the change.<br /><span>Before you merge.</span></h1></div><div className="hero-copy"><p>Code changes fast.<br />Make sense of the diff, the context and the risk—with evidence you can inspect.</p>{trial('landing-cta')}<button className="sample-review-button" type="button" onClick={openSample} disabled={sampleLoading} aria-busy={sampleLoading}>{sampleLoading ? 'Opening saved review…' : 'See a sample review →'}</button>{sampleMessage && <p className="sample-review-message" role="status">{sampleMessage}</p>}<small>Personal demo · Bring a GitHub PR URL</small></div></section>
+      <section className="landing-hero landing-width"><div><p className="landing-eyebrow">PULL REQUEST INTELLIGENCE</p><h1 tabIndex={-1}>Understand the change.<br /><span>Before you merge.</span></h1></div><div className="hero-copy"><p>Code changes fast.<br />Make sense of the diff, the context and the risk—with evidence you can inspect.</p>{trial('landing-cta')}<RouteLink className="sample-review-button" to="/demo" onNavigate={onNavigate}>See a sample review →</RouteLink><small>Personal demo · Bring a GitHub PR URL</small></div></section>
       <FeatureShowcase activeIndex={activeFeature} onSelect={setActiveFeature} />
       <div className="landing-capabilities landing-width"><span>Built for a clearer review</span><span>GitHub PRs</span><span>Unified diffs</span><span>Gemini + rules</span><span>Saved reports</span></div>
       <section className="landing-statement landing-width"><div className="context-lines" aria-hidden="true">{[0, 1, 2, 3, 4].map(index => <i key={index} />)}</div><div><p className="landing-eyebrow">LESS GUESSWORK. MORE CONTEXT.</p><h2>A diff shows what changed.<br />A review helps you understand why it matters.</h2><p className="landing-muted">Move from changed lines to potential impact, with clear evidence and honest limits.</p></div></section>

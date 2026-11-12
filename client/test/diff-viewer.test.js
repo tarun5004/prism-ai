@@ -17,6 +17,17 @@ const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx'
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 const app = await vite.ssrLoadModule('/src/app/App.jsx');
 
+test('public sample keeps evidence visible and removes all feedback writes', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
+    id: 'demo-b01', status: 'completed', pullRequest: {}, findings: [{ title: 'Owner check missing', severity: 'high', evidence: 'db.deleteNote(note.id)' }],
+    sample: { readOnly: true, description: 'Recorded Gemini output on an owned synthetic fixture' }
+  } }));
+  assert.deepEqual(app.resolveRoute('/demo'), { page: 'demo' });
+  assert.match(html, /Recorded Gemini output/);
+  assert.ok(!html.includes('Optional feedback reason'));
+  assert.match(html, /db.deleteNote/);
+});
+
 test('loaded report page receives the connected reviewer identity', () => {
   const html = renderToStaticMarkup(createElement(dashboard.ReviewPage, { userId: '42', analysis: {
     id: 'loaded-report', status: 'completed', pullRequest: {}, findings: [{ title: 'Potential bug', severity: 'medium' }],

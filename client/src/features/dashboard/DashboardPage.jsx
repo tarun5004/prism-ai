@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowUpRight, CheckCircle2, ClipboardCheck, FileCode2, GitPullRequest, LoaderCircle, ShieldAlert, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import DiffViewer, { findDiffLocation } from './DiffViewer.jsx';
-import { createAnalysis, loadAnalysis, loadRecentAnalyses, saveFindingFeedback } from './analysis.api.js';
+import { createAnalysis, loadAnalysis, loadRecentAnalyses, saveFindingFeedback, loadDemoAnalysis } from './analysis.api.js';
 
 function getAiStatusDetails(analysis) {
     if (analysis.status === 'failed') {
@@ -88,7 +88,7 @@ function FindingFeedback({ analysisId, findingIndex, annotation }) {
 }
 
 function AnalysisReport({ analysis, userId = 'local' }) {
-    const [activeView, setActiveView] = useState('overview');
+    const [activeView, setActiveView] = useState(analysis.sample ? 'findings' : 'overview');
     const [sourceFilter, setSourceFilter] = useState('all');
     const [severityFilter, setSeverityFilter] = useState('all');
     const [focusLocation, setFocusLocation] = useState(null);
@@ -108,6 +108,7 @@ function AnalysisReport({ analysis, userId = 'local' }) {
 
     return (
         <div className="analysis-workspace">
+            {analysis.sample && <section className="sample-notice"><strong>Recorded sample · read-only</strong><p>{analysis.sample.description}</p></section>}
             <section className="report-section" aria-labelledby="report-title">
                 <div className="section-heading">
                     <div>
@@ -120,7 +121,7 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                 <div className="revision-meta">
                     {analysis.githubFeedback && <span>GitHub summary: {({ posted: 'posted', existing: 'already posted for this revision', unavailable: 'not delivered; saved review remains available', skipped: 'disabled' })[analysis.githubFeedback.status] || 'status unknown'}</span>}
                     <span>{formatDate(analysis.createdAt)}</span>
-                    {pr.headSha ? <code title={pr.headSha}>{pr.headBranch} @ {pr.headSha.slice(0, 8)}</code> : <span>Revision not recorded in this older report</span>}
+                    {pr.headSha ? <code title={pr.headSha}>{pr.headBranch} @ {pr.headSha.slice(0, 8)}</code> : <span>{analysis.sample ? 'Owned fixture snapshot; no GitHub commit' : 'Revision not recorded in this older report'}</span>}
                     {pr.baseSha && <code title={pr.baseSha}>base {pr.baseBranch} @ {pr.baseSha.slice(0, 8)}</code>}
                 </div>
                 {!successful && <p className="error-message" role="alert">{getFailureMessage(analysis)}</p>}
@@ -157,6 +158,9 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                                     {Number.isInteger(diagnostics.httpStatus) && `Provider HTTP ${diagnostics.httpStatus}. `}
                                     {Number.isInteger(diagnostics.attempts) && `${diagnostics.attempts} attempt(s).`}
                                 </p></details>}
+                                {diagnostics?.pipeline?.stages?.length > 0 && <details className="ai-diagnostics"><summary>Review stages</summary><ul>{diagnostics.pipeline.stages.map((stage, index) => <li key={index}>{({ github: 'GitHub data', retrieval: 'Context retrieval', memory: 'Revision memory', model: 'AI request' })[stage.name] || 'Review step'}: {(stage.durationMs / 1000).toFixed(2)}s · {stage.status}</li>)}</ul><p>External trace: {diagnostics.tracing?.status || 'not recorded'}</p></details>}
+                                {analysis.aiCoverage?.contextSources?.length > 0 && <details className="ai-diagnostics"><summary>Retrieved sources</summary><ul>{analysis.aiCoverage.contextSources.map((source, index) => <li key={index}><code>{source.filePath}:{source.startLine}–{source.endLine}</code> · {source.role} · {source.revision?.slice(0, 8) || 'revision unavailable'}</li>)}</ul></details>}
+                                {analysis.aiCoverage?.memorySource && <p>Historical hints: {analysis.aiCoverage.memorySource.acceptedFindings} useful label(s) from <a href={`/analyses/${encodeURIComponent(analysis.aiCoverage.memorySource.analysisId)}`}>the previous revision</a>. Findings still require current code evidence.</p>}
                             </div>
                         </section>
 
@@ -178,7 +182,7 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                                 </article>) : <p className="muted-text">No additional supported impact was returned for this context.</p>}
                                 <details className="review-limitations" open><summary>Review limitations</summary><ul>{(review.limitations || []).map((limitation, index) => <li key={index}>{limitation}</li>)}</ul></details>
                             </section>}
-                            {!review && <div className="review-empty"><Sparkles size={25} /><h3>No contextual AI review is available</h3><p className="muted-text">Check the AI status above. Saved code changes and rule-based findings remain available in this workspace.</p></div>}
+                            {!review && <div className="review-empty"><Sparkles size={25} /><h3>No contextual AI review is available</h3><p className="muted-text">{analysis.sample ? 'This capture retains the recorded finding and diff. Open Findings to inspect them.' : 'Check the AI status above. Saved code changes and rule-based findings remain available in this workspace.'}</p></div>}
                         </div>
                         <section hidden={activeView !== 'findings'} aria-label="Findings">
                             {findings.length > 0 && <div className="finding-filters">
@@ -199,7 +203,7 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                                             <div className="affected-files"><FileCode2 size={14} />{finding.filePath || finding.affectedFiles?.join(' · ') || 'Location not recorded'}</div>
                                             {location ? <button type="button" className="text-button" onClick={() => setFocusLocation({ filePath: finding.filePath, lineNumber: finding.lineNumber, lineSide: finding.lineSide || 'new' })}>View {finding.lineSide || 'new'} line {finding.lineNumber} in diff <ArrowUpRight size={14} /></button> : finding.filePath && <p className="location-note">A matching saved diff line is unavailable.</p>}
                                             <div className="action-line"><span>Suggested check</span>{finding.suggestedFix || finding.recommendedAction || 'Verify the finding before making changes.'}</div>
-                                            <FindingFeedback key={`${analysis.id}-${findings.indexOf(finding)}-${userId}`} analysisId={analysis.id} findingIndex={findings.indexOf(finding)} annotation={analysis.feedback?.[`${findings.indexOf(finding)}_${userId}`]} />
+                                            {!analysis.sample?.readOnly && <FindingFeedback key={`${analysis.id}-${findings.indexOf(finding)}-${userId}`} analysisId={analysis.id} findingIndex={findings.indexOf(finding)} annotation={analysis.feedback?.[`${findings.indexOf(finding)}_${userId}`]} />}
                                         </div>
                                     </article>;
                                 })}
@@ -391,5 +395,22 @@ function ReviewPage({ analysis, error, onRetry, onNavigate, userId }) {
                 : <p className="report-loading muted-text" role="status"><LoaderCircle className="spin" size={18} />Loading saved report…</p>}
     </>;
 }
-export { AnalysisReport, AnalysisProgress, OverviewPage, AnalysesPage, ReviewPage, getAiStatusDetails, RouteLink };
+function DemoPage({ onNavigate }) {
+    const [report, setReport] = useState(null);
+    const [error, setError] = useState('');
+    const [attempt, setAttempt] = useState(0);
+    useEffect(() => {
+        const controller = new AbortController();
+        setError(''); setReport(null);
+        loadDemoAnalysis({ signal: controller.signal }).then(value => { if (!controller.signal.aborted) setReport(value); })
+            .catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
+        return () => controller.abort();
+    }, [attempt]);
+    return <main className="public-demo"><RouteLink to="/" onNavigate={onNavigate} className="text-button">← PRism AI home</RouteLink><h1>Explore a recorded review</h1>
+        {error ? <section role="alert"><p>{error}</p><button type="button" className="text-button" onClick={() => setAttempt(value => value + 1)}>Retry sample</button></section>
+            : report ? <AnalysisReport analysis={report} /> : <p role="status">Loading recorded review…</p>}
+    </main>;
+}
+
+export { AnalysisReport, AnalysisProgress, OverviewPage, AnalysesPage, ReviewPage, DemoPage, getAiStatusDetails, RouteLink };
 export default DashboardPage;

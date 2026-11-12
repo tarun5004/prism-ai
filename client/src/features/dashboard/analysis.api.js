@@ -119,4 +119,14 @@ async function logoutGitHub() {
 }
 
 const githubLoginUrl = `${apiBaseUrl}/github/login`;
-export { createAnalysis, loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, saveFindingFeedback, loadGitHubSession, logoutGitHub, githubLoginUrl };
+async function loadDemoAnalysis({ signal } = {}) {
+  let response;
+  try { response = await fetch(`${apiBaseUrl}/demo/report`, { signal }); }
+  catch { throw new Error('The recorded sample could not be reached. Please try again.'); }
+  if (!response.ok) throw new Error('The recorded sample is temporarily unavailable.');
+  const report = await response.json();
+  if (!isReport(report) || report.sample?.readOnly !== true) throw new Error('The server returned an invalid sample.');
+  return report;
+}
+
+export { createAnalysis, loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, saveFindingFeedback, loadGitHubSession, logoutGitHub, githubLoginUrl, loadDemoAnalysis };

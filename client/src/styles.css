@@ -921,3 +921,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .finding-feedback textarea { width: 100%; max-width: 100%; padding: 8px; background: var(--page-bg); border: 1px solid var(--border); color: var(--ink); border-radius: 6px; font: inherit; resize: vertical; }
 .finding-feedback button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .finding-feedback button:disabled, .connection-bar button:disabled { cursor: wait; opacity: 0.6; }
+.public-demo { max-width: 1320px; margin: 0 auto; padding: 28px 24px 64px; }
+.public-demo h1 { margin: 20px 0; }
+.sample-notice { border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 14px 18px; border-radius: 8px; background: var(--surface); }
+.sample-notice p { margin: 6px 0 0; color: var(--muted); }

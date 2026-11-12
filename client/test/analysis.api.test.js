@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
-import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis, saveFindingFeedback } from '../src/features/dashboard/analysis.api.js';
+import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis, saveFindingFeedback, loadDemoAnalysis } from '../src/features/dashboard/analysis.api.js';
 
 afterEach(() => mock.restoreAll());
+
+test('public demo reads its fixed endpoint and rejects a private report-shaped response', async () => {
+  const report = { id: 'demo-b01', status: 'completed', pullRequest: {}, findings: [], sample: { readOnly: true } };
+  const request = mock.method(globalThis, 'fetch', async url => { assert.equal(url, '/api/demo/report'); return Response.json(report); });
+  assert.deepEqual(await loadDemoAnalysis(), report);
+  request.mock.mockImplementation(async () => Response.json({ ...report, sample: undefined }));
+  await assert.rejects(loadDemoAnalysis(), /sample/i);
+});
 
 test('feedback uses original finding index and same-origin authenticated requests', async () => {
   const report = { id: 'one', status: 'completed', pullRequest: {}, findings: [] };
