@@ -21,6 +21,19 @@ test('opt-in guidance stays pinned and within the shared eight-request budget', 
   assert.equal(result.snippets[0].role, 'repository-guidance');
 });
 
+test('guidance reserves two reads even when five changed files have several imports', async () => {
+  const addresses = [];
+  mock.method(globalThis, 'fetch', async address => {
+    addresses.push(String(address));
+    const code = /README|CONTRIBUTING/.test(String(address)) ? '# Notes\nOnly owners delete notes.' : 'import x from "./one";\nimport y from "./two";\nexport const notes = 1;';
+    return Response.json({ encoding: 'base64', content: Buffer.from(code).toString('base64'), size: code.length });
+  });
+  const result = await fetchReviewContext({ url, title: 'owners delete notes', baseSha: 'base', headSha: 'head', changedFiles: Array.from({ length: 5 }, (_, index) => ({ path: `src/file${index}.ts`, status: 'modified', patch: '@@ -1 +1 @@\n-old\n+next' })) }, { guidance: true });
+  assert.equal(result.requests, 8);
+  assert.equal(addresses.filter(address => /README|CONTRIBUTING/.test(address)).length, 2);
+  assert.ok(result.snippets.some(snippet => snippet.role === 'repository-guidance'));
+});
+
 test('retrieves bounded revision-pinned source windows and a direct import', async () => {
   const addresses = [];
   mock.method(globalThis, 'fetch', async address => {

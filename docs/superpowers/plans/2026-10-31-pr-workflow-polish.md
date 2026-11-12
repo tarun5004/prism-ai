@@ -191,3 +191,4 @@ Task 4: local pipeline stage timings plus optional Langfuse OTLP export of allow
 Task 5: read-only public sample from owned frozen fixtures and actually recorded model output, available without App configuration; reuse existing report UI and disable writes.
 Task 6: update roadmap/README, independent review, relevant suites/build/HTTP checks and one controlled provider check only if useful. Account setup/credentials/real hosted onboarding remain owner steps.
 Decision: implement concepts with existing plain JS/MongoDB; do not install LangChain/LangGraph/Chroma. Existing direct SDK and bounded retrieval already cover their needed demo responsibilities.
+Task 2 complete: long-section overlapping chunks retain source coordinates; guidance mode reserves two of eight source reads. Two meaningful retrieval regressions failed before change; targeted context/provider/retrieval tests passed. Existing modes and input limits retained.

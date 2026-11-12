@@ -188,7 +188,8 @@ async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_G
     const paths = posix.extname(item.path) ? [item.path] : [`${item.path}${item.extension}`, `${item.path}/index${item.extension}`];
     for (const path of paths) {
       if (seen.has(`${item.sha}:${path}`)) continue;
-      if (importAttempts >= 3 || result.requests >= 8 || options.signal.aborted) {
+      // In guidance mode, leave two of the shared eight reads for repository rules.
+      if (importAttempts >= 3 || result.requests >= (guidance ? 6 : 8) || options.signal.aborted) {
         result.omitted.push({ filePath: item.path, reason: 'import-budget' }); break;
       }
       seen.add(`${item.sha}:${path}`); importAttempts++;

@@ -15,6 +15,13 @@ test('lexical guidance ranks relevant sections with exact original coordinates',
   assert.deepEqual(contextService.rankGuidance('# Setup\nInstall npm', 'authorization'), []);
 });
 
+test('guidance retrieves a relevant paragraph beyond the first thirty lines', () => {
+  const lines = ['# Rules', ...Array.from({ length: 65 }, () => 'General setup guidance.'), 'Only note owners can delete notes.'];
+  const result = contextService.rankGuidance(lines.join('\n'), 'note owners delete');
+  assert.ok(result.some(chunk => chunk.code.includes(lines[66])));
+  for (const chunk of result) assert.equal(chunk.code, lines.slice(chunk.startLine - 1, chunk.startLine - 1 + chunk.code.split('\n').length).join('\n'));
+});
+
 test('records SDK usage and experiment identity even when response validation fails', async () => {
   globalThis.fetch.mock.mockImplementation(async () => Response.json({ candidates: [], usageMetadata: {
     promptTokenCount: 123, candidatesTokenCount: 42, thoughtsTokenCount: 8, totalTokenCount: 173

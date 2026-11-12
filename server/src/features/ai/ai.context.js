@@ -115,7 +115,7 @@ function prepareAiInput(pullRequest) {
   return { files, coverage, intent, snippets };
 }
 
-// Transparent lexical baseline: whole sections retain their source line numbers.
+// Rank overlapping paragraphs so long README sections remain searchable with exact lines.
 function rankGuidance(code, query) {
   const terms = new Set((query.toLowerCase().match(/[a-z][a-z\d]{2,}/g) || []).slice(0, 80));
   const sections = [];
@@ -123,10 +123,13 @@ function rankGuidance(code, query) {
   let start = 0;
   for (let end = 1; end <= lines.length; end++) {
     if (end < lines.length && !/^#{1,6}\s/.test(lines[end])) continue;
-    const text = lines.slice(start, Math.min(end, start + 30)).join('\n');
-    const words = new Set(text.toLowerCase().match(/[a-z][a-z\d]{2,}/g) || []);
-    const score = [...terms].filter(term => words.has(term)).length;
-    if (score) sections.push({ startLine: start + 1, code: text, score });
+    for (let offset = start; offset < end; offset += 25) {
+      const text = lines.slice(offset, Math.min(end, offset + 30)).join('\n');
+      const words = new Set(text.toLowerCase().match(/[a-z][a-z\d]{2,}/g) || []);
+      const score = [...terms].filter(term => words.has(term)).length;
+      if (score) sections.push({ startLine: offset + 1, code: text, score });
+      if (offset + 30 >= end) break;
+    }
     start = end;
   }
   return sections.sort((a, b) => b.score - a.score || a.startLine - b.startLine).slice(0, 2);
