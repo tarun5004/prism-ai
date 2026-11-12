@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { createAnalysis, setFindingFeedback } from '../src/features/analysis/analysis.controller.js';
-import { findAnalysis, listAnalyses, saveAnalysis } from '../src/features/analysis/analysis.repository.js';
+import { findAnalysis, listAnalyses, saveAnalysis, findPreviousAnalysis } from '../src/features/analysis/analysis.repository.js';
 import Analysis from '../src/features/analysis/analysis.model.js';
 import { analyzePullRequest } from '../src/features/analysis/analysis.service.js';
 
@@ -10,6 +10,17 @@ let originalModel;
 const file = { filename: 'src/math.service.js', status: 'modified', additions: 1, deletions: 1, changes: 2, patch: '@@ -1 +1 @@\n-return value * 2;\n+return value / 2;' };
 const finding = { title: 'Unexpected division', severity: 'medium', filePath: file.filename, lineNumber: 1, explanation: 'The result now halves instead of doubles.', suggestedFix: 'Confirm the intended behavior before restoring multiplication.', evidence: 'return value / 2;' };
 const review = { summary: 'The calculation now divides.', walkthrough: [{ filePath: file.filename, description: 'Replaces multiplication with division.', evidenceRefs: [{ filePath: file.filename, lineSide: 'new', lineNumber: 1, evidence: finding.evidence }] }], impacts: [], limitations: ['Callers were not analyzed.'] };
+
+test('revision memory stays inside the same PR and installation and ignores the current revision', async () => {
+  const pr = { key: 'memory/repo#1', headSha: 'b'.repeat(40), baseSha: 'a'.repeat(40) };
+  const row = { id: 'previous-memory', installationId: 73, status: 'completed', createdAt: '2026-11-01', pullRequest: { ...pr, headSha: 'c'.repeat(40) }, findings: [] };
+  await saveAnalysis(row);
+  await saveAnalysis({ ...row, id: 'wrong-install-memory', installationId: 74, createdAt: '2026-11-02' });
+  await saveAnalysis({ ...row, id: 'wrong-pr-memory', pullRequest: { ...row.pullRequest, key: 'memory/repo#2' }, createdAt: '2026-11-03' });
+  await saveAnalysis({ ...row, id: 'same-head-memory', pullRequest: pr, createdAt: '2026-11-04' });
+  assert.equal((await findPreviousAnalysis(pr, 73)).id, row.id);
+  assert.equal(await findPreviousAnalysis(pr), null);
+});
 
 test('feedback is validated and saved separately without changing generated evidence', async () => {
   const report = { id: 'feedback-test', status: 'completed', createdAt: new Date().toISOString(), pullRequest: {}, findings: [finding] };

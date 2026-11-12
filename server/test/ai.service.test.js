@@ -29,7 +29,7 @@ test('records SDK usage and experiment identity even when response validation fa
   const result = await aiService.runAiAnalysis(reviewPr);
   assert.deepEqual(result.diagnostics.usage, { inputTokens: 123, outputTokens: 42, thinkingTokens: 8, totalTokens: 173 });
   assert.match(result.diagnostics.runId, /^[a-f\d-]{36}$/);
-  assert.equal(result.diagnostics.promptVersion, 'pr-review-v1');
+  assert.equal(result.diagnostics.promptVersion, 'pr-review-v2');
   assert.equal(result.diagnostics.schemaVersion, 'review-v1');
 });
 
@@ -91,6 +91,15 @@ test('returns a grounded summary, walkthrough, impacts and advisory recommendati
   const sent = JSON.parse(JSON.parse(globalThis.fetch.mock.calls[0].arguments[1].body).contents[0].parts[0].text);
   assert.equal(sent.intent.description, 'Keep double behavior');
   assert.ok(Array.isArray(sent.snippets));
+});
+
+test('memory reaches the model as bounded historical labels without raw annotations', async () => {
+  respondWith(JSON.stringify({ findings: [validFinding], review: contextualReview }));
+  const result = await aiService.runAiAnalysis({ ...reviewPr, reviewMemory: { analysisId: 'old-review', headSha: 'a'.repeat(40), findings: [{ title: 'Check multiplication', filePath: 'src/math.js', reason: 'private reviewer text' }] } });
+  const sent = JSON.parse(JSON.parse(globalThis.fetch.mock.calls[0].arguments[1].body).contents[0].parts[0].text);
+  assert.equal(sent.memory.findings[0].title, 'Check multiplication');
+  assert.ok(!JSON.stringify(sent).includes('private reviewer text'));
+  assert.equal(result.coverage.memorySource.analysisId, 'old-review');
 });
 
 test('rejects invented impact references while preserving valid findings', async () => {

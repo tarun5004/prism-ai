@@ -111,8 +111,34 @@ function prepareAiInput(pullRequest) {
   coverage.retrievalMode = pullRequest?.reviewContext?.scope || 'diff-only';
   coverage.contextSources = snippets.map(snippet => ({ filePath: snippet.filePath, lineSide: snippet.lineSide, startLine: snippet.startLine, endLine: snippet.startLine + snippet.code.split('\n').length - 1, role: snippet.role, revision: snippet.lineSide === 'old' ? pullRequest.baseSha || null : pullRequest.headSha || null }));
   coverage.contextOmissions = contextOmissions;
-  coverage.inputCharacters = JSON.stringify({ intent, files, snippets }).length;
-  return { files, coverage, intent, snippets };
+  const memory = sanitizeReviewMemory(pullRequest.reviewMemory, pullRequest);
+  coverage.memorySource = memory ? { analysisId: memory.analysisId, headSha: memory.headSha, acceptedFindings: memory.findings.length } : null;
+  coverage.inputCharacters = JSON.stringify({ intent, files, snippets, memory }).length;
+  return { files, coverage, intent, snippets, memory };
+}
+
+// Keep only human-useful labels on files in this diff; old code/reasons are never copied.
+function buildReviewMemory(previous, pullRequest) {
+  if (!previous || typeof previous.id !== 'string' || !/^[a-z\d_-]{1,128}$/i.test(previous.id) || !/^[a-f\d]{40}$/i.test(previous.pullRequest?.headSha || '')) return null;
+  const useful = new Set(Object.entries(previous.feedback || {}).filter(([, item]) => item?.verdict === 'useful').map(([key]) => Number(key.split('_')[0])));
+  const paths = new Set((pullRequest.changedFiles || []).map(file => file.path));
+  const findings = [];
+  for (const index of useful) {
+    const finding = previous.findings?.[index];
+    if (!finding || typeof finding.title !== 'string' || !paths.has(finding.filePath) || sensitivePath.test(finding.filePath) || containsSensitiveText(finding.title)) continue;
+    findings.push({ title: finding.title.slice(0, 160), filePath: finding.filePath, verdict: 'useful' });
+    if (findings.length === 3) break;
+  }
+  return findings.length ? { analysisId: previous.id, headSha: previous.pullRequest.headSha, findings } : null;
+}
+
+function sanitizeReviewMemory(memory, pullRequest) {
+  if (!memory || !/^[a-z\d_-]{1,128}$/i.test(memory.analysisId || '') || !/^[a-f\d]{40}$/i.test(memory.headSha || '') || !Array.isArray(memory.findings)) return null;
+  const paths = new Set((pullRequest.changedFiles || []).map(file => file.path));
+  const findings = memory.findings.slice(0, 3).filter(item => item && typeof item.title === 'string' && item.title.trim() && paths.has(item.filePath)
+    && item.filePath.length <= 500 && !sensitivePath.test(item.filePath) && !containsSensitiveText(item.title))
+    .map(item => ({ title: item.title.slice(0, 160), filePath: item.filePath, verdict: 'useful' }));
+  return findings.length ? { analysisId: memory.analysisId, headSha: memory.headSha, findings } : null;
 }
 
 // Rank overlapping paragraphs so long README sections remain searchable with exact lines.
@@ -136,4 +162,4 @@ function rankGuidance(code, query) {
 }
 
 const containsSensitiveText = value => credentialText.test(value) || shellCredential.test(value);
-export { prepareAiInput, rankGuidance, containsSensitiveText };
+export { prepareAiInput, rankGuidance, containsSensitiveText, buildReviewMemory };

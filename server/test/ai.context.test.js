@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { prepareAiInput } from '../src/features/ai/ai.context.js';
+import { prepareAiInput, buildReviewMemory } from '../src/features/ai/ai.context.js';
 
 const file = (overrides = {}) => ({ path: 'src/example.js', additions: 1, deletions: 1, patch: '@@ -10 +20 @@\n-old();\n+next();', ...overrides });
+
+test('review memory includes only useful, relevant, safe historical labels with provenance', () => {
+  const previous = { id: 'previous-review', pullRequest: { headSha: 'a'.repeat(40) }, findings: [{ title: 'Missing owner check', filePath: 'src/example.js' }, { title: 'Rejected concern', filePath: 'src/example.js' }], feedback: { '0_local': { verdict: 'useful' }, '1_local': { verdict: 'incorrect' } } };
+  const memory = buildReviewMemory(previous, { changedFiles: [file()] });
+  assert.equal(memory.analysisId, previous.id);
+  assert.equal(memory.findings.length, 1);
+  assert.equal(memory.findings[0].title, 'Missing owner check');
+  previous.findings[0].title = 'password="do-not-send"';
+  assert.equal(buildReviewMemory(previous, { changedFiles: [file()] }), null);
+});
 
 test('prepares real new-side line references without PR metadata', () => {
   const result = prepareAiInput({ title: 'unnecessary title', changedFiles: [file()] });

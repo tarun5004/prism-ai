@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { runAiAnalysis } from '../ai/ai.service.js';
-import { prepareAiInput } from '../ai/ai.context.js';
+import { prepareAiInput, buildReviewMemory } from '../ai/ai.context.js';
 import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
-import { saveAnalysis, saveGitHubFeedback } from './analysis.repository.js';
+import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis } from './analysis.repository.js';
 import { postReviewSummary } from '../pullRequest/github.app.js';
 import { runRules } from './analysis.rules.js';
 
@@ -12,6 +12,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     progress('fetching');
     const pullRequest = await fetchPullRequest(pullRequestUrl, { token: githubToken });
     if (installationId && typeof pullRequest.repository === 'string') pullRequest.repository = pullRequest.repository.toLowerCase();
+    if (typeof pullRequest.key === 'string') pullRequest.key = pullRequest.key.toLowerCase();
     if (expectedRevision && (pullRequest.baseSha !== expectedRevision.baseSha || pullRequest.headSha !== expectedRevision.headSha)) {
       throw new PullRequestError('PR revision changed before webhook review. Use the latest event or analyze the PR manually.', 409);
     }
@@ -21,6 +22,10 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     // Source enrichment is transient; only validated review evidence reaches storage/API.
     const reviewInput = aiEnabled
       ? { ...pullRequest, reviewContext: await fetchReviewContext(pullRequest, { token: githubToken }) } : pullRequest;
+    if (aiEnabled) {
+      try { reviewInput.reviewMemory = buildReviewMemory(await findPreviousAnalysis(pullRequest, installationId), pullRequest); }
+      catch { reviewInput.reviewMemory = null; } // Optional memory cannot discard a current review.
+    }
     const aiResult = await runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') });
     const analysis = {
       id,
