@@ -18,9 +18,44 @@ Built as a small MERN + Gemini project. Feedback is advisory: PRism does not run
 4. Click an evidence reference to jump to its old/new diff line when that line is available.
 5. Reopen the saved revision from `/analyses`.
 
-**See a sample review** opens an existing completed report, preferring one with contextual AI feedback. It does not create a fake result or run a new model request. On a fresh database it explains that no sample exists yet.
+**See a sample review** opens `/demo`: an owned synthetic code fixture paired with a recorded, validated Gemini response. It works without login, MongoDB or a new model request. The report is labelled captured and read-only.
 
 A clean PR can have zero findings. A report can also have completed rule-based analysis while its AI review is unavailable. Those are different outcomes, and the UI keeps them separate.
+
+### Interview demo update — 12 November 2026
+
+For a public, read-only demonstration without GitHub registration or a database:
+
+```powershell
+npm run build
+$env:NODE_ENV="production"
+$env:DEMO_ONLY="true"
+npm start --prefix server
+```
+
+Open `http://localhost:5000/demo`. This serves the owned B01 fixture and a captured Gemini response. No provider request is made when opening it. Demo-only mode disables private analysis/history access, generation, GitHub login/callback and webhooks; it skips MongoDB/App startup requirements. Clear `DEMO_ONLY` for the normal workflow. Hosting and a verified public URL remain owner actions.
+
+The new slices keep the existing direct Gemini SDK and MongoDB architecture:
+
+- **Retrieval:** opt-in `REVIEW_GUIDANCE=lexical` searches overlapping long Markdown sections with original coordinates; two of the existing eight source requests are reserved for guidance.
+- **Historical memory:** at most three useful-labelled findings from another revision of the same PR and installation guide the review. Feedback reasons are excluded; findings still require current diff evidence.
+- **Diagnostics:** report details expose actual GitHub/retrieval/memory/model timings, source coordinates and historical-memory provenance.
+- **Optional Langfuse:** native OTLP HTTP/JSON exports operational metadata only, excluding code, prompts and feedback. A two-second deadline and safe failure preserve the review. Local timings work without an external account.
+
+Optional server-only environment configuration:
+
+```dotenv
+LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=your-project-public-key
+LANGFUSE_SECRET_KEY=your-project-secret-key
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+```
+
+Use your project region's HTTPS origin. No tracing SDK, LangChain, LangGraph or vector database is required for these bounded demo features.
+
+Latest executed checks: **120 backend**, **7 Python evaluation**, **38 frontend** passed; production build passed. Actual production-mode HTTP checks returned 200 for health, the public sample and `/demo`, and 503 for private analysis GET/POST in demo-only mode. Independent review found no important/critical defects. Browser interaction, real Langfuse ingestion and hosted GitHub onboarding remain unverified. These results supersede the earlier dated verification below; they do not establish model accuracy.
+
+One controlled live B01 request on 12 November used the configured `gemini-3.6-flash`: one attempt returned HTTP 503 after 83,836 ms, before its 120,000 ms deadline. No retry was made. The earlier successful captured sample remains available; live provider availability remains an external limitation.
 
 ## What actually happens
 

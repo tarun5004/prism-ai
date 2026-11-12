@@ -1,6 +1,6 @@
 # PRism AI — feature status and remaining owner actions
 
-Status: **2 November 2026**. Implementation record: [chunk ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md). Implemented means local code, not a claim of live deployment or measured review accuracy.
+Status: **12 November 2026**. Implementation record: [chunk ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md). Implemented means local code, not a claim of live deployment or measured review accuracy.
 
 ## Priority and completed slices
 
@@ -20,6 +20,18 @@ Status: **2 November 2026**. Implementation record: [chunk ledger](superpowers/p
 | P0 | E1 evaluation | Frozen 12 dev / 4 held-out review cases, Python scorer, opt-in collector, atomic artifacts, source hashes, quota-stop behavior | Human adjudication and a complete held-out quality baseline remain outstanding |
 
 ## Live evidence and actual blockers
+
+### Completed demo upgrade — 12 November
+
+- Public `/demo`: fixed owned fixture with recorded Gemini output; no database/auth/model request needed to view it. DEMO_ONLY=true explicitly closes private/generation/webhook/login routes.
+- Retrieval: overlapping guidance chunks preserve coordinates; two of eight source requests reserved in guidance mode.
+- Historical memory: maximum three useful labels, same PR/installation, different revision, current evidence mandatory. No training or cross-repository memory.
+- Observability: real stage timings plus source/memory provenance; optional metadata-only Langfuse OTLP export with safe failure. Real ingestion remains unverified.
+- Verification: 120 backend, 7 Python and 38 frontend checks passed, production build passed, actual HTTP health/sample/deep-link 200 and private GET/POST 503. Independent review found no important/critical defects. Browser visual/click QA remains manual.
+
+No new application files or dependencies were needed. Deploy the captured demo first for minimal recruiter setup; account registration, hosting, credential rotation, live App onboarding and human evaluation remain owner actions. No public deployment is claimed.
+
+Latest controlled generation: B01, configured gemini-3.6-flash, one attempt, HTTP 503 after 83,836 ms against a 120,000 ms deadline. No retry; previous successful public capture preserved. This failure does not establish that context size or model capability caused the provider error.
 
 [Saved development run](beta/evaluation-live-dev.json): B01/B02/B03/B04/B06 completed with actual provider usage; B05 returned HTTP 503; B07/B08 returned HTTP 429. C01 is recorded interrupted with unknown request outcome following a Windows file-lock save failure; C02-C04 were not run. The collector now retries only transient filesystem renames and stops generation batches on 429. No generation retry loop was added.
 
