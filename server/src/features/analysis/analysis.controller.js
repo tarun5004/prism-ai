@@ -38,7 +38,7 @@ async function createAnalysis(request, response) {
     response.flushHeaders();
   }
 
-  const result = await analyzePullRequest(pullRequestUrl, { progress, installationId, githubToken: request.auth?.token });
+  const result = await analyzePullRequest(pullRequestUrl, { progress, installationId, githubToken: request.auth?.token, notificationUserId: request.auth?.userId });
   return reply(result.status, result.body);
 }
 

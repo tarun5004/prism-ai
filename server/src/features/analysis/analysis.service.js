@@ -6,9 +6,10 @@ import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullR
 import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis } from './analysis.repository.js';
 import { postReviewSummary } from '../pullRequest/github.app.js';
 import { runRules } from './analysis.rules.js';
+import { sendReviewEmail } from './analysis.mail.js';
 
 // Shared by manual requests and verified GitHub events.
-async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = randomUUID(), trigger, expectedRevision, installationId, githubToken } = {}) {
+async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = randomUUID(), trigger, expectedRevision, installationId, githubToken, notificationUserId } = {}) {
   const pipeline = { startedAt: new Date().toISOString(), stages: [] };
   // This small wrapper records real stages; optional failures remain visible in the report.
   async function measure(name, work) {
@@ -60,6 +61,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
 
     progress('saving');
     const saved = await saveAnalysis(analysis);
+    saved.emailNotification = await sendReviewEmail(saved, notificationUserId || trigger?.actorId);
     if (installationId && process.env.GITHUB_POST_REVIEW === 'true') {
       const feedback = await postReviewSummary(saved);
       try { return { status: 201, body: await saveGitHubFeedback(id, feedback) || saved }; }

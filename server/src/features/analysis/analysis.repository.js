@@ -101,6 +101,23 @@ async function saveGitHubFeedback(id, feedback) {
   return report;
 }
 
+async function claimEmailNotification(id) {
+  if (mongoose.connection.readyState === 1) return Boolean(await Analysis.findOneAndUpdate({ id, 'emailNotification.status': { $exists: false } }, { $set: { emailNotification: { status: 'sending' } } }).lean());
+  if (process.env.NODE_ENV === 'production') throw Error('Persistent report storage unavailable.');
+  const report = analyses.get(id);
+  if (!report || report.emailNotification?.status) return false;
+  report.emailNotification = { status: 'sending' };
+  return true;
+}
+
+async function saveEmailNotification(id, notification) {
+  if (mongoose.connection.readyState === 1) return Analysis.findOneAndUpdate({ id }, { $set: { emailNotification: notification } }, { new: true }).lean();
+  if (process.env.NODE_ENV === 'production') throw Error('Persistent report storage unavailable.');
+  const report = analyses.get(id);
+  if (report) report.emailNotification = notification;
+  return report;
+}
+
 // Same-PR, same-installation history supplies hints, never current code evidence.
 async function findPreviousAnalysis(pullRequest, installationId) {
   if (typeof pullRequest.key !== 'string' || !/^[a-f\d]{40}$/i.test(pullRequest.headSha || '') || !/^[a-f\d]{40}$/i.test(pullRequest.baseSha || '')) return null;
@@ -114,3 +131,4 @@ async function findPreviousAnalysis(pullRequest, installationId) {
 
 export { findAnalysis, listAnalyses, saveAnalysis, saveFindingFeedback, saveGitHubFeedback, findPreviousAnalysis };
 export { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob };
+export { claimEmailNotification, saveEmailNotification };

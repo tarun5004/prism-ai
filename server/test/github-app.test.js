@@ -33,6 +33,33 @@ test('review counters enforce an atomic allowance and fail closed in production 
   finally { if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous; }
 });
 
+test('email opt-in uses a verified GitHub address and revocation or opt-out prevents delivery', async () => {
+  const { writeAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
+  const keys = ['GITHUB_APP_ID', 'APP_ORIGIN', 'EMAIL_ENABLED']; const previous = keys.map(key => process.env[key]);
+  [process.env.GITHUB_APP_ID, process.env.APP_ORIGIN, process.env.EMAIL_ENABLED] = ['7', 'http://localhost:5173', 'true'];
+  await writeAuthRecord('session', 'email-settings-test', { userId: '34', token: 'private-user-token' }, Date.now() + 60000);
+  const realFetch = globalThis.fetch; let revoked = false;
+  mock.method(globalThis, 'fetch', async (url, options) => {
+    if (String(url).startsWith('http://127.0.0.1')) return realFetch(url, options);
+    if (String(url).includes('/user/emails')) return Response.json([{ email: 'verified@example.com', primary: true, verified: true }]);
+    if (String(url).includes('/repositories?')) return Response.json({ repositories: [{ full_name: 'owner/repo' }] });
+    return Response.json({ installations: revoked ? [] : [{ id: 9, app_id: 7 }] });
+  });
+  const service = express(); service.use(express.json()); service.use('/github', github.createGitHubRoutes());
+  const server = service.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const report = { installationId: 9, pullRequest: { repository: 'owner/repo' } };
+  const settings = enabled => fetch(base + '/github/notifications/email', { method: 'PUT', headers: { 'Content-Type': 'application/json', Origin: process.env.APP_ORIGIN, Cookie: 'prism_session=email-settings-test' }, body: JSON.stringify({ enabled, email: 'untrusted@example.com' }) });
+  try {
+    assert.equal(await github.notificationRecipient('34', report), null);
+    assert.equal((await settings(true)).status, 200);
+    assert.equal(await github.notificationRecipient('34', report), 'verified@example.com');
+    revoked = true; assert.equal(await github.notificationRecipient('34', report), null);
+    revoked = false; assert.equal((await settings(false)).status, 200);
+    assert.equal(await github.notificationRecipient('34', report), null);
+  } finally { await new Promise(resolve => server.close(resolve)); keys.forEach((key, index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; }); }
+});
+
 test('installation access is checked against both installation and repository', () => {
   const auth = { repositories: [{ installationId: 7, repository: 'owner/repo' }] };
   assert.equal(github.canReadReport(auth, { installationId: 7, pullRequest: { repository: 'owner/repo' } }), true);

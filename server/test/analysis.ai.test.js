@@ -1,4 +1,34 @@
 import assert from 'node:assert/strict';
+
+test('opt-in review email sends one safe link and duplicate calls never send twice', async () => {
+  const { sendReviewEmail } = await import('../src/features/analysis/analysis.mail.js');
+  const keys = ['EMAIL_ENABLED', 'EMAIL_FROM', 'APP_ORIGIN']; const previous = keys.map(key => process.env[key]);
+  [process.env.EMAIL_ENABLED, process.env.EMAIL_FROM, process.env.APP_ORIGIN] = ['true', 'reviews@example.com', 'https://prism.example'];
+  const report = { id: 'email-once', status: 'completed', aiStatus: 'unavailable', createdAt: new Date().toISOString(), pullRequest: { description: 'private-source' }, findings: [{ evidence: 'private-source' }] };
+  await saveAnalysis(report);
+  let sends = 0;
+  const transport = { sendMail: async message => { sends++; assert.equal(message.to, 'verified@example.com'); assert.match(message.text, /AI review unavailable/); assert.ok(!JSON.stringify(message).includes('private-source')); } };
+  try {
+    await Promise.all([sendReviewEmail(report, '42', { transport, getRecipient: async () => 'verified@example.com' }), sendReviewEmail(report, '42', { transport, getRecipient: async () => 'verified@example.com' })]);
+    assert.equal(sends, 1);
+    assert.equal((await findAnalysis(report.id)).emailNotification.status, 'sent');
+  } finally { keys.forEach((key, index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; }); }
+});
+
+test('email failure preserves saved report and missing opt-in never sends mail', async () => {
+  const { sendReviewEmail } = await import('../src/features/analysis/analysis.mail.js');
+  const previous = process.env.EMAIL_ENABLED; process.env.EMAIL_ENABLED = 'true';
+  try {
+    const report = { id: 'email-failure', status: 'completed', createdAt: new Date().toISOString(), pullRequest: {}, findings: [] };
+    await saveAnalysis(report);
+    const result = await sendReviewEmail(report, '42', { getRecipient: async () => { throw Error('private mail data'); } });
+    assert.equal(result.status, 'unavailable');
+    assert.equal((await findAnalysis(report.id)).status, 'completed');
+    const skipped = { ...report, id: 'email-not-opted', emailNotification: undefined }; await saveAnalysis(skipped);
+    assert.equal((await sendReviewEmail(skipped, '42', { getRecipient: async () => null, transport: { sendMail() { assert.fail('No opt-in'); } } })).status, 'skipped');
+    assert.ok(!JSON.stringify(result).includes('private'));
+  } finally { if (previous === undefined) delete process.env.EMAIL_ENABLED; else process.env.EMAIL_ENABLED = previous; }
+});
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import { createAnalysis, setFindingFeedback } from '../src/features/analysis/analysis.controller.js';
 import { findAnalysis, listAnalyses, saveAnalysis, findPreviousAnalysis } from '../src/features/analysis/analysis.repository.js';

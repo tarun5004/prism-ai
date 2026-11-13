@@ -61,6 +61,22 @@ function canReadReport(auth, report) {
   return auth.repositories.some(item => item.installationId === report.installationId && item.repository === report.pullRequest?.repository?.toLowerCase());
 }
 
+async function verifiedEmail(token) {
+  const emails = await githubRequest('/user/emails?per_page=100', token);
+  if (!Array.isArray(emails)) throw failure(502, 'GitHub email verification is unavailable.');
+  return emails.find(item => item.verified && item.primary)?.email || emails.find(item => item.verified)?.email || null;
+}
+
+async function notificationRecipient(userId, report) {
+  if (!/^\d+$/.test(userId || '')) return null;
+  const preference = await readAuthRecord('email-preference', userId);
+  const session = await readAuthRecord('mail-token', userId);
+  if (!preference?.enabled || !session?.token) return null;
+  // Recheck repository access and verified address immediately before delivery.
+  if (!canReadReport({ repositories: await userRepositories(session.token) }, report)) return null;
+  return verifiedEmail(session.token);
+}
+
 async function requireSession(request, response, next) {
   if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
   if (!appMode()) {
@@ -125,9 +141,10 @@ function createGitHubRoutes() {
   const router = Router();
   router.get('/session', async (request, response) => {
     const session = process.env.DEMO_ONLY === 'true' ? null : await readAuthRecord('session', cookie(request, 'prism_session'));
+    const emailPreference = session ? await readAuthRecord('email-preference', session.userId) : null;
     const slug = process.env.GITHUB_APP_SLUG;
     const demoOnly = process.env.DEMO_ONLY === 'true';
-    response.set('Cache-Control', 'no-store').json({ demoOnly, enabled: !demoOnly && (appMode() || process.env.NODE_ENV === 'production'), authenticated: !demoOnly && Boolean(session), userId: !demoOnly ? session?.userId || null : null, login: !demoOnly ? session?.login || null : null, installUrl: !demoOnly && /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
+    response.set('Cache-Control', 'no-store').json({ demoOnly, enabled: !demoOnly && (appMode() || process.env.NODE_ENV === 'production'), authenticated: !demoOnly && Boolean(session), userId: !demoOnly ? session?.userId || null : null, login: !demoOnly ? session?.login || null : null, emailAvailable: process.env.EMAIL_ENABLED === 'true', emailNotifications: Boolean(emailPreference?.enabled), installUrl: !demoOnly && /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
   });
   router.get('/login', async (request, response) => {
     if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
@@ -157,18 +174,34 @@ function createGitHubRoutes() {
       const id = randomBytes(32).toString('hex');
       const seconds = Math.min(Number.isFinite(data.expires_in) && data.expires_in > 0 ? data.expires_in : 3600, 28800);
       await writeAuthRecord('session', id, { token: data.access_token, userId: String(user.id), login: user.login }, Date.now() + seconds * 1000);
+      const preference = await readAuthRecord('email-preference', String(user.id));
+      if (preference?.enabled) await writeAuthRecord('mail-token', String(user.id), { token: data.access_token }, Date.now() + seconds * 1000);
       setCookie(response, 'prism_session', id, seconds);
       response.redirect(process.env.APP_ORIGIN + '/app');
     } catch { response.status(502).json({ message: 'GitHub login failed. Start again.' }); }
   });
   router.post('/logout', async (request, response) => {
     if (request.headers.origin !== process.env.APP_ORIGIN) return response.status(403).json({ message: 'Invalid request origin.' });
+    const session = await readAuthRecord('session', cookie(request, 'prism_session'));
+    if (session) await deleteAuthRecord('mail-token', session.userId);
     await deleteAuthRecord('session', cookie(request, 'prism_session'));
     setCookie(response, 'prism_session', '', 0);
     response.status(204).end();
+  });
+  router.put('/notifications/email', requireSession, async (request, response) => {
+    if (!request.auth) return response.status(401).json({ message: 'Connect GitHub first.' });
+    const enabled = request.body?.enabled;
+    if (typeof enabled !== 'boolean') return response.status(400).json({ message: 'Specify whether review emails are enabled.' });
+    if (enabled) {
+      if (process.env.EMAIL_ENABLED !== 'true') return response.status(503).json({ message: 'Email delivery is not configured.' });
+      if (!await verifiedEmail(request.auth.token)) return response.status(400).json({ message: 'Add a verified email to GitHub before enabling notifications.' });
+      await writeAuthRecord('mail-token', request.auth.userId, { token: request.auth.token }, Date.now() + 3600000);
+    } else await deleteAuthRecord('mail-token', request.auth.userId);
+    await writeAuthRecord('email-preference', request.auth.userId, { enabled }, Date.now() + 31536000000);
+    response.json({ enabled });
   });
   router.use((_error, request, response, next) => response.status(503).json({ message: 'GitHub session storage is unavailable.' }));
   return router;
 }
 
-export { appMode, requireSession, canReadReport, userRepositories, installationToken, createGitHubRoutes, consumeReviewBudget, postReviewSummary };
+export { appMode, requireSession, canReadReport, userRepositories, installationToken, createGitHubRoutes, consumeReviewBudget, postReviewSummary, notificationRecipient };
