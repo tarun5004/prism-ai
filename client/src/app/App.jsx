@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DashboardPage, { RouteLink, DemoPage } from '../features/dashboard/DashboardPage.jsx';
-import { loadGitHubSession, logoutGitHub, githubLoginUrl } from '../features/dashboard/analysis.api.js';
+import { loadGitHubSession, logoutGitHub, githubLoginUrl, setEmailNotifications } from '../features/dashboard/analysis.api.js';
+
+function EmailPreference({ session, busy, onChange }) {
+  return <label title={session.emailAvailable ? 'Send a report link to your verified GitHub email. Reconnect when authorization expires.' : 'Email delivery is not configured on this deployment.'}>
+    <input type="checkbox" checked={Boolean(session.emailNotifications)} disabled={busy || !session.emailAvailable} onChange={event => onChange(event.target.checked)} /> Review-ready emails
+  </label>;
+}
 
 function resolveRoute(pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -32,6 +38,12 @@ function App() {
   async function signOut() {
     setConnectionBusy(true); setConnectionError('');
     try { await logoutGitHub(); setSession(previous => ({ ...previous, authenticated: false, login: null, userId: null })); }
+    catch (error) { setConnectionError(error.message); }
+    finally { setConnectionBusy(false); }
+  }
+  async function changeEmailPreference(enabled) {
+    setConnectionBusy(true); setConnectionError('');
+    try { const result = await setEmailNotifications(enabled); setSession(previous => ({ ...previous, emailNotifications: result.enabled })); }
     catch (error) { setConnectionError(error.message); }
     finally { setConnectionBusy(false); }
   }
@@ -73,6 +85,7 @@ function App() {
       <span>{session?.authenticated ? `Connected as ${session.login}` : 'Connect GitHub to review your installed repositories.'}</span>
       {session?.installUrl && <a href={session.installUrl}>Install on GitHub ↗</a>}
       {session?.authenticated ? <button type="button" disabled={connectionBusy} onClick={signOut}>Sign out</button> : <a href={githubLoginUrl}>Connect GitHub</a>}
+      {session?.authenticated && <EmailPreference session={session} busy={connectionBusy} onChange={changeEmailPreference} />}
       {connectionError && <><span role="alert">{connectionError}</span><button type="button" disabled={connectionBusy} onClick={refreshSession}>Retry connection</button></>}
     </div>}
     {route.page === 'landing' && <LandingPage onNavigate={navigate} />}
@@ -142,4 +155,5 @@ function LandingPage({ onNavigate }) {
 }
 
 export { resolveRoute, LandingPage, FeatureShowcase };
+export { EmailPreference };
 export default App;

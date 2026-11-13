@@ -1,4 +1,19 @@
 import assert from 'node:assert/strict';
+
+test('notification preference saves only a boolean and rejects unsafe or failed responses', async () => {
+  const { setEmailNotifications } = await import('../src/features/dashboard/analysis.api.js');
+  const request = mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, '/api/github/notifications/email');
+    assert.equal(options.credentials, 'include');
+    assert.deepEqual(JSON.parse(options.body), { enabled: true });
+    return Response.json({ enabled: true });
+  });
+  assert.deepEqual(await setEmailNotifications(true), { enabled: true });
+  request.mock.mockImplementation(async () => Response.json({ enabled: 'yes' }));
+  await assert.rejects(setEmailNotifications(true), /notification/i);
+  request.mock.mockImplementation(async () => Response.json({}, { status: 503 }));
+  await assert.rejects(setEmailNotifications(false), /notification/i);
+});
 import { afterEach, mock, test } from 'node:test';
 import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis, saveFindingFeedback, loadDemoAnalysis } from '../src/features/dashboard/analysis.api.js';
 

@@ -118,6 +118,21 @@ async function logoutGitHub() {
   if (!response.ok) throw new Error('Sign out failed. Please try again.');
 }
 
+async function setEmailNotifications(enabled) {
+  try {
+    if (typeof enabled !== 'boolean') throw new Error();
+    const response = await fetch(`${apiBaseUrl}/github/notifications/email`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) });
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      if (response.status === 400) throw new Error(data?.message || 'Verify your GitHub email first.');
+      throw new Error();
+    }
+    const result = await response.json();
+    if (typeof result.enabled !== 'boolean') throw new Error();
+    return result;
+  } catch (error) { throw new Error(error?.message || 'Email notification preference could not be saved.'); }
+}
+
 const githubLoginUrl = `${apiBaseUrl}/github/login`;
 async function loadDemoAnalysis({ signal } = {}) {
   let response;
@@ -130,3 +145,4 @@ async function loadDemoAnalysis({ signal } = {}) {
 }
 
 export { createAnalysis, loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, saveFindingFeedback, loadGitHubSession, logoutGitHub, githubLoginUrl, loadDemoAnalysis };
+export { setEmailNotifications };

@@ -17,6 +17,13 @@ const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx'
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 const app = await vite.ssrLoadModule('/src/app/App.jsx');
 
+test('email opt-in is explicit and unavailable delivery disables the control', () => {
+  const html = renderToStaticMarkup(createElement(app.EmailPreference, { session: { emailAvailable: false, emailNotifications: false } }));
+  assert.match(html, /Review-ready emails/);
+  assert.match(html, /disabled/);
+  assert.ok(!html.includes('checked=""'));
+});
+
 test('public sample keeps evidence visible and removes all feedback writes', () => {
   const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
     id: 'demo-b01', status: 'completed', pullRequest: {}, findings: [{ title: 'Owner check missing', severity: 'high', evidence: 'db.deleteNote(note.id)' }],
