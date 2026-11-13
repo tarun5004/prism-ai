@@ -36,13 +36,14 @@ async function githubRequest(path, token, body) {
 
 async function userRepositories(token) {
   const repositories = [];
+  let matchingInstallations = 0;
   // A bounded demo; do not silently grant access when pagination exceeds the cap.
   for (let page = 1; page <= 5; page++) {
     const result = await githubRequest(`/user/installations?per_page=100&page=${page}`, token);
     if (!Array.isArray(result.installations)) throw failure(502, 'Invalid GitHub installation response.');
-    if (result.installations.length > 5) throw failure(413, 'Demo supports at most five accessible installations.');
     for (const installation of result.installations) {
       if (String(installation.app_id) !== String(process.env.GITHUB_APP_ID) || installation.suspended_at) continue;
+      if (++matchingInstallations > 5) throw failure(413, 'Demo supports at most five accessible PRism installations.');
       for (let repoPage = 1; repoPage <= 5; repoPage++) {
         const result = await githubRequest(`/user/installations/${installation.id}/repositories?per_page=100&page=${repoPage}`, token);
         if (!Array.isArray(result.repositories)) throw failure(502, 'Invalid GitHub repository response.');
@@ -149,6 +150,7 @@ function createGitHubRoutes() {
   router.get('/login', async (request, response) => {
     if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
     if (!appMode() || !process.env.GITHUB_APP_CLIENT_ID || !process.env.GITHUB_APP_CLIENT_SECRET || !process.env.APP_ORIGIN) return response.status(503).json({ message: 'GitHub App login is not configured.' });
+    if (!await incrementReviewCounter('login:' + new Date().toISOString().slice(0, 13), 100, Date.now() + 3600000)) return response.status(429).json({ message: 'Login allowance reached. Try again later.' });
     const state = randomBytes(32).toString('hex');
     const verifier = randomBytes(32).toString('base64url');
     await writeAuthRecord('oauth', state, { verifier }, Date.now() + 600000);

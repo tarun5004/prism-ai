@@ -93,6 +93,15 @@ test('repository discovery rejects invalid/revoked tokens with safe errors', asy
   await assert.rejects(github.userRepositories('test-token'), error => !error.message.includes('secret') && error.statusCode === 401);
 });
 
+test('other installed GitHub Apps do not consume the PRism installation limit', async () => {
+  const previous = process.env.GITHUB_APP_ID; process.env.GITHUB_APP_ID = '7';
+  mock.method(globalThis, 'fetch', async url => Response.json(String(url).includes('/repositories?')
+    ? { repositories: [{ full_name: 'owner/repo' }] }
+    : { installations: [...Array.from({ length: 6 }, (_, id) => ({ id, app_id: 99 })), { id: 20, app_id: 7 }] }));
+  try { assert.deepEqual(await github.userRepositories('test-token'), [{ installationId: 20, repository: 'owner/repo' }]); }
+  finally { if (previous === undefined) delete process.env.GITHUB_APP_ID; else process.env.GITHUB_APP_ID = previous; }
+});
+
 test('malformed GitHub authorization responses never expose upstream body fragments', async () => {
   mock.method(globalThis, 'fetch', async () => new Response('private-upstream-value', { status: 200 }));
   await assert.rejects(github.userRepositories('test-token'), error => error.statusCode === 502 && !error.message.includes('private'));
