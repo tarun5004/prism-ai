@@ -96,3 +96,41 @@ Updated after the 12 November live verification. Framework names and implemented
 - 122 backend, 38 frontend, 7 Python checks and production build passed. No new package or application file. Independent read-only review found no important/critical issue in diagnostics/MCP/capture changes.
 
 Official references: [Gemini troubleshooting](https://ai.google.dev/gemini-api/docs/troubleshooting), [LangGraph stateful orchestration](https://docs.langchain.com/oss/javascript/langgraph/overview), [Chroma embedding storage/search](https://docs.trychroma.com/docs/overview/introduction), [MCP client/server architecture](https://modelcontextprotocol.io/docs/learn/architecture).
+
+## Completion before Azure deployment — 13 November plan
+
+**Budget:** target at or below INR200/month for the whole demo, not a spending allowance to consume. Student credit balance is not a monthly budget. No resources created by this plan; no hard monthly cap or zero bill guaranteed. Deployment follows local completion/verification.
+
+**Inspected status:** GitHub App install/login/access checks and optional bot summary already exist in github.app.js. Verified webhooks reuse analysis.service.js; current jobs and OAuth/session/quota state live in process memory. MCP provides local stdio report tools, not a remote authenticated connector. `.github/workflows/checks.yml` already runs backend/frontend/evaluation checks and build; Docker, durable workers, email and CD are absent.
+
+### Target flow
+
+Connect/install GitHub App on selected repos → verified PR webhook → enqueue revision → acknowledge only after queue accepts → event-triggered worker → existing review service → save report → optional PR summary / opt-in report-ready email.
+
+Worker and web API reuse one codebase/container image. Azure Container Apps Consumption plus an event-triggered Container Apps Job and Storage Queue are the proposed deployment components. Jobs start for work and stop; no always-running worker/VM. Use managed identity for queue access, not public worker invocation.
+
+### Ordered implementation chunks
+
+| Order | Work and existing files | Acceptance before commit |
+| --- | --- | --- |
+| 1 | Review reliability/context: inspect ai.service.js + ai.context.js failures; preserve bounded input/evidence validation; controlled model comparison if useful | Distinguish request/config/network/provider/validation failures; never label unavailable AI successful; no speculative timeout inflation |
+| 2 | GitHub connection readiness: github.app.js; replace volatile OAuth/session state with scoped expiring MongoDB records, protect stored tokens; persistent usage limits | Callback survives API restart, replay rejected, logout/expiry/access removal enforced, no cross-user reads; real App registration/install remains owner verification |
+| 3 | Durable jobs: extend webhook, analysis model/repository and service; add a small worker entry point only for the genuinely separate queue lifecycle | Queue failure never acknowledged as accepted; duplicate delivery atomically claimed; completed revision not regenerated; visibility/lease expiry handled; exhausted jobs visible |
+| 4 | Email: dedicated small mail responsibility only if needed; call after report persistence; configurable Nodemailer SMTP transport, default-off, opt-in verified recipient | Plain report link/status, no raw private code; mail failure leaves report saved; delivery tracked separately; no duplicate send from event replay |
+| 5 | Docker: multi-stage frontend build + existing Node server; worker command reuses image; `.dockerignore` excludes env/secrets/node_modules | Built container health, SPA/deep links, shutdown and worker command verified; no secret in image; image includes owned demo fixtures |
+| 6 | CI/CD: extend existing checks workflow with container build; separate gated deployment workflow if needed; publish versioned image to GHCR, Azure OIDC authentication | Tests/build required first; least permissions, no long-lived cloud credential; deliberate deployment approval; no live model calls per push |
+| 7 | Release acceptance, then Azure deployment | GitHub install/login → new PR → one job/review → accessible report → notification; replay/uninstall/restart/failure paths verified; browser QA and human usefulness checks recorded |
+
+**Worker safety:** a queue can redeliver messages. Persist ownership/status and distinguish queue retries from AI generation retries. Crash after a provider request starts can leave an unknown outcome; mark for explicit recovery instead of promising exactly-once inference or automatically burning repeated calls. Retry email independently of AI review.
+
+**Email proposal:** notify only an opted-in connected user at a verified address when their report is ready, with honest AI status. Recipient rules/provider credentials must be settled before implementation; never send to an arbitrary email from webhook/PR text. Nodemailer is a sending library, not a free delivery provider. Sender verification/domain or mailbox setup is an owner dependency; free quota does not remove that setup.
+
+### Cost design
+
+- Consumption/scale-to-zero web and event jobs, low parallelism and bounded execution. Persist sessions/job dedup/quotas in MongoDB so restarts do not bypass controls.
+- At 100 reviews of 120 seconds with 1vCPU/0.5GiB each: about12000vCPU-seconds/6000GiB-seconds before startup, web traffic and retries. This is below the published monthly180000vCPU-second/360000GiB-second compute grants, assuming available allowances; not a total-bill guarantee. [Azure billing](https://learn.microsoft.com/azure/container-apps/billing).
+- Prefer a public GHCR image to avoid introducing a fixed-price Azure registry. Keep logs bounded; check storage transactions, queue polling, image transfer and all ancillary services in the actual regional calculator before provisioning.
+- Propose alerts at INR50/100/150/200 plus application-wide monthly review/email limits. Azure budget alerts notify; they do not themselves stop resources or enforce a hard INR200 ceiling. Retain student spending protection; do not upgrade/remove it as a workaround. [Budgets](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets).
+- Langfuse Cloud rather than self-hosting its stack; keep Gemini within configured API limits and avoid unbounded retries. No GPU, Kubernetes, always-on VM or Redis required for the agreed demo.
+
+**Scope boundary:** finish this review/connect/jobs/notifications/container path before adding Chroma, LangGraph, new agents or a remote MCP service. Those remain conditional follow-ups. No account mutation, email send, dependency install or application change was made for this planning update.
