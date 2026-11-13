@@ -1,5 +1,5 @@
 import { analyzePullRequest, loadDemoReport } from './analysis.service.js';
-import { findAnalysis, listAnalyses, saveFindingFeedback } from './analysis.repository.js';
+import { findAnalysis, listAnalyses, saveFindingFeedback, findReviewJob } from './analysis.repository.js';
 import { canReadReport, consumeReviewBudget } from '../pullRequest/github.app.js';
 
 // Create a report from one Pull Request URL and save the normalized beta result.
@@ -78,4 +78,12 @@ async function getDemoReport(request, response) {
   catch { response.status(503).json({ message: 'The recorded demo is unavailable. Please try again later.' }); }
 }
 
+async function getJobStatus(request, response) {
+  const job = await findReviewJob(request.params.analysisId);
+  const options = job?.payload?.options;
+  if (!job || !canReadReport(request.auth, { installationId: options.installationId, pullRequest: { repository: options.trigger?.repository } })) return response.status(404).json({ message: 'Review job not found.' });
+  response.json({ id: job.id, status: job.status, ...(job.errorCode ? { errorCode: job.errorCode } : {}) });
+}
+
 export { createAnalysis, getAnalyses, getAnalysis, setFindingFeedback, getDemoReport };
+export { getJobStatus };

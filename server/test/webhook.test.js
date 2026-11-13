@@ -28,6 +28,46 @@ function response() {
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('durable webhook acknowledges only after enqueue succeeds and never starts inline analysis', async () => {
+  const previous = process.env.REVIEW_EXECUTION; process.env.REVIEW_EXECUTION = 'queue';
+  try {
+    let finish;
+    const pending = new Promise(resolve => { finish = resolve; });
+    const handler = createWebhookHandler({ enqueue: async job => { assert.equal(job.payload.options.trigger.actorId, '12'); await pending; }, analyze() { assert.fail('Queue mode must not review inline'); } });
+    const res = response();
+    const completion = handler(delivery({ ...payload, pull_request: { ...payload.pull_request, user: { id: 12 } } }), res);
+    assert.equal(res.body, undefined);
+    finish(); await completion;
+    assert.equal(res.code, 202);
+    assert.equal(res.body.status, 'accepted');
+    const broken = createWebhookHandler({ enqueue: async () => { throw Error('private queue credential'); } });
+    const failed = response(); await broken(delivery(), failed);
+    assert.equal(failed.code, 503);
+    assert.ok(!JSON.stringify(failed.body).includes('credential'));
+  } finally { if (previous === undefined) delete process.env.REVIEW_EXECUTION; else process.env.REVIEW_EXECUTION = previous; }
+});
+
+test('queued review is claimed once, completed reports are reused and expired running work is not regenerated', async () => {
+  const { processNextReview } = await import('../src/features/analysis/analysis.jobs.js');
+  const { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob } = await import('../src/features/analysis/analysis.repository.js');
+  const id = 'webhook-' + '7'.repeat(64);
+  await enqueueReviewJob({ id, payload: { url: 'https://github.com/audit/repo/pull/1', options: { expectedRevision: { baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40) } } } });
+  let deletes = 0, calls = 0;
+  const queue = { receiveMessages: async () => ({ receivedMessageItems: [{ messageId: 'm', popReceipt: 'p', messageText: Buffer.from(id).toString('base64') }] }), deleteMessage: async () => { deletes++; } };
+  const analyze = async () => { calls++; return { status: 201, body: { status: 'completed' } }; };
+  await processNextReview({ queue, analyze });
+  await processNextReview({ queue, analyze });
+  assert.equal(calls, 1); assert.equal(deletes, 2);
+  assert.equal((await findReviewJob(id)).status, 'completed');
+  const expiredId = 'webhook-' + '8'.repeat(64);
+  await enqueueReviewJob({ id: expiredId, payload: { url: 'https://github.com/audit/repo/pull/1', options: {} } });
+  await claimReviewJob(expiredId, 'worker-1', new Date(Date.now() - 1));
+  assert.equal(await claimReviewJob(expiredId, 'worker-2'), null);
+  assert.equal((await findReviewJob(expiredId)).status, 'unknown');
+  await finishReviewJob(id, 'wrong-owner', 'failed');
+  assert.equal((await findReviewJob(id)).status, 'completed');
+});
+
 test('rejects invalid signatures/configuration before any analysis or repository access', () => {
   const handler = createWebhookHandler({ analyze() { assert.fail('Must not analyze'); }, find() { assert.fail('Must not read storage'); } });
   for (const signature of [undefined, 'sha256=bad', 'sha256=' + '0'.repeat(64)]) {

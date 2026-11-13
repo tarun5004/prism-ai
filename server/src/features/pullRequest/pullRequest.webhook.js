@@ -2,13 +2,14 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { analyzePullRequest } from '../analysis/analysis.service.js';
 import { findAnalysis } from '../analysis/analysis.repository.js';
 import { appMode, installationToken, consumeReviewBudget } from './github.app.js';
+import { enqueueWebhookReview } from '../analysis/analysis.jobs.js';
 
 const actions = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review']);
 const repositoryPattern = /^[a-z\d-]+\/[\w.-]+$/i;
 const shaPattern = /^[a-f\d]{40}$/i;
 
 // A single-process demo: acknowledge quickly, then reuse the manual review pipeline.
-function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysis, log = entry => process.stdout.write(JSON.stringify(entry) + '\n') } = {}) {
+function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysis, enqueue = enqueueWebhookReview, log = entry => process.stdout.write(JSON.stringify(entry) + '\n') } = {}) {
   const active = new Set();
 
   return function handleGitHubWebhook(request, response) {
@@ -52,6 +53,16 @@ function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysi
     const baseSha = pr.base.sha.toLowerCase();
     const headSha = pr.head.sha.toLowerCase();
     const id = 'webhook-' + createHash('sha256').update(`${installationId ? installationId + ':' : ''}${eventRepository}#${payload.number}:${baseSha}:${headSha}`).digest('hex');
+    const url = `https://github.com/${eventRepository}/pull/${payload.number}`;
+    const options = { id, installationId, expectedRevision: { baseSha, headSha },
+      trigger: { type: 'github_webhook', deliveryId, action: payload.action, repository: eventRepository, baseSha, headSha,
+        ...(Number.isSafeInteger(pr.user?.id) && pr.user.id > 0 ? { actorId: String(pr.user.id) } : {}) } };
+    if (process.env.REVIEW_EXECUTION === 'queue') {
+      return Promise.resolve().then(() => enqueue({ id, payload: { url, options } }))
+        .then(() => response.status(202).json({ status: 'accepted', analysisId: id }))
+        .catch(() => response.status(503).json({ message: 'Review could not be queued. Redeliver this event later.' }));
+    }
+    if (process.env.NODE_ENV === 'production') return response.status(503).json({ message: 'Configure durable review execution.' });
     if (active.has(id)) return response.status(202).json({ status: 'duplicate', analysisId: id });
     if (active.size >= 2) return response.status(503).json({ message: 'Webhook reviewer is busy. Redeliver this event later.' });
     active.add(id);
@@ -70,12 +81,7 @@ function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysi
           return;
         }
         const githubToken = installationId ? await installationToken(installationId, eventRepository) : undefined;
-        const result = await analyze(`https://github.com/${eventRepository}/pull/${payload.number}`, {
-          id,
-          installationId, githubToken,
-          expectedRevision: { baseSha, headSha },
-          trigger: { type: 'github_webhook', deliveryId, action: payload.action, repository: eventRepository, baseSha, headSha }
-        });
+        const result = await analyze(url, { ...options, githubToken });
         log({ ...details, status: result.body.status === 'completed' ? 'completed' : 'failed', httpStatus: result.status, aiStatus: result.body.aiStatus });
       } catch {
         log({ ...details, status: 'failed', errorCode: 'WEBHOOK_PROCESSING_FAILED' });

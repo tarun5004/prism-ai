@@ -1,7 +1,47 @@
 import mongoose from 'mongoose';
-import Analysis from './analysis.model.js';
+import Analysis, { ReviewJob } from './analysis.model.js';
 
 const analyses = new Map();
+const localJobs = new Map();
+
+async function enqueueReviewJob(job) {
+  if (mongoose.connection.readyState === 1) {
+    try { return await ReviewJob.findOneAndUpdate({ id: job.id }, { $setOnInsert: { ...job, status: 'queued' } }, { upsert: true, new: true }).lean(); }
+    catch (error) { if (error.code === 11000) return ReviewJob.findOne({ id: job.id }).lean(); throw error; }
+  }
+  if (process.env.NODE_ENV === 'production') throw Error('Job storage unavailable.');
+  if (!localJobs.has(job.id)) localJobs.set(job.id, { ...job, status: 'queued', createdAt: new Date() });
+  return localJobs.get(job.id);
+}
+
+async function findReviewJob(id) {
+  if (mongoose.connection.readyState === 1) return ReviewJob.findOne({ id }).lean();
+  if (process.env.NODE_ENV === 'production') throw Error('Job storage unavailable.');
+  return localJobs.get(id);
+}
+
+async function claimReviewJob(id, owner, leaseUntil = new Date(Date.now() + 900000)) {
+  if (mongoose.connection.readyState === 1) {
+    // A crashed run may already have called the provider: never regenerate blindly.
+    await ReviewJob.updateOne({ id, status: 'running', leaseUntil: { $lt: new Date() } }, { $set: { status: 'unknown', errorCode: 'INTERRUPTED_REVIEW' } });
+    return ReviewJob.findOneAndUpdate({ id, status: 'queued' }, { $set: { status: 'running', owner, leaseUntil } }, { new: true }).lean();
+  }
+  if (process.env.NODE_ENV === 'production') throw Error('Job storage unavailable.');
+  const job = localJobs.get(id);
+  if (job?.status === 'running' && job.leaseUntil < new Date()) { job.status = 'unknown'; job.errorCode = 'INTERRUPTED_REVIEW'; }
+  if (job?.status !== 'queued') return null;
+  Object.assign(job, { status: 'running', owner, leaseUntil });
+  return job;
+}
+
+async function finishReviewJob(id, owner, status, errorCode) {
+  if (!['completed', 'failed'].includes(status)) throw Error('Invalid job result.');
+  if (mongoose.connection.readyState === 1) return ReviewJob.findOneAndUpdate({ id, owner, status: 'running' }, { $set: { status, ...(errorCode ? { errorCode } : {}) } }, { new: true }).lean();
+  if (process.env.NODE_ENV === 'production') throw Error('Job storage unavailable.');
+  const job = localJobs.get(id);
+  if (job?.owner === owner && job.status === 'running') Object.assign(job, { status, errorCode });
+  return job;
+}
 
 // Save a beta analysis in MongoDB when connected, otherwise keep local development in memory.
 async function saveAnalysis(analysis) {
@@ -9,6 +49,8 @@ async function saveAnalysis(analysis) {
     await Analysis.create(analysis);
     return analysis;
   }
+
+  if (process.env.NODE_ENV === 'production') throw Error('Persistent report storage unavailable.');
 
   if (analyses.has(analysis.id)) throw new Error('Analysis already exists.');
   analyses.set(analysis.id, analysis);
@@ -71,3 +113,4 @@ async function findPreviousAnalysis(pullRequest, installationId) {
 }
 
 export { findAnalysis, listAnalyses, saveAnalysis, saveFindingFeedback, saveGitHubFeedback, findPreviousAnalysis };
+export { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob };

@@ -16,7 +16,8 @@ const analysisSchema = new mongoose.Schema(
       action: String,
       repository: String,
       baseSha: String,
-      headSha: String
+      headSha: String,
+      actorId: String
     },
     aiStatus: { type: String, enum: ['skipped', 'completed', 'partial', 'unavailable'] },
     aiModel: { type: String },
@@ -48,5 +49,16 @@ const analysisSchema = new mongoose.Schema(
 analysisSchema.index({ installationId: 1, 'pullRequest.repository': 1, createdAt: -1 });
 analysisSchema.index({ installationId: 1, 'pullRequest.key': 1, createdAt: -1 });
 const Analysis = mongoose.models.Analysis || mongoose.model('Analysis', analysisSchema);
+
+const jobSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  status: { type: String, enum: ['queued', 'running', 'completed', 'failed', 'unknown'], default: 'queued' },
+  payload: mongoose.Schema.Types.Mixed,
+  owner: String, leaseUntil: Date, errorCode: String,
+  createdAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+jobSchema.index({ status: 1, leaseUntil: 1 });
+const ReviewJob = mongoose.models.ReviewJob || mongoose.model('ReviewJob', jobSchema);
+export { ReviewJob };
 
 export default Analysis;
