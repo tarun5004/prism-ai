@@ -1,26 +1,23 @@
 import { createHash, randomBytes, sign } from 'node:crypto';
 import { Router } from 'express';
+import { writeAuthRecord, readAuthRecord, deleteAuthRecord, incrementReviewCounter } from './github.repository.js';
 
-const sessions = new Map();
-const pending = new Map();
-const reviewCounts = new Map();
 const posting = new Set();
 const appMode = () => Boolean(process.env.GITHUB_APP_ID);
 const failure = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const cookie = (request, name) => request.headers.cookie?.split(';').map(value => value.trim()).find(value => value.startsWith(name + '='))?.slice(name.length + 1);
 const secure = () => process.env.NODE_ENV === 'production' ? '; Secure' : '';
 const setCookie = (response, name, value, seconds) => response.append('Set-Cookie', `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${seconds}${secure()}`);
-const prune = map => { for (const [id, item] of map) if (item.expires <= Date.now()) map.delete(id); };
-
-function consumeReviewBudget(key) {
+async function consumeReviewBudget(key) {
   if (!appMode()) return true;
-  prune(reviewCounts);
-  const total = reviewCounts.get('total') || { count: 0, expires: Date.now() + 3600000 };
-  const actor = reviewCounts.get(key) || { count: 0, expires: Date.now() + 3600000 };
-  if (total.count >= 30 || actor.count >= 6) return false;
-  total.count++; actor.count++;
-  reviewCounts.set('total', total); reviewCounts.set(key, actor);
-  return true;
+  const now = new Date();
+  const hour = now.toISOString().slice(0, 13);
+  const month = now.toISOString().slice(0, 7);
+  const monthlyLimit = Number(process.env.REVIEW_MONTHLY_LIMIT || 100);
+  if (!Number.isSafeInteger(monthlyLimit) || monthlyLimit < 1 || monthlyLimit > 10000) return false;
+  return await incrementReviewCounter(`${key}:${hour}`, 6, Date.now() + 3600000)
+    && await incrementReviewCounter(`total:${hour}`, 30, Date.now() + 3600000)
+    && await incrementReviewCounter(`total:${month}`, monthlyLimit, Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 }
 
 async function githubRequest(path, token, body) {
@@ -70,8 +67,9 @@ async function requireSession(request, response, next) {
     if (process.env.NODE_ENV === 'production') return response.status(503).json({ message: 'Public access requires GitHub App configuration.' });
     return next();
   }
-  prune(sessions);
-  const session = sessions.get(cookie(request, 'prism_session'));
+  let session;
+  try { session = await readAuthRecord('session', cookie(request, 'prism_session')); }
+  catch { return response.status(503).json({ message: 'GitHub session storage is unavailable.' }); }
   if (!session) return response.status(401).json({ message: 'Connect GitHub to access your reports.' });
   if (!['GET', 'HEAD'].includes(request.method) && request.headers.origin !== process.env.APP_ORIGIN) return response.status(403).json({ message: 'Invalid request origin.' });
   try {
@@ -125,32 +123,28 @@ async function postReviewSummary(report, { getToken = installationToken } = {}) 
 
 function createGitHubRoutes() {
   const router = Router();
-  router.get('/session', (request, response) => {
-    prune(sessions);
-    const session = sessions.get(cookie(request, 'prism_session'));
+  router.get('/session', async (request, response) => {
+    const session = process.env.DEMO_ONLY === 'true' ? null : await readAuthRecord('session', cookie(request, 'prism_session'));
     const slug = process.env.GITHUB_APP_SLUG;
     const demoOnly = process.env.DEMO_ONLY === 'true';
     response.set('Cache-Control', 'no-store').json({ demoOnly, enabled: !demoOnly && (appMode() || process.env.NODE_ENV === 'production'), authenticated: !demoOnly && Boolean(session), userId: !demoOnly ? session?.userId || null : null, login: !demoOnly ? session?.login || null : null, installUrl: !demoOnly && /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
   });
-  router.get('/login', (request, response) => {
+  router.get('/login', async (request, response) => {
     if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
     if (!appMode() || !process.env.GITHUB_APP_CLIENT_ID || !process.env.GITHUB_APP_CLIENT_SECRET || !process.env.APP_ORIGIN) return response.status(503).json({ message: 'GitHub App login is not configured.' });
-    prune(pending);
-    if (pending.size >= 100) return response.status(429).json({ message: 'Please try signing in later.' });
     const state = randomBytes(32).toString('hex');
     const verifier = randomBytes(32).toString('base64url');
-    pending.set(state, { verifier, expires: Date.now() + 600000 });
+    await writeAuthRecord('oauth', state, { verifier }, Date.now() + 600000);
     setCookie(response, 'prism_state', state, 600);
     const params = new URLSearchParams({ client_id: process.env.GITHUB_APP_CLIENT_ID, redirect_uri: process.env.APP_ORIGIN + '/api/github/callback', state, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' });
     response.redirect('https://github.com/login/oauth/authorize?' + params);
   });
   router.get('/callback', async (request, response) => {
     if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
-    prune(pending);
     const state = request.query.state;
-    const entry = typeof state === 'string' && pending.get(state);
-    if (!entry || cookie(request, 'prism_state') !== state || typeof request.query.code !== 'string') return response.status(400).json({ message: 'Invalid or expired GitHub login. Start again.' });
-    pending.delete(state);
+    if (typeof state !== 'string' || cookie(request, 'prism_state') !== state || typeof request.query.code !== 'string') return response.status(400).json({ message: 'Invalid or expired GitHub login. Start again.' });
+    const entry = await readAuthRecord('oauth', state, true);
+    if (!entry) return response.status(400).json({ message: 'Invalid or expired GitHub login. Start again.' });
     setCookie(response, 'prism_state', '', 0);
     try {
       const result = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15000), headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: process.env.GITHUB_APP_CLIENT_ID, client_secret: process.env.GITHUB_APP_CLIENT_SECRET, redirect_uri: process.env.APP_ORIGIN + '/api/github/callback', code: request.query.code, code_verifier: entry.verifier }) });
@@ -159,22 +153,21 @@ function createGitHubRoutes() {
       if (typeof data.access_token !== 'string' || data.error) throw Error('exchange');
       const user = await githubRequest('/user', data.access_token);
       if (!Number.isSafeInteger(user.id) || typeof user.login !== 'string') throw Error('user');
-      prune(sessions);
-      if (sessions.size >= 500) throw Error('capacity');
-      sessions.delete(cookie(request, 'prism_session'));
+      await deleteAuthRecord('session', cookie(request, 'prism_session'));
       const id = randomBytes(32).toString('hex');
       const seconds = Math.min(Number.isFinite(data.expires_in) && data.expires_in > 0 ? data.expires_in : 3600, 28800);
-      sessions.set(id, { token: data.access_token, userId: String(user.id), login: user.login, expires: Date.now() + seconds * 1000 });
+      await writeAuthRecord('session', id, { token: data.access_token, userId: String(user.id), login: user.login }, Date.now() + seconds * 1000);
       setCookie(response, 'prism_session', id, seconds);
       response.redirect(process.env.APP_ORIGIN + '/app');
     } catch { response.status(502).json({ message: 'GitHub login failed. Start again.' }); }
   });
-  router.post('/logout', (request, response) => {
+  router.post('/logout', async (request, response) => {
     if (request.headers.origin !== process.env.APP_ORIGIN) return response.status(403).json({ message: 'Invalid request origin.' });
-    sessions.delete(cookie(request, 'prism_session'));
+    await deleteAuthRecord('session', cookie(request, 'prism_session'));
     setCookie(response, 'prism_session', '', 0);
     response.status(204).end();
   });
+  router.use((_error, request, response, next) => response.status(503).json({ message: 'GitHub session storage is unavailable.' }));
   return router;
 }
 

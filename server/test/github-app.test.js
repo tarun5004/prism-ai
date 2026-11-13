@@ -7,6 +7,32 @@ import app from '../src/app.js';
 
 afterEach(() => mock.restoreAll());
 
+test('persistent authentication encrypts payloads and consumes browser state once', async () => {
+  const { sealAuthData, openAuthData, writeAuthRecord, readAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
+  const previous = process.env.SESSION_ENCRYPTION_KEY;
+  process.env.SESSION_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+  try {
+    const sealed = sealAuthData({ token: 'private-user-token' });
+    assert.ok(!sealed.includes('private-user-token'));
+    assert.deepEqual(openAuthData(sealed), { token: 'private-user-token' });
+    assert.throws(() => openAuthData(sealed.slice(0, -4) + 'AAAA'));
+    await writeAuthRecord('oauth', 'test-state', { verifier: 'pkce-value' }, Date.now() + 5000);
+    assert.equal((await readAuthRecord('oauth', 'test-state', true)).verifier, 'pkce-value');
+    assert.equal(await readAuthRecord('oauth', 'test-state', true), null);
+    await writeAuthRecord('session', 'expired-test', { token: 'expired' }, Date.now() - 1);
+    assert.equal(await readAuthRecord('session', 'expired-test'), null);
+  } finally { if (previous === undefined) delete process.env.SESSION_ENCRYPTION_KEY; else process.env.SESSION_ENCRYPTION_KEY = previous; }
+});
+
+test('review counters enforce an atomic allowance and fail closed in production without storage', async () => {
+  const { incrementReviewCounter, readAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
+  assert.equal(await incrementReviewCounter('test-budget', 1, Date.now() + 5000), true);
+  assert.equal(await incrementReviewCounter('test-budget', 1, Date.now() + 5000), false);
+  const previous = process.env.NODE_ENV; process.env.NODE_ENV = 'production';
+  try { await assert.rejects(readAuthRecord('session', 'anything'), /Session storage unavailable/); }
+  finally { if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous; }
+});
+
 test('installation access is checked against both installation and repository', () => {
   const auth = { repositories: [{ installationId: 7, repository: 'owner/repo' }] };
   assert.equal(github.canReadReport(auth, { installationId: 7, pullRequest: { repository: 'owner/repo' } }), true);

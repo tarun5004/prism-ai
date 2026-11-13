@@ -16,7 +16,7 @@ async function createAnalysis(request, response) {
     if (!access) return response.status(403).json({ message: 'Install PRism on this repository and verify your access.' });
     installationId = access.installationId;
   }
-  if (request.auth && !consumeReviewBudget('user:' + request.auth.userId)) return response.status(429).json({ message: 'Demo review limit reached. Try again in one hour.' });
+  if (request.auth && !await consumeReviewBudget('user:' + request.auth.userId)) return response.status(429).json({ message: 'Demo review limit reached. Try again after the allowance resets.' });
 
   const streaming = typeof request.headers?.accept === 'string' && request.headers.accept.includes('application/x-ndjson');
   const connected = () => !response.destroyed && !response.writableEnded;

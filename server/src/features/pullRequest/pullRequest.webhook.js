@@ -65,7 +65,7 @@ function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysi
           log({ ...details, status: 'duplicate' });
           return;
         }
-        if (installationId && !consumeReviewBudget('installation:' + installationId)) {
+        if (installationId && !await consumeReviewBudget('installation:' + installationId)) {
           log({ ...details, status: 'failed', errorCode: 'REVIEW_LIMIT' });
           return;
         }
