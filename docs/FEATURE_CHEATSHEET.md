@@ -90,8 +90,19 @@ SDK handshake/tool discovery handle karta. `StdioServerTransport` stdin/stdout s
 
 [Evaluation script](../server/scripts/evaluate-ai.js) known test cases par output collect karta; Python scorer human judgments se quality measure kar sakta. Embedding experiment text ko number-vectors mein convert karke closest docs compare karta; persistent search index nahi.
 
-**Pending/conditional:** Chroma = vectors store/search; LangGraph = saved checkpoints/branching/pause-resume; durable queue = crash ke baad jobs continue; remote MCP = hosted authenticated connector. Yeh implemented nahi. Hosting, human scoring aur browser QA bhi pending.
+**Pending/conditional:** Chroma = vectors store/search; LangGraph = saved checkpoints/branching/pause-resume; remote MCP = hosted authenticated connector. Yeh implemented nahi. Hosting, human scoring aur browser QA bhi pending.
 
 **Builder habit:** “Kaunsa data chahiye? Kahan se milega? Kaise verify karunga? Failure pe kya preserve hoga?” Framework uske baad choose karo.
 
 Detailed status: [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md). Live AI reliability unresolved: successful review aur separate provider504 dono observed hue.
+
+
+## 11. Restart-safe jobs, login aur opt-in emails
+
+**Login:** GitHub token ko plain save nahi karte. `github.repository.js` encrypt karke MongoDB mein expiry ke saath rakhta; API restart ke baad wahi session read kar sakti. Review allowances bhi atomic database counters hain, isliye restart se reset nahi hote.
+
+**Worker:** `analysis.jobs.js` job MongoDB mein save karta aur queue mein sirf job ID bhejta. `scripts/review-worker.js` ek message leta, database mein ownership claim karta, phir existing review service call karta. Same event dobara aaye toh second worker ownership nahi le sakta. Crash mein AI call ka outcome unknown ho sakta—blind retry karke duplicate bill nahi banate. Yeh checkpointed LangGraph resume nahi hai.
+
+**Email:** `analysis.mail.js` report save hone ke baad connected user's opt-in, current repo access aur verified GitHub email check karta. Atomic send claim duplicate sends rokta; SMTP failure report ko delete nahi karta. Session expire/logout pe mail authorization bhi end; reconnect se renew. Nodemailer transport hai, mailbox provider nahi.
+
+**Docker + CI/CD:** same image API ya one-shot worker chala sakti. Workflow pehle tests/build/container smoke karta; deploy manual, integration branch aur protected production environment se gated hai. Local Docker verified; actual Azure trigger, GitHub onboarding aur SMTP test pending. [Setup steps](../README.md#release-setup--13-november).

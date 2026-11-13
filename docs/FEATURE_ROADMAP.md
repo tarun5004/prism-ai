@@ -1,6 +1,6 @@
 # PRism AI — feature status and remaining owner actions
 
-Status: **12 November 2026**. Implementation record: [chunk ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md). Implemented means local code, not a claim of live deployment or measured review accuracy.
+Status: **13 November 2026**. Implementation record: [chunk ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md). Implemented means local code, not a claim of live deployment or measured review accuracy.
 
 ## Priority and completed slices
 
@@ -9,8 +9,8 @@ Status: **12 November 2026**. Implementation record: [chunk ledger](superpowers/
 | P0 | Existing review workflow | Paginated GitHub patches, revision guards, unified diff, deterministic rules, Gemini structured findings, contextual walkthrough/impacts, saved history, actual progress | Existing workflow retained; live evaluation is separate from offline checks |
 | P0 | E2 diagnostics | SDK input/output/thinking/total tokens (unknown = null), prompt/schema version, run ID, timing/failure metadata, report request details | Real usage saved in the live dev artifact; mocked checks and isolated Mongo read-back also exercised |
 | P0 | GitHub App backend | State + PKCE login, opaque HttpOnly cookie, server-only user tokens, fresh installation/repository authorization, narrow installation tokens, installation-scoped reports/webhook IDs | Offline callback/replay/origin/access tests; real registration/installation not performed |
-| P0 | Public access boundary | Production requires App credentials, HTTPS APP_ORIGIN and MongoDB; protected reads/writes; runtime storage gate; no-store API; CSRF origin checks | Single Node process; sessions restart on process restart; no enterprise tenancy claims |
-| P0 | Usage control | Six review starts per user/installation per hour and thirty globally, plus existing two webhook jobs | In-memory limits reset at restart; public hosting/provider spending controls still need operator setup |
+| P0 | Public access boundary | Production requires App credentials, HTTPS APP_ORIGIN and MongoDB; protected reads/writes; runtime storage gate; no-store API; CSRF origin checks | Encrypted expiring MongoDB sessions survive API restart; real GitHub onboarding remains manual |
+| P0 | Usage control | Persistent six starts per actor/installation/hour, thirty globally/hour and configurable global monthly limit (default100) | MongoDB atomic counters; starts are not a currency/token billing cap |
 | P1 | E3 guidance | Opt-in REVIEW_GUIDANCE=lexical; ranked README/CONTRIBUTING sections, head revision, original coordinates, existing request/context budgets and sensitive-content filtering | Guidance can be omitted when the shared source budget is exhausted; not repository-wide semantic RAG |
 | P1 | E3 retrieval experiment | Three original E1-linked relevance queries; lexical hit@1 and optional official-SDK embeddings/cosine comparison; version/hash/source references | Offline lexical artifact recorded; semantic path mocked only, no live embedding improvement claim |
 | P1 | E4 feedback | Useful / Incorrect, optional reason, validated API, actor-derived annotation key, atomic Mongo update, saved UI states | Separate from generated evidence; not automatic training or a replacement for curated evaluation labels |
@@ -51,12 +51,12 @@ This is **not** a full accuracy benchmark. Judgments remain empty, so precision/
 
 ## Operating boundaries
 
-- This remains a single-user/portfolio-scale demo with simple installation access controls, not a scalable SaaS. One backend instance only; no durable queue or distributed sessions/quotas.
+- This remains a single-user/portfolio-scale demo with simple installation access controls, not a scalable SaaS. Production jobs and auth/quotas now use durable shared storage; this is still a bounded demo, without general multi-step checkpoint/resume.
 - Webhook acceptance is not model completion. A crash after 202 may require redelivery. A saved failed revision remains deduplicated; manual analysis can intentionally retry it.
 - Production report storage fails closed; local mode can still fall back to memory. Do not expose local mode publicly.
 - GitHub endpoint cap: 3,000 changed files; report snapshot limit: 4 MiB. AI context remains bounded to five reviewable files, 12k serialized diff characters and 8k snippet characters.
 - MCP defaults to legacy/local reports; an explicit MCP_INSTALLATION_ID grants the trusted local database operator that scope. It is not browser authentication or a remote multi-user connector.
-- Optional embeddings do not change production retrieval. No vector database, extra model provider, auto-merge, repository execution, email service or autonomous agent loop was added.
+- Optional embeddings do not change production retrieval. No vector database, extra model provider, auto-merge, repository execution or autonomous agent loop was added. Optional SMTP email was added in the 13 November release slice.
 - Goal: zero recurring hosting cost where practical. Free/student offers have limits/expiry; no paid service or account purchase was made. Consumer subscriptions and API quotas are separate. Public deployment is still unverified.
 
 ## Work discipline
@@ -77,7 +77,7 @@ Updated after the 12 November live verification. Framework names and implemented
 | Chroma / persistent embedding store | Not implemented; no revision-scoped persistent vector index | Defer until repository-wide retrieval is a real requirement; would need a separate datastore/runtime |
 | LangChain models/tools/retrievers | No LangChain dependency; direct SDK and small existing functions implement the current linear path | Defer adapter migration; it would duplicate working integration without solving 503/504 |
 | LangGraph state/checkpoints/resume | No LangGraph; existing service sequences GitHub, retrieval, memory, model and save with explicit branches | Durable checkpoint/resume is missing; defer until interruptible multi-step work is required |
-| Queue / pods | Two in-process webhook jobs; no durable queue, automatic retries, Kubernetes or pods | Restart recovery still requires redelivery; no scalable infrastructure needed for this demo |
+| Queue / pods | MongoDB job ownership/status plus Azure Storage Queue and one-shot worker; local inline mode retained | Real Azurite/Mongo/container checks passed; live Azure trigger pending; interrupted inference marked unknown |
 | Previous versions / feedback memory | Scoped saved revisions and at most three useful prior labels, with current evidence validation | Implemented and offline tested; not model training or general chat memory |
 | MCP protocol/server | Official SDK stdio server, scoped list/read reports; new demo-only read_demo_report verified through real child-process handshake/discovery/call | Compatible local stdio clients only; desktop setup, remote OAuth connector and public registry listing remain separate |
 
@@ -86,7 +86,7 @@ Updated after the 12 November live verification. Framework names and implemented
 1. **P0 — stable live demonstration:** retain the verified recorded sample; observe model availability before promising live review reliability. Do not inflate timeout or add frameworks as a speculative fix. A separate model comparison is a possible next diagnostic, not an implemented fallback.
 2. **P0 — owner acceptance:** hosting, GitHub App credentials/onboarding, desktop MCP setup and real Langfuse ingestion. Do not claim these passed from mocked tests.
 3. **P1 — review usefulness:** human adjudication of frozen findings, then additional dev evaluation. Small relevance fixtures are not a bug-detection score.
-4. **P2 — conditional architecture:** persistent semantic retrieval if broader code search is needed; checkpointed graph/queue if resumable work becomes necessary; LangChain only if it simplifies those integrations. These are deliberately unimplemented, not silently claimed complete.
+4. **P2 — conditional architecture:** persistent semantic retrieval if broader code search is needed; checkpointed graph if resumable multi-step work becomes necessary; LangChain only if it simplifies those integrations. These are deliberately unimplemented, not silently claimed complete.
 
 ### Current evidence
 
@@ -101,7 +101,7 @@ Official references: [Gemini troubleshooting](https://ai.google.dev/gemini-api/d
 
 **Budget:** target at or below INR200/month for the whole demo, not a spending allowance to consume. Student credit balance is not a monthly budget. No resources created by this plan; no hard monthly cap or zero bill guaranteed. Deployment follows local completion/verification.
 
-**Inspected status:** GitHub App install/login/access checks and optional bot summary already exist in github.app.js. Verified webhooks reuse analysis.service.js; current jobs and OAuth/session/quota state live in process memory. MCP provides local stdio report tools, not a remote authenticated connector. `.github/workflows/checks.yml` already runs backend/frontend/evaluation checks and build; Docker, durable workers, email and CD are absent.
+**Pre-implementation audit (historical):** GitHub App install/login/access checks and optional bot summary already exist in github.app.js. Verified webhooks reuse analysis.service.js; current jobs and OAuth/session/quota state live in process memory. MCP provides local stdio report tools, not a remote authenticated connector. `.github/workflows/checks.yml` already runs backend/frontend/evaluation checks and build; Docker, durable workers, email and CD are absent.
 
 ### Target flow
 
@@ -121,9 +121,9 @@ Worker and web API reuse one codebase/container image. Azure Container Apps Cons
 | 6 | CI/CD: extend existing checks workflow with container build; separate gated deployment workflow if needed; publish versioned image to GHCR, Azure OIDC authentication | Tests/build required first; least permissions, no long-lived cloud credential; deliberate deployment approval; no live model calls per push |
 | 7 | Release acceptance, then Azure deployment | GitHub install/login → new PR → one job/review → accessible report → notification; replay/uninstall/restart/failure paths verified; browser QA and human usefulness checks recorded |
 
-**Worker safety:** a queue can redeliver messages. Persist ownership/status and distinguish queue retries from AI generation retries. Crash after a provider request starts can leave an unknown outcome; mark for explicit recovery instead of promising exactly-once inference or automatically burning repeated calls. Retry email independently of AI review.
+**Worker safety:** a queue can redeliver messages. Persist ownership/status and distinguish queue retries from AI generation retries. Crash after a provider request starts can leave an unknown outcome; mark for explicit recovery instead of promising exactly-once inference or automatically burning repeated calls. Email failure is independent of AI review; ambiguous delivery is not automatically resent.
 
-**Email proposal:** notify only an opted-in connected user at a verified address when their report is ready, with honest AI status. Recipient rules/provider credentials must be settled before implementation; never send to an arbitrary email from webhook/PR text. Nodemailer is a sending library, not a free delivery provider. Sender verification/domain or mailbox setup is an owner dependency; free quota does not remove that setup.
+**Approved email rule:** notify only an opted-in connected user at a verified address when their report is ready, with honest AI status. Recipient is the connected user after opt-in; provider credentials remain owner setup; never send to an arbitrary email from webhook/PR text. Nodemailer is a sending library, not a free delivery provider. Sender verification/domain or mailbox setup is an owner dependency; free quota does not remove that setup.
 
 ### Cost design
 
@@ -133,4 +133,19 @@ Worker and web API reuse one codebase/container image. Azure Container Apps Cons
 - Propose alerts at INR50/100/150/200 plus application-wide monthly review/email limits. Azure budget alerts notify; they do not themselves stop resources or enforce a hard INR200 ceiling. Retain student spending protection; do not upgrade/remove it as a workaround. [Budgets](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets).
 - Langfuse Cloud rather than self-hosting its stack; keep Gemini within configured API limits and avoid unbounded retries. No GPU, Kubernetes, always-on VM or Redis required for the agreed demo.
 
-**Scope boundary:** finish this review/connect/jobs/notifications/container path before adding Chroma, LangGraph, new agents or a remote MCP service. Those remain conditional follow-ups. No account mutation, email send, dependency install or application change was made for this planning update.
+**Scope boundary:** finish this review/connect/jobs/notifications/container path before adding Chroma, LangGraph, new agents or a remote MCP service. Those remain conditional follow-ups. The plan itself created no resources. Completed implementation and remaining verification are recorded below.
+
+
+### Completed implementation — 13 November
+
+| Slice | How it works | Evidence / remaining boundary |
+| --- | --- | --- |
+| Persistent auth | AES-GCM encrypted Mongo records, explicit expiry/TTL, single-use OAuth state, atomic quotas | Real isolated DB + separate process read + concurrent counter check passed |
+| Durable jobs | Save job, enqueue ID, atomic owner lease, shared review service, persisted outcome | Duplicate Azurite messages invoked analysis once; real container reused saved report; no automatic inference retry |
+| Opt-in email | Verified GitHub address/current access, SMTP after save, atomic send claim, independent status | Backend/UI tests passed; expiry regression fixed; actual SMTP delivery pending |
+| Docker | Multi-stage React build, non-root Node runtime; same image for web/worker | Real build, health/demo/deep-link, secret exclusion and worker command passed |
+| CI/CD | Existing workflow checks image; manual integration-only GHCR publish, protected Azure OIDC update | YAML/gates checked locally; hosted run and owner resource setup pending |
+
+Final local checks: **130 backend / 40 frontend / 7 Python passed**, production build/container verified. Runtime dependency audit: zero vulnerabilities; two moderate development-only nodemon/minimatch advisories retained without forced major updates. Independent whole-branch review found one important issue: opting in near session expiry extended mail authorization. Fixed by retaining the parent session expiry; regression failed before fix and full backend suite passed after it. No critical findings. Minor follow-ups are manual account/browser/SMTP/cloud acceptance and explicit crash recovery, not claimed complete.
+
+Latest controlled provider call: B01, one attempt, upstream503 after32565ms; no retry or timeout inflation. Captured demo remains available. Follow [local setup and owner checklist](../README.md#release-setup--13-november) before Azure; INR200/month remains the target, not a guaranteed hard cap. LangChain/Chroma/LangGraph and remote MCP remain conditional; the existing local MCP is implemented.

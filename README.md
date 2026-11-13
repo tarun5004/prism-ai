@@ -8,7 +8,7 @@ Built as a small MERN + Gemini project. Feedback is advisory: PRism does not run
 
 [Feature status & next steps](docs/FEATURE_ROADMAP.md) · [UI direction](docs/UI_DIRECTION.md) · [Evaluation notes](docs/beta/DEMO_AND_EVALUATION.md)
 
-> **Delivery status — 2 November 2026:** the current V0 is on the local `integration/v0-demo` branch. Remote `main` does not contain this full V0; the integration branch is not published yet. Publishing it and reviewing its PR remain release steps. There is no verified public deployment URL.
+> **Delivery status — 13 November 2026:** the current V0 is on the local `integration/v0-demo` branch. Remote `main` does not contain this full V0; the integration branch is not published yet. Publishing it and reviewing its PR remain release steps. There is no verified public deployment URL.
 
 ## Take a 60-second tour
 
@@ -53,7 +53,7 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 
 Use your project region's HTTPS origin. No tracing SDK, LangChain, LangGraph or vector database is required for these bounded demo features.
 
-Latest executed checks: **120 backend**, **7 Python evaluation**, **38 frontend** passed; production build passed. Actual production-mode HTTP checks returned 200 for health, the public sample and `/demo`, and 503 for private analysis GET/POST in demo-only mode. Independent review found no important/critical defects. Browser interaction, real Langfuse ingestion and hosted GitHub onboarding remain unverified. These results supersede the earlier dated verification below; they do not establish model accuracy.
+Historical 12 November checks: **120 backend**, **7 Python evaluation**, **38 frontend** passed; production build passed. Actual production-mode HTTP checks returned 200 for health, the public sample and `/demo`, and 503 for private analysis GET/POST in demo-only mode. Independent review found no important/critical defects. Browser interaction, real Langfuse ingestion and hosted GitHub onboarding remain unverified. These results supersede the earlier dated verification below; they do not establish model accuracy.
 
 One controlled live B01 request on 12 November used the configured `gemini-3.6-flash`: one attempt returned HTTP 503 after 83,836 ms, before its 120,000 ms deadline. No retry was made. The earlier successful captured sample remains available; live provider availability remains an external limitation.
 
@@ -110,7 +110,7 @@ All credentials belong in **`server/.env`**, which is ignored by Git. Never put 
 | Variable | Use |
 | --- | --- |
 | `PORT` | Backend port; default `5000` |
-| `MONGODB_URI` | Persistent reports. Missing URI or connection failure falls back to memory; memory is lost on restart |
+| `MONGODB_URI` | Persistent reports. Local development can fall back to memory; production and queued jobs require connected MongoDB |
 | `GITHUB_TOKEN` | Server-side GitHub access; useful for rate limits and required for private repositories it is permitted to read |
 | `GEMINI_API_KEY` | Enables Gemini review. Without it, rule-based analysis still works |
 | `GEMINI_MODEL` | Model available to your key. The example config uses `gemini-3.6-flash`; availability and latency depend on the provider |
@@ -132,9 +132,9 @@ Local mode supports the manually configured repository webhook below. GitHub App
 6. Expect `202` plus an `analysisId`, then check backend completion logs and refresh **Analyses**. The report appears after saving; `202` acknowledges receipt, not model success.
 7. **Redeliver** the same PR revision. A completed stored report is reused; it must not trigger another model review. A new base/head revision has a different report ID.
 
-Useful responses: `401` invalid signature; `403` repository not enabled; `413` body exceeds 1 MiB; `503` unconfigured or busy. Signed irrelevant events and draft/closed PRs are ignored. Optional App summaries are described below; merge events and custom email delivery are not implemented.
+Useful responses: `401` invalid signature; `403` repository not enabled; `413` body exceeds 1 MiB; `503` unconfigured or busy. Signed irrelevant events and draft/closed PRs are ignored. Optional App summaries are described below; merge events are ignored. Opt-in email delivery is described below.
 
-At most two webhook jobs run concurrently in the same Node process. There is no durable queue or automatic retry. If the server stops after acknowledging but before saving, redeliver after restart. MongoDB preserves final-report deduplication across restarts; in-memory mode does not. Saved failed revisions are also deduplicated—use manual URL analysis for an intentional retry. Multiple backend replicas are not supported by this deduplication design.
+Local inline mode allows two concurrent jobs in the API process; it is for development only. With `REVIEW_EXECUTION=queue`, the webhook saves a MongoDB job and waits for Azure Queue acceptance before returning 202. A separate worker atomically claims the revision, runs the existing review service and saves its outcome. Duplicate deliveries cannot claim the same job twice. Interrupted jobs become `unknown` after lease expiry: no blind model retry. Production rejects inline dispatch. See the local queue setup below.
 
 [GitHub signature validation](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries) · [Webhook delivery practices](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks)
 
@@ -153,8 +153,11 @@ At most two webhook jobs run concurrently in the same Node process. There is no 
 | [ai.service.js](server/src/features/ai/ai.service.js) | Gemini structured output, prompt, validation and diagnostics |
 | [analysis.repository.js](server/src/features/analysis/analysis.repository.js) / [model](server/src/features/analysis/analysis.model.js) | Report storage |
 | [pullRequest.webhook.js](server/src/features/pullRequest/pullRequest.webhook.js) | Signature checks, event filtering and bounded dispatch |
+| [github.repository.js](server/src/features/pullRequest/github.repository.js) | Encrypted expiring sessions and atomic usage counters |
+| [analysis.jobs.js](server/src/features/analysis/analysis.jobs.js) / [review-worker.js](server/scripts/review-worker.js) | Queue dispatch and one-shot worker |
+| [analysis.mail.js](server/src/features/analysis/analysis.mail.js) | Opt-in SMTP notification after persistence |
 
-Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and Google's official `@google/genai` SDK. No diff editor, vector database, worker queue or agent framework is needed for the current flow.
+Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and Google's official `@google/genai` SDK. Azure Storage Queue supports optional local queue testing and the production worker path; no vector database or agent framework is required.
 
 ## API, briefly
 
@@ -169,6 +172,8 @@ Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and Google's offic
 | GET | `/api/github/session` | Safe connection status and App installation link |
 | GET | `/api/github/login` / `/api/github/callback` | State/PKCE authorization flow |
 | POST | `/api/github/logout` | End the current server session; requires matching Origin |
+| PUT | `/api/github/notifications/email` | Authenticated opt-in/out with `{ "enabled": true }`; verified GitHub email only |
+| GET | `/api/analyses/:analysisId/job` | Scoped queued/running/completed/failed/unknown status; no raw job payload |
 
 Manual submission defaults to JSON. With `Accept: application/x-ndjson`, it streams progress frames and then one terminal result/error. The client does not automatically retry a generation request.
 
@@ -209,7 +214,7 @@ Recorded verification on **2 November 2026**: **112 backend checks**, **7 Python
 
 The recruiter-facing code path is **Install on GitHub → select repositories → Connect GitHub → automatic PR review**. It uses state/PKCE, HttpOnly sessions, server-only tokens and fresh repository access verification. Register and live-test the App before claiming onboarding works publicly. MCP is an additional local AI-client interface, not a replacement for webhook events.
 
-Deployment goal: a zero-recurring-cost recruiter demo, subject to verified free/student eligibility and operational limits. No paid host or public deployment was created by this evaluation slice. Provider API quota/billing is separate from consumer subscriptions.
+Deployment target: at or below INR200/month for the whole recruiter demo, using available free/student allowances; this is a target, not a guaranteed bill cap. No paid host or public deployment was created by this evaluation slice. Provider API quota/billing is separate from consumer subscriptions.
 
 Track acceptance criteria and completed work in [FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md). Older phase/beta documents describe earlier milestones; use the roadmap as the current status source.
 
@@ -217,7 +222,7 @@ Track acceptance criteria and completed work in [FEATURE_ROADMAP.md](docs/FEATUR
 
 Code is implemented; no real GitHub App was registered or installed by this development run.
 
-1. Register an App in GitHub developer settings. Use **Contents: read**, **Pull requests: read**, metadata read and the **Pull request** event. For optional summary comments only, choose Pull requests: write.
+1. Register an App in GitHub developer settings. Use **Contents: read**, **Pull requests: read**, metadata read and the **Pull request** event. Optional emails also require the account permission **Email addresses: read**. For optional summary comments only, choose Pull requests: write.
 2. Set the authorization callback and post-install setup URL to `https://YOUR-HOST/api/github/callback` and `https://YOUR-HOST/app` respectively. Set the webhook URL to `https://YOUR-HOST/api/webhooks/github`, enable SSL verification and use a new shared secret. Enable user authorization during installation if offered.
 3. Create the client secret and App private key. Add these server-only values to the host's protected environment; never paste a real key into documentation:
 
@@ -225,6 +230,10 @@ Code is implemented; no real GitHub App was registered or installed by this deve
 NODE_ENV=production
 APP_ORIGIN=https://YOUR-HOST
 MONGODB_URI=YOUR_PRIVATE_CONNECTION_STRING
+SESSION_ENCRYPTION_KEY=YOUR_BASE64_32_BYTE_KEY
+REVIEW_MONTHLY_LIMIT=100
+REVIEW_EXECUTION=queue
+AZURE_REVIEW_QUEUE_URL=https://YOUR_ACCOUNT.queue.core.windows.net/prism-reviews
 GITHUB_APP_ID=YOUR_APP_ID
 GITHUB_APP_SLUG=YOUR_APP_SLUG
 GITHUB_APP_CLIENT_ID=YOUR_CLIENT_ID
@@ -239,10 +248,10 @@ REVIEW_GUIDANCE=off
 
 Use the PEM text with literal `\n` escapes where the deployment environment cannot hold multiline secrets. `APP_ORIGIN` is one HTTPS origin without a trailing slash or path. App mode uses installation credentials for events and the authenticated user's scoped token for manual requests; it does not fall back to the owner's global token. `GITHUB_WEBHOOK_REPOSITORY` is only required for legacy local webhook mode.
 
-4. Build using `npm ci --prefix server`, `npm ci --prefix client`, then `npm run build --prefix client`. Start with `npm start --prefix server` from the repository root. Use a single long-lived Node instance that supports public HTTPS webhooks. Production refuses memory-only storage and missing App configuration.
+4. Build using `npm ci --prefix server`, `npm ci --prefix client`, then `npm run build --prefix client`. Start with `npm start --prefix server` from the repository root. Run the web API plus a queue-triggered worker using the same image; use the setup below. Production refuses memory-only storage and missing App configuration.
 5. Open the site, install on selected repositories, then connect GitHub. Open/update a non-draft PR and check the saved report. Remove repository access and confirm it cannot be reopened. Repeat with another account. These are required live checks, not inferred from mocked tests.
 
-Sessions and review limits live in one process; restart signs users out and resets counters. Authorization checks GitHub afresh before report reads and feedback writes. The demo permits six review starts per user/installation per hour, thirty globally and two concurrent webhook jobs. These guards are not a provider billing cap. Public model usage still needs provider-side controls. A rate-limited acknowledged webhook is logged for later redelivery rather than automatically retried.
+Sessions, consumed OAuth state and review counters now persist in MongoDB. Tokens are encrypted with AES-256-GCM; keep the same private `SESSION_ENCRYPTION_KEY` across API/worker restarts. Authorization rechecks GitHub before report reads and feedback writes. Allowances are six starts per actor/installation per hour, thirty globally per hour and `REVIEW_MONTHLY_LIMIT` globally per UTC month (default 100). These count review starts, not provider tokens or money, and do not guarantee a billing cap.
 
 `GITHUB_POST_REVIEW=true` enables one advisory bot summary/link per installation/repository/base/head revision. It scans at most 300 existing comments, posts after saving, never approves or merges, and records failed delivery without erasing the report. Grant PR write only when enabling it. No real summary was posted during verification.
 
@@ -296,3 +305,100 @@ A real HTTP POST for the repository's test PR #1 then retrieved GitHub metadata/
 Request details now show exact serialized contents characters and UTF-8 bytes, excluding system instructions/schema. Counts are not token estimates, and raw serialized prompts are not persisted. The optional live embedding comparison completed two bounded calls: lexical and semantic retrieval both selected the labelled relevant document on all three tiny queries. This is not review accuracy, a persistent vector index or evidence that embeddings improve the production path.
 
 Fresh checks: **122 backend**, **38 frontend**, **7 Python** checks and production build passed. Public demo API/SPA/health returned 200; demo-only private history returned 503. Existing environment changes were preserved, no new dependencies/application files were added. See the [capability audit and priorities](docs/FEATURE_ROADMAP.md#ai-capability-audit-and-priorities) before choosing another framework.
+
+
+## Release setup — 13 November
+
+Completed locally: persistent encrypted sessions/quotas, durable webhook jobs, opt-in email backend/UI, Docker web/worker image and gated Azure CD configuration. **130 backend, 40 frontend and 7 Python tests passed.** Real isolated MongoDB, local Azurite duplicate delivery and the container worker were exercised. The production dependency audit reports zero runtime vulnerabilities; two moderate development-only nodemon/minimatch findings remain.
+
+One controlled B01 model call returned upstream **503 after 32,565 ms**, one attempt, no retry. The successful captured demo remains available. This run does not establish live provider reliability, hosted onboarding, SMTP delivery, browser QA or Azure deployment.
+
+### 1. Persistent local authentication
+
+Keep your existing ignored `server/.env`; add the new settings there. Do not overwrite it with the example. Generate a private encryption key locally:
+
+```powershell
+node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64'))"
+```
+
+Copy the output into `SESSION_ENCRYPTION_KEY`. Never share it. MongoDB must be connected for persistent auth and queued reviews; production fails closed if storage is unavailable. Changing the key invalidates existing encrypted records. Install current dependencies with `npm ci --prefix server` and `npm ci --prefix client`.
+
+### 2. Run the queue locally before Azure
+
+These commands use a local storage emulator, not your Azure subscription. Docker Desktop must be running. In a separate terminal:
+
+```powershell
+docker run --rm --name prism-azurite -p 127.0.0.1:10001:10001 mcr.microsoft.com/azure-storage/azurite azurite-queue --queueHost 0.0.0.0 --skipApiVersionCheck
+```
+
+Add to `server/.env`:
+
+```dotenv
+REVIEW_EXECUTION=queue
+AZURE_STORAGE_CONNECTION_STRING=UseDevelopmentStorage=true
+AZURE_REVIEW_QUEUE_NAME=prism-reviews
+REVIEW_MONTHLY_LIMIT=100
+```
+
+Create the emulator queue once from `server/`:
+
+```powershell
+cd server
+node --input-type=module -e "import {QueueClient} from '@azure/storage-queue'; await new QueueClient('UseDevelopmentStorage=true','prism-reviews').createIfNotExists();"
+cd ..
+```
+
+Start the app with `npm run dev`, then open/update a test PR through the configured webhook. Expect 202 only after enqueue succeeds. From another terminal run:
+
+```powershell
+npm run worker --prefix server
+```
+
+The worker handles **one message and exits**; run it again for another message. Azure's event job trigger will start worker executions automatically once configured. The queue and MongoDB survive API restarts; the emulator above is temporary and discards its queue on container removal.
+
+`GET /api/analyses/<analysisId>/job` returns the authorized job status. `completed` means the pipeline saved a report; inspect its separate AI status. `failed`/`unknown` require investigation or an intentional new manual analysis. A crash may have already consumed a model request, so replay never blindly regenerates. An `unknown` outcome is detected when an expired running message is revisited. No general checkpoint/resume engine is claimed.
+
+For the earlier local inline demo, leave `REVIEW_EXECUTION` unset. Production requires the queue path. The queue must exist before use; missing/unreachable storage returns a safe error rather than false acceptance.
+
+### 3. Optional review-ready email
+
+Nodemailer sends via your SMTP provider; it does not provide a mailbox or free delivery plan. Configure a verified sender and provider credentials privately:
+
+```dotenv
+EMAIL_ENABLED=true
+EMAIL_FROM=verified-sender@example.com
+SMTP_HOST=your-smtp-host
+SMTP_PORT=587
+SMTP_USER=your-smtp-user
+SMTP_PASS=your-smtp-password
+```
+
+Use port 587 with STARTTLS or 465 with TLS. Reconnect GitHub after granting **Email addresses: read**, then explicitly enable the email checkbox. Default is off. The server ignores request-supplied recipient addresses, checks current repository access and obtains the verified address from GitHub immediately before sending.
+
+The message contains status and an access-controlled report link, not private code. Manual reviews notify their connected requester; webhook reviews notify the PR author only if that author has connected and opted in. Authorization ends with the session or logout; reconnect to renew it. No background OAuth refresh was added. Mail failure never erases a saved report. Duplicate claims are blocked; uncertain SMTP/crash outcomes are not automatically resent. Real delivery still needs your test.
+
+### 4. Docker: one image, two commands
+
+```powershell
+docker build -t prism-ai:local .
+docker run --rm -p 5000:5000 -e DEMO_ONLY=true prism-ai:local
+```
+
+Open `http://localhost:5000/demo`. This read-only container needs no MongoDB or provider key. For the full workflow pass a private env file and correct public `APP_ORIGIN`. API command is the image default; worker command is `node server/scripts/review-worker.js` using the same image.
+
+Inside Docker, `localhost` means the container. For host MongoDB use `host.docker.internal`; for host Azurite use a full connection string with its explicit `QueueEndpoint` and emulator credentials. The `UseDevelopmentStorage=true` shortcut points at container loopback. Keep connection strings in the private env file. The multi-stage image runs as non-root and excludes `.env`, source control and dependency caches.
+
+### 5. Azure and CI/CD: owner setup after local acceptance
+
+No cloud resources or public image were created. Proposed shape: Container Apps Consumption web service with minimum replicas zero, Storage Queue, and an event-triggered Container Apps Job running the worker. Persist reports/auth/jobs in MongoDB. Use the same encryption key and necessary server secrets for both commands. Deployed queue access uses managed identity and `AZURE_REVIEW_QUEUE_URL`; remove the local connection string. Configure queue data permissions for API sending and worker receiving/deleting, plus the scaler's queue access.
+
+Start with one concurrent worker execution, no platform execution retries and an execution timeout shorter than the 900-second visibility/ownership lease. Account for worst-case GitHub/context/model work when choosing that timeout. Configure queue scaling explicitly; the one-shot script does not schedule itself. Keep logs bounded and avoid always-on VMs, Redis and a paid registry. Set INR50/100/150/200 budget alerts; alerts notify and do not stop spending. Verify regional costs/allowances before provisioning; student credits do not guarantee INR200/month.
+
+The existing [workflow](.github/workflows/checks.yml) runs tests, builds the image and checks its public sample. Only a manual run with `deploy=true` on `integration/v0-demo` publishes a SHA-tagged GHCR image and reaches the protected `production` environment. Configure required reviewers for that environment and Azure OIDC federation for this repository/environment. Set these repository/environment variables:
+
+- `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+- `AZURE_RESOURCE_GROUP`, `AZURE_APP_NAME`, `AZURE_WORKER_JOB_NAME`
+
+Provision the web app, queue, identity/scaler and worker job separately first; CD only updates existing images. Make the GHCR image public if Azure pulls anonymously. Grant the deployment identity access only to the intended resources. Hosted Actions/OIDC and actual deployment remain untested; the workflow was parsed locally. Both image updates are sequential, not an atomic release, so inspect both resources after deploying.
+
+**Next manual acceptance:** register/install/connect the GitHub App → opt in → open a PR → enqueue → run worker → inspect saved report/email status → replay → confirm no second review → remove repository access and confirm denial. Then test actual SMTP, a second account, browser layouts and hosted triggers before calling the live release complete.
