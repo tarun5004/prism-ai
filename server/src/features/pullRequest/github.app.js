@@ -197,7 +197,8 @@ function createGitHubRoutes() {
     if (enabled) {
       if (process.env.EMAIL_ENABLED !== 'true') return response.status(503).json({ message: 'Email delivery is not configured.' });
       if (!await verifiedEmail(request.auth.token)) return response.status(400).json({ message: 'Add a verified email to GitHub before enabling notifications.' });
-      await writeAuthRecord('mail-token', request.auth.userId, { token: request.auth.token }, Date.now() + 3600000);
+      // A derived authorization must never outlive the session that granted it.
+      await writeAuthRecord('mail-token', request.auth.userId, { token: request.auth.token }, request.auth.expiresAt);
     } else await deleteAuthRecord('mail-token', request.auth.userId);
     await writeAuthRecord('email-preference', request.auth.userId, { enabled }, Date.now() + 31536000000);
     response.json({ enabled });

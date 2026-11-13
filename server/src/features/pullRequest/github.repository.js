@@ -52,11 +52,14 @@ async function readAuthRecord(kind, id, consume = false) {
     const query = { _id: key, expiresAt: { $gt: new Date() } };
     // Atomic deletion makes OAuth state single-use even across API instances.
     const record = await (consume ? AuthState.findOneAndDelete(query) : AuthState.findOne(query)).lean();
-    return record ? openAuthData(record.sealed) : null;
+    if (!record) return null;
+    const value = openAuthData(record.sealed);
+    return kind === 'session' ? { ...value, expiresAt: record.expiresAt.getTime() } : value;
   }
   const record = local.get(key);
   if (consume) local.delete(key);
-  return record?.value || null;
+  if (!record) return null;
+  return kind === 'session' ? { ...record.value, expiresAt: record.expiresAt } : record.value;
 }
 
 async function deleteAuthRecord(kind, id) {

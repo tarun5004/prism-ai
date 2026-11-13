@@ -57,6 +57,10 @@ test('email opt-in uses a verified GitHub address and revocation or opt-out prev
     revoked = true; assert.equal(await github.notificationRecipient('34', report), null);
     revoked = false; assert.equal((await settings(false)).status, 200);
     assert.equal(await github.notificationRecipient('34', report), null);
+    assert.equal((await settings(true)).status, 200);
+    const afterSessionExpiry = Date.now() + 61000;
+    mock.method(Date, 'now', () => afterSessionExpiry);
+    assert.equal(await github.notificationRecipient('34', report), null, 'Derived mail authorization must end with the browser session');
   } finally { await new Promise(resolve => server.close(resolve)); keys.forEach((key, index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; }); }
 });
 
