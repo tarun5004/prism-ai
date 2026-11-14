@@ -44,6 +44,32 @@ test('ambient LangSmith tracing cannot export private review prompts', async () 
   }
 });
 
+test('verbose LangChain configuration fails closed without logging private code or calling a model', async () => {
+  const previous = process.env.LANGCHAIN_VERBOSE;
+  process.env.LANGCHAIN_VERBOSE = 'true';
+  const logs = mock.method(console, 'log', () => {});
+  try {
+    respondWith(JSON.stringify({ findings: [validFinding], review: contextualReview }));
+    const result = await aiService.runAiAnalysis(reviewPr);
+    assert.equal(result.error, 'UNSAFE_LOGGING');
+    assert.equal(result.diagnostics.failureCategory, 'configuration');
+    assert.equal(result.diagnostics.attempts, 0);
+    assert.equal((await aiService.checkGeminiConnection()).code, 'UNSAFE_LOGGING');
+    assert.equal(globalThis.fetch.mock.callCount(), 0);
+    assert.equal(logs.mock.callCount(), 0);
+  } finally { if (previous === undefined) delete process.env.LANGCHAIN_VERBOSE; else process.env.LANGCHAIN_VERBOSE = previous; }
+});
+
+test('blocked, missing-candidate and malformed provider responses stay response failures', async () => {
+  for (const body of [{ promptFeedback: { blockReason: 'SAFETY' } }, { candidates: [] }, 'not-json']) {
+    globalThis.fetch.mock.mockImplementation(async () => typeof body === 'string' ? new Response(body) : Response.json(body));
+    const result = await aiService.runAiAnalysis(reviewPr);
+    assert.equal(result.error, 'INVALID_RESPONSE');
+    assert.equal(result.diagnostics.failureCategory, 'response');
+    assert.equal((await aiService.checkGeminiConnection()).code, 'INVALID_RESPONSE');
+  }
+});
+
 test('lexical guidance ranks relevant sections with exact original coordinates', () => {
   const result = contextService.rankGuidance('# Setup\nInstall npm\n\n# Authorization\nOnly note owners can delete notes.\n\n# Styling\nUse spaces.', 'note authorization delete');
   assert.equal(result[0].startLine, 4);

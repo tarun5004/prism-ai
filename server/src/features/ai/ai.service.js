@@ -9,6 +9,8 @@ const getGeminiModel = () => process.env.GEMINI_MODEL?.trim() || 'gemini-3.6-fla
 
 // LangChain owns the model call; this adapter preserves our deadline and raw usage contract.
 async function invokeGemini({ apiKey, model, contents, systemInstruction, schema, maxOutputTokens, timeoutMs, signal, onRequest = () => {}, onUsage = () => {} }) {
+  // LangChain's environment-level console logger overrides per-call callbacks.
+  if (process.env.LANGCHAIN_VERBOSE === 'true') throw Object.assign(new Error('Private review logging is disabled.'), { code: 'UNSAFE_LOGGING' });
   const chat = new ChatGoogle({
     model, apiKey, platformType: 'gai', streaming: false, maxRetries: 0,
     maxOutputTokens, thinkingLevel: 'low', responseSchema: schema,
@@ -66,6 +68,7 @@ const safeNetworkCodes = new Set([
   'CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
   'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'ERR_TLS_CERT_ALTNAME_INVALID'
 ]);
+const invalidResponseErrors = new Set(['NoCandidatesError', 'SyntaxError', 'MalformedOutputError', 'PromptBlockedError', 'PromptRefusedError']);
 
 async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS?.trim() || 120000), onRequest = () => {} } = {}) {
   const startedAt = performance.now();
@@ -76,7 +79,7 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
   const result = (status, findings = [], error, review) => {
     const failureCategory = error === 'API_ERROR'
       ? (diagnostics.networkCode ? 'network' : diagnostics.httpStatus ? 'provider' : 'request')
-      : { MISSING_API_KEY: 'configuration', NO_REVIEWABLE_DIFF: 'input', INVALID_TIMEOUT: 'configuration', TIMEOUT: 'timeout', INVALID_RESPONSE: 'response', INVALID_FINDINGS: 'validation', INVALID_REVIEW: 'validation' }[error];
+      : { MISSING_API_KEY: 'configuration', NO_REVIEWABLE_DIFF: 'input', INVALID_TIMEOUT: 'configuration', UNSAFE_LOGGING: 'configuration', TIMEOUT: 'timeout', INVALID_RESPONSE: 'response', INVALID_FINDINGS: 'validation', INVALID_REVIEW: 'validation' }[error];
     return {
       status, findings, coverage, model,
       diagnostics: { ...diagnostics, durationMs: Math.round(performance.now() - startedAt), ...(failureCategory ? { failureCategory } : {}) },
@@ -109,12 +112,13 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
       }
     });
   } catch (error) {
+    if (error?.code === 'UNSAFE_LOGGING') return result('unavailable', [], 'UNSAFE_LOGGING');
     // Allowlisted codes explain failures without saving SDK messages, URLs or headers.
     if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode <= 599) diagnostics.httpStatus = error.statusCode;
     const networkErrors = [error, error?.cause, ...(Array.isArray(error?.cause?.errors) ? error.cause.errors : [])];
     const networkCode = networkErrors.map(item => item?.code).find(code => safeNetworkCodes.has(code));
     if (networkCode) diagnostics.networkCode = networkCode;
-    return result('unavailable', [], signal.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError' ? 'TIMEOUT' : ['NoCandidatesError', 'SyntaxError', 'MalformedOutputError'].includes(error?.name) ? 'INVALID_RESPONSE' : 'API_ERROR');
+    return result('unavailable', [], signal.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError' ? 'TIMEOUT' : invalidResponseErrors.has(error?.name) ? 'INVALID_RESPONSE' : 'API_ERROR');
   }
 
   let output;
@@ -227,6 +231,8 @@ async function checkGeminiConnection({ timeoutMs = 30000 } = {}) {
       }
     });
   } catch (error) {
+    if (error?.code === 'UNSAFE_LOGGING') return unavailable('UNSAFE_LOGGING', 'Disable LANGCHAIN_VERBOSE for private reviews.');
+    if (invalidResponseErrors.has(error?.name)) return unavailable('INVALID_RESPONSE', 'Gemini returned an invalid connectivity response.');
     if (signal.aborted || error.name === 'TimeoutError' || error.name === 'AbortError') {
       return unavailable('TIMEOUT', 'Gemini connectivity request timed out.');
     }
