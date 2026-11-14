@@ -35,7 +35,7 @@ npm start --prefix server
 
 Open `http://localhost:5000/demo`. This serves the owned B01 fixture and a captured Gemini response. No provider request is made when opening it. Demo-only mode disables private analysis/history access, generation, GitHub login/callback and webhooks; it skips MongoDB/App startup requirements. Clear `DEMO_ONLY` for the normal workflow. Hosting and a verified public URL remain owner actions.
 
-The new slices keep the existing direct Gemini SDK and MongoDB architecture:
+The initial 12 November slices kept the direct Gemini SDK; the 14 November framework update below extends the same MongoDB review pipeline:
 
 - **Retrieval:** opt-in `REVIEW_GUIDANCE=lexical` searches overlapping long Markdown sections with original coordinates; two of the existing eight source requests are reserved for guidance.
 - **Historical memory:** at most three useful-labelled findings from another revision of the same PR and installation guide the review. Feedback reasons are excluded; findings still require current diff evidence.
@@ -51,7 +51,7 @@ LANGFUSE_SECRET_KEY=your-project-secret-key
 LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ```
 
-Use your project region's HTTPS origin. This implemented slice uses no tracing SDK, LangChain, LangGraph or vector database. Their new planned roles are listed in the current roadmap.
+Use your project region's HTTPS origin. Langfuse still uses a small metadata-only exporter. LangChain providers, LangGraph checkpoints and optional Chroma retrieval are now implemented as described below.
 
 Historical 12 November checks: **120 backend**, **7 Python evaluation**, **38 frontend** passed; production build passed. Actual production-mode HTTP checks returned 200 for health, the public sample and `/demo`, and 503 for private analysis GET/POST in demo-only mode. Independent review found no important/critical defects. Browser interaction, real Langfuse ingestion and hosted GitHub onboarding remain unverified. These results supersede the earlier dated verification below; they do not establish model accuracy.
 
@@ -157,7 +157,7 @@ Local inline mode allows two concurrent jobs in the API process; it is for devel
 | [analysis.jobs.js](server/src/features/analysis/analysis.jobs.js) / [review-worker.js](server/scripts/review-worker.js) | Queue dispatch and one-shot worker |
 | [analysis.mail.js](server/src/features/analysis/analysis.mail.js) | Opt-in SMTP notification after persistence |
 
-Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and LangChain `@langchain/google` for Gemini review/connectivity. Google's `@google/genai` remains for the separate embedding experiment. Azure Storage Queue supports optional local queue testing and the production worker path; Mistral/Grok, LangGraph and ChromaDB integration remain planned.
+Stack: React 19, Vite, plain CSS, Express 5, MongoDB, LangChain Gemini/Mistral/xAI adapters, LangGraph checkpoints and optional Chroma semantic retrieval. Google's SDK supplies embeddings. Azure Storage Queue delivers durable jobs; the graph preserves workflow progress.
 
 ## API, briefly
 
@@ -406,7 +406,7 @@ Provision the web app, queue, identity/scaler and worker job separately first; C
 
 ### Next agreed AI learning features — 14 November
 
-LangChain Gemini review/connectivity is implemented. Mistral/Grok provider integration, ChromaDB semantic RAG and LangGraph state/checkpoints remain required next slices, **not implemented today**. Extend the existing context, feedback memory, validators, report and tracing; do not create a parallel review system. See the [comparison and single backlog](docs/FEATURE_ROADMAP.md#comparison-new-request-versus-existing-features). Earlier dated direct-SDK/no-vector notes describe current implementation, not a permanent exclusion.
+LangChain Gemini/Mistral/xAI adapters, Chroma semantic RAG and Mongo-backed LangGraph checkpoints are implemented. Mistral/Grok live acceptance remains limited by quota/missing credentials. Extend the existing context, feedback memory, validators, report and tracing; do not create a parallel review system. See the [comparison and single backlog](docs/FEATURE_ROADMAP.md#comparison-new-request-versus-existing-features). Earlier dated direct-SDK/no-vector notes are historical; use the latest setup below.
 
 
 ### LangChain Gemini chunk — 14 November
@@ -414,3 +414,54 @@ LangChain Gemini review/connectivity is implemented. Mistral/Grok provider integ
 Review and connectivity now call LangChain `ChatGoogle` from the recommended `@langchain/google` integration. It uses native JSON schema; the same application validators still reject unsupported code evidence. No new application files or API-key settings. Retries remain off and deadlines/bounded output remain enforced. Original provider token counts are preserved; ambient LangSmith prompt tracing is disabled, while optional metadata-only Langfuse export continues. Keep `LANGCHAIN_VERBOSE` unset/false: private calls fail closed with `UNSAFE_LOGGING` if it is true, because framework console logging would expose prompts.
 
 **134 backend checks passed.** One actual B01 call completed in 9.35 seconds with one validated finding/walkthrough and 465 input / 500 output / 965 total tokens; thinking usage unknown. This is one synthetic review, not a latency SLA or resolved provider reliability. Multi-provider selection is the next chunk. [Official integration](https://docs.langchain.com/oss/javascript/integrations/chat/google).
+
+
+### Framework setup — 14 November
+
+Use existing `server/.env`; no frontend credentials or TypeScript migration. Gemini remains the default. One provider per review, no automatic retry/fallback:
+
+```dotenv
+AI_PROVIDER=gemini
+# To select Mistral instead: AI_PROVIDER=mistral
+MISTRAL_API_KEY=your-private-key
+MISTRAL_MODEL=mistral-small-latest
+# To select Grok: AI_PROVIDER=xai, plus both values below
+XAI_API_KEY=your-private-key
+XAI_MODEL=your-accessible-model-id
+```
+
+`GEMINI_TIMEOUT_MS` is the existing shared review deadline (1–120000 ms) for all selected providers. Model availability is account-dependent. Mistral/Grok use the same JSON/evidence validators and saved report shape. xAI uses LangChain's OpenAI-compatible adapter pointed only at `api.x.ai`; this does not integrate OpenAI's API.
+
+Optional Chroma semantic retrieval needs a separate persistent local service:
+
+```powershell
+docker run --detach --name prism-chroma -p 127.0.0.1:8010:8000 -v prism-chroma:/data chromadb/chroma:latest
+```
+
+Then add server-only settings:
+
+```dotenv
+REVIEW_RETRIEVAL=semantic
+CHROMA_URL=http://127.0.0.1:8010
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+```
+
+Embeddings require `GEMINI_API_KEY`, even when Mistral/Grok generates the review. The retriever sends at most 16 sanitized chunks to embeddings and selects at most 4 original chunks, preserving source coordinates and existing context budgets. Cache scope includes installation/repository/base/head/model. A store/embedding failure retains bounded source context with an unavailable marker. Keep local Chroma private; a hosted store needs HTTPS/access control (`CHROMA_API_KEY` supplies `x-chroma-token` when that deployment supports it), persistence and a retention/cost decision. Chroma collections have no automatic TTL here; remove obsolete revision collections through the store's administration. Semantic retrieval stays off unless configured; no INR200 hosting guarantee.
+
+**LangGraph recovery:** context -> request boundary -> model -> persist. Connected Mongo automatically stores scoped checkpoints with 24-hour TTL indexes; local memory fallback is not durable. Credentials/raw source windows are not checkpoint state. For an existing failed/unknown durable webhook job, a trusted operator can run:
+
+```powershell
+npm run worker --prefix server -- --resume webhook-<64-hex-id>
+```
+
+A checkpointed model result can resume report saving without another inference call. Unknown model outcomes and missing/expired checkpoints refuse replay; start a fresh deliberate review instead. A saved report is reused; already claimed notifications are not resent. A crash after saving may leave an optional notification unsent rather than risking duplicates.
+
+**CI integration:** the workflow now starts local Mongo/Azurite and verifies duplicate queue delivery plus save recovery in a new Node process before container/deploy. To repeat locally with Mongo on 27017 and Azurite on 10001:
+
+```powershell
+$env:INTEGRATION_TESTS='true'
+node --test --test-name-pattern="durable queue integration" server/test/webhook.test.js
+Remove-Item Env:INTEGRATION_TESTS
+```
+
+The test generates/cleans its own database and queue; it makes no model calls. Hosted Actions/OIDC and Azure triggers still need acceptance. Provider, Chroma cache status and actual timings/tokens are visible in report details. See the roadmap for controlled live results and remaining manual work.

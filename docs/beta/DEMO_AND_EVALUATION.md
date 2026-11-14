@@ -194,3 +194,16 @@ Complete this table during the evaluation. Do not fill observed values before ru
 ## Regression Use
 
 Run the same four cases after changes to the rule logic, context selection, or AI prompt. Keep the previous run record so improvements and regressions are visible.
+
+## Framework smoke — 14 November
+
+Owned B01 only; held-out cases untouched. Same model/prompt/schema, one generation attempt each, 30-second test deadline. Real Chroma and Gemini embeddings supplied the second input.
+
+| Input | Status | Latency | Input/output/total tokens | Validated findings | Run ID |
+| --- | --- | --- | --- | --- | --- |
+| Diff-only, 852 chars | completed | 5,938 ms | 465 / 562 / 1,027 | 1 | 8e7b4482-8f1e-486d-8883-120fe67f3276 |
+| Bounded semantic, 1,025 chars | completed | 4,702 ms | 518 / 480 / 998 | 1 | adb2ebc5-4817-47ee-98cd-07d35423e587 |
+
+These tiny runs show request/retrieval/output-validation operation, not improved quality, typical latency, provider reliability or a large-context timeout diagnosis. Human finding judgments remain pending. Earlier small requests also returned 503/504; increasing timeouts or changing frameworks is not a proven availability fix.
+
+Mistral `mistral-small-latest` returned 429 after 1,399 ms (run 06fa0edd-c85f-4555-9e3d-ce84763804f8); no retry. Grok live credentials unavailable. Select `AI_PROVIDER` server-side before using the existing opt-in collector; output artifacts now record configured/actual provider/model. Never compare a quota error as if it were an empty successful review.

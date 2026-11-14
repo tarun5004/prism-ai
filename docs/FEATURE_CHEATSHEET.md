@@ -36,7 +36,7 @@ Code: [ai.service.js](../server/src/features/ai/ai.service.js)—`.rs` nahi.
 
 **Haan—LangChain JavaScript mein bhi use hota hai.** Woh models/tools integrate karne ke common interfaces deta hai. TypeScript separate benefit deta: development-time type mistakes catch karna.
 
-Current flow: prepare → LangChain model call → existing validation → save. Gemini migration implemented hai; Mistral/Grok next hain. `ChatGoogle` model messages/request handle karta, hamare validators actual code evidence check karte. No agent loop. Retry off/deadline same; raw prompt LangSmith ko nahi bhejte. Usage hook original provider counts retain karta, missing ko zero nahi bolta. Woh automatically better context ya provider uptime nahi deta. TypeScript ke baad bhi external AI output ki runtime validation chahiye.
+Current flow: prepare → LangChain model call → existing validation → save. Gemini/Mistral/Grok adapters implemented hain; ek review ek selected provider, automatic fallback nahi. `ChatGoogle` model messages/request handle karta, hamare validators actual code evidence check karte. No agent loop. Retry off/deadline same; raw prompt LangSmith ko nahi bhejte. Usage hook original provider counts retain karta, missing ko zero nahi bolta. Woh automatically better context ya provider uptime nahi deta. TypeScript ke baad bhi external AI output ki runtime validation chahiye.
 
 References: [LangChain JS](https://docs.langchain.com/oss/javascript/langchain/overview), [TypeScript](https://www.typescriptlang.org/docs/handbook/intro.html).
 
@@ -90,7 +90,7 @@ SDK handshake/tool discovery handle karta. `StdioServerTransport` stdin/stdout s
 
 [Evaluation script](../server/scripts/evaluate-ai.js) known test cases par output collect karta; Python scorer human judgments se quality measure kar sakta. Embedding experiment text ko number-vectors mein convert karke closest docs compare karta; persistent search index nahi.
 
-**Implemented:** LangChain Gemini review/connectivity. **Required next:** Mistral/Grok provider selection, Chroma persistent vectors + semantic retrieval, LangGraph workflow state/checkpoints. Existing context retrieval aur feedback memory extend karenge, duplicate engine nahi. Remote MCP separate optional future feature hai. Hosting, human scoring aur browser QA bhi pending.
+**Implemented:** LangChain providers, Chroma persistent semantic retrieval, Mongo-backed LangGraph checkpoints. Existing context/feedback memory/validators hi reuse hue. Mistral live 429; Grok live key/testing pending. Remote MCP separate optional future feature hai. Hosting, human scoring aur browser QA bhi pending.
 
 **Builder habit:** “Kaunsa data chahiye? Kahan se milega? Kaise verify karunga? Failure pe kya preserve hoga?” Framework uske baad choose karo.
 
@@ -101,7 +101,7 @@ Detailed status: [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md). Live AI reliability u
 
 **Login:** GitHub token ko plain save nahi karte. `github.repository.js` encrypt karke MongoDB mein expiry ke saath rakhta; API restart ke baad wahi session read kar sakti. Review allowances bhi atomic database counters hain, isliye restart se reset nahi hote.
 
-**Worker:** `analysis.jobs.js` job MongoDB mein save karta aur queue mein sirf job ID bhejta. `scripts/review-worker.js` ek message leta, database mein ownership claim karta, phir existing review service call karta. Same event dobara aaye toh second worker ownership nahi le sakta. Crash mein AI call ka outcome unknown ho sakta—blind retry karke duplicate bill nahi banate. Yeh checkpointed LangGraph resume nahi hai.
+**Worker:** `analysis.jobs.js` job MongoDB mein save karta aur queue mein sirf job ID bhejta. `scripts/review-worker.js` ek message leta, database mein ownership claim karta, phir existing review service call karta. Same event dobara aaye toh second worker ownership nahi le sakta. Crash mein AI call ka outcome unknown ho sakta—blind retry karke duplicate bill nahi banate. Queue delivery manage karti; LangGraph saved workflow progress manage karta hai. Dono ka role alag hai.
 
 **Email:** `analysis.mail.js` report save hone ke baad connected user's opt-in, current repo access aur verified GitHub email check karta. Atomic send claim duplicate sends rokta; SMTP failure report ko delete nahi karta. Session expire/logout pe mail authorization bhi end; reconnect se renew. Nodemailer transport hai, mailbox provider nahi.
 
@@ -113,3 +113,20 @@ Detailed status: [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md). Live AI reliability u
 Charcoal background, orange actions, green success/additions, amber attention aur red failures. Local Inter/JetBrains Mono fonts; evidence beside diff; readable normal zoom. Reference screenshots 60–70% zoom par the, pixel-size target nahi. Sticky nav, expanding hero cards, restrained motion/reduced-motion support and outlined/faded footer wordmark retain karo.
 
 Routes: `/` introduction, `/app` submission, `/analyses` history, `/analyses/:id` report, `/demo` captured sample. Native history/deep links work; production serves SPA fallback. Narrow screens par columns stack/wrap; touch/keyboard controls accessible rahen. No invented customers, metrics, successful review or live integration claims. UI guidance ke liye separate competing design doc nahi chahiye.
+
+
+## 13. Chroma: relevant code kaise choose hota hai?
+
+[`ai.retrieval.js`](../server/src/features/ai/ai.retrieval.js): safe source windows ko overlapping chunks mein split kiya. Gemini embedding code ko number-vectors banati; Chroma text/vector/original line metadata store karta. PR intent ka vector query bhejte; top 4 current trusted chunks prompt mein jaate. Same revision ke vectors reuse; other installation/revision ka collection alag.
+
+**Problem/fix:** whole repo indexing noisy/expensive. Max 16 chunks, existing budgets, secret filtering aur original coordinates preserve kiye. Store failure par bounded source context continue, UI mein unavailable status. Real local Chroma/embeddings tested; hosted store/cost pending.
+
+## 14. LangGraph: restart ke baad progress kaise use hota hai?
+
+[`analysis.workflow.js`](../server/src/features/analysis/analysis.workflow.js): `StateGraph` ke 4 nodes: **context -> request boundary -> model -> persist**. `Annotation` state define karta; `MongoDBSaver` each boundary Mongo mein checkpoint karta. Credentials/raw source windows closures mein rehte, checkpoint mein nahi. Validated AI output checkpoint hota hai.
+
+**Problem/fix:** AI reply aa gaya, report save fail hua: same job ka operator resume saved output se report save karta, model repeat nahi karta. Request ke beech crash hua toh outcome unknown, resume block. Missing/expired checkpoint bhi block; TTL 24h. Local memory fallback restart-safe nahi.
+
+**Try:** `npm run worker --prefix server -- --resume webhook-<64-hex-id>` for an existing failed/unknown durable job. Thread ID server-side scoped hash hai; users arbitrary checkpoint state nahi bhejte. CI test ne actual new Node process + Mongo se save resume verify kiya.
+
+**Providers:** `ai.service.js` selects Gemini `ChatGoogle`, Mistral `ChatMistralAI`, or xAI endpoint using LangChain `ChatOpenAI` compatible transport. OpenAI API/key use nahi hoti. Same schema/evidence checks sab par; retry/fallback off. Framework provider uptime improve nahi karta.
