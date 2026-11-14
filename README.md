@@ -373,6 +373,16 @@ SMTP_USER=your-smtp-user
 SMTP_PASS=your-smtp-password
 ```
 
+For a personal Gmail demo, Nodemailer is already installed; no extra npm command is needed:
+
+1. Enable Google Account **2-Step Verification**.
+2. Open [App passwords](https://myaccount.google.com/apppasswords), create one named `PRism AI`, and keep it private. This option may be unavailable for some managed/Advanced Protection accounts; see [Google guidance](https://support.google.com/mail/answer/185833?hl=en).
+3. In existing `server/.env`, use `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, your Gmail address for both `SMTP_USER` and `EMAIL_FROM`, and the generated App Password for `SMTP_PASS`. Set `EMAIL_ENABLED=true`; use the App Password rather than your normal Google password. See [Nodemailer's Gmail guide](https://nodemailer.com/guides/using-gmail).
+4. Restart the backend with the new environment. A running Docker container keeps its original environment and must be recreated to pick up changed settings.
+5. Complete GitHub App login, grant email read access, and enable **Review-ready emails**. SMTP setup alone does not create an authenticated/opted-in recipient. These App credentials are currently a separate owner setup task.
+
+Nodemailer formats/sends messages; Gmail is the actual SMTP service. Current verification used JSON transport without sending external mail. Real SMTP authentication/inbox delivery remains pending until credentials and consent are configured.
+
 Use port 587 with STARTTLS or 465 with TLS. Reconnect GitHub after granting **Email addresses: read**, then explicitly enable the email checkbox. Default is off. The server ignores request-supplied recipient addresses, checks current repository access and obtains the verified address from GitHub immediately before sending.
 
 The message contains status and an access-controlled report link, not private code. Manual reviews notify their connected requester; webhook reviews notify the PR author only if that author has connected and opted in. Authorization ends with the session or logout; reconnect to renew it. No background OAuth refresh was added. Mail failure never erases a saved report. Duplicate claims are blocked; uncertain SMTP/crash outcomes are not automatically resent. Real delivery still needs your test.

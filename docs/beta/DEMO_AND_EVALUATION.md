@@ -207,3 +207,30 @@ Owned B01 only; held-out cases untouched. Same model/prompt/schema, one generati
 These tiny runs show request/retrieval/output-validation operation, not improved quality, typical latency, provider reliability or a large-context timeout diagnosis. Human finding judgments remain pending. Earlier small requests also returned 503/504; increasing timeouts or changing frameworks is not a proven availability fix.
 
 Mistral `mistral-small-latest` returned 429 after 1,399 ms (run 06fa0edd-c85f-4555-9e3d-ce84763804f8); no retry. Grok live credentials unavailable. Select `AI_PROVIDER` server-side before using the existing opt-in collector; output artifacts now record configured/actual provider/model. Never compare a quota error as if it were an empty successful review.
+
+
+## Localhost + Docker runtime verification — 14 November
+
+Services left running for owner inspection: native UI `http://localhost:5173`, native API `http://localhost:5000`, Docker app `http://localhost:5001`, Docker Chroma `127.0.0.1:8010` with named volume `prism-chroma`, and local Azurite `127.0.0.1:10001`. Docker app runs in **local development mode**, not a verified production deployment. Its webhook path uses queue execution. Native server was launched with semantic retrieval runtime settings; add `REVIEW_RETRIEVAL=semantic` and `CHROMA_URL=http://127.0.0.1:8010` to the private server environment when restarting independently.
+
+| Feature/boundary | Actual result |
+| --- | --- |
+| Native UI -> real GitHub PR #2 -> Chroma -> Gemini -> Mongo -> report | Passed; report `dbc4ed42-e10c-4aee-bfd7-e5eb23f5ddfd`; AI 7,826 ms, one attempt, 5 findings; one source chunk indexed/retrieved |
+| Fresh Docker API -> real GitHub PR #1 -> Chroma -> Gemini -> Mongo | Passed; report `6f890457-ae07-472b-a850-fa0e56afb3a1`; AI 3,749 ms, about 11.3 seconds end-to-end; one attempt/one finding |
+| Actual progress stream | fetching -> context -> reviewing -> saving -> one terminal report observed |
+| Chroma persistence | Actual volume contains index/SQLite; server restart retained indexed source chunk; read-back made zero embedding calls |
+| Report persistence/cross-runtime reads | Native and Docker APIs read the same Mongo report; Docker app restart preserved access |
+| Browser | Landing -> form -> real saved report, sample, history/deep links, evidence jump/highlight verified; 1280px/390px page widths had no document overflow; desktop/mobile screenshots inspected |
+| Webhook + worker | Signed Docker ping 200, bad signature 401, PR event 202, real container worker completed existing saved revision; replay kept same model run ID, no new inference |
+| LangGraph | Six actual Mongo checkpoints for the new native run; 86,400-second TTL; separate integration test resumed save in a new Node process without repeating model work |
+| Feedback + revision memory | API invalid verdict 400 / valid write 200; verification-only annotation removed afterward. Real isolated Mongo query excluded another installation and produced one relevant useful hint |
+| MCP | Separate official-SDK stdio process connected to real Mongo, discovered list/read tools and read the new native report with five findings |
+| Nodemailer | Real JSON transport + isolated Mongo produced report-link message once; duplicate skipped; **no external email sent** |
+| Validation | Invalid PR/report ID rejected 400 on both runtimes; unconfigured App login honestly returned 503 |
+| Automated checks | 144 backend passed (one opt-in integration skipped there); separate real Mongo/Azurite/restart integration passed; 41 frontend and 7 Python passed; frontend/Docker builds passed; production dependency audit zero findings |
+
+**Blocked external acceptance:** GitHub App registration/login/second-account installation and actual PR comment; SMTP/inbox delivery; Langfuse ingestion; Grok live credentials; hosted Azure/OIDC/scaling. These were not marked successful. Current Mistral request returned429 after6,515ms, one attempt/no retry. Auth/consent/error/isolation logic is covered by automated tests, not a substitute for real account acceptance.
+
+Minor browser observation: Vite development page requested a missing `/favicon.ico` (404); Docker browser checks reported no console errors. No feature failure or unrelated UI change was introduced to hide that cosmetic issue.
+
+These are operational checks, not a human-adjudicated bug-detection score, an uptime promise or proof of production readiness. Existing private `.env` and user-edited `.env.example` were not committed.
