@@ -29,6 +29,7 @@ const analysisSchema = new mongoose.Schema(
     aiDiagnostics: {
       pipeline: mongoose.Schema.Types.Mixed,
       tracing: mongoose.Schema.Types.Mixed,
+      workflow: mongoose.Schema.Types.Mixed,
       runId: String,
       inputCharacters: Number,
       inputBytes: Number,

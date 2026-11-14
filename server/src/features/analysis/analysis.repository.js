@@ -20,16 +20,17 @@ async function findReviewJob(id) {
   return localJobs.get(id);
 }
 
-async function claimReviewJob(id, owner, leaseUntil = new Date(Date.now() + 900000)) {
+async function claimReviewJob(id, owner, leaseUntil = new Date(Date.now() + 900000), resume = false) {
+  const allowed = resume ? ['failed', 'unknown'] : ['queued'];
   if (mongoose.connection.readyState === 1) {
     // A crashed run may already have called the provider: never regenerate blindly.
     await ReviewJob.updateOne({ id, status: 'running', leaseUntil: { $lt: new Date() } }, { $set: { status: 'unknown', errorCode: 'INTERRUPTED_REVIEW' } });
-    return ReviewJob.findOneAndUpdate({ id, status: 'queued' }, { $set: { status: 'running', owner, leaseUntil } }, { new: true }).lean();
+    return ReviewJob.findOneAndUpdate({ id, status: { $in: allowed } }, { $set: { status: 'running', owner, leaseUntil } }, { new: true }).lean();
   }
   if (process.env.NODE_ENV === 'production') throw Error('Job storage unavailable.');
   const job = localJobs.get(id);
   if (job?.status === 'running' && job.leaseUntil < new Date()) { job.status = 'unknown'; job.errorCode = 'INTERRUPTED_REVIEW'; }
-  if (job?.status !== 'queued') return null;
+  if (!allowed.includes(job?.status)) return null;
   Object.assign(job, { status: 'running', owner, leaseUntil });
   return job;
 }

@@ -28,6 +28,50 @@ function response() {
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('durable queue integration: real Mongo, Azurite duplicates and process restart recovery', { skip: process.env.INTEGRATION_TESTS !== 'true', timeout: 30000 }, async () => {
+  const mongoose = (await import('mongoose')).default;
+  const { randomUUID } = await import('node:crypto');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execute = promisify(execFile);
+  const { QueueClient } = await import('@azure/storage-queue');
+  const { enqueueWebhookReview, processNextReview } = await import('../src/features/analysis/analysis.jobs.js');
+  const { saveAnalysis, findReviewJob } = await import('../src/features/analysis/analysis.repository.js');
+  const { runReviewWorkflow } = await import('../src/features/analysis/analysis.workflow.js');
+  const suffix = randomUUID().replaceAll('-', '');
+  const uri = 'mongodb://127.0.0.1:27017/prism_integration_' + suffix;
+  const queue = new QueueClient('UseDevelopmentStorage=true', 'prism-test-' + suffix);
+  try {
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 3000 });
+    const { ReviewJob } = await import('../src/features/analysis/analysis.model.js');
+    await ReviewJob.init();
+    await queue.create();
+    const id = 'webhook-' + '9'.repeat(64);
+    const job = { id, payload: { url: 'https://github.com/owned/fixture/pull/1', options: {} } };
+    await Promise.all([enqueueWebhookReview(job, queue), enqueueWebhookReview(job, queue)]);
+    let calls = 0;
+    const analyze = async () => { calls++; const report = { id, status: 'completed', createdAt: new Date().toISOString(), pullRequest: {}, findings: [] }; await saveAnalysis(report); return { body: report }; };
+    await processNextReview({ queue, analyze });
+    await processNextReview({ queue, analyze });
+    assert.equal(calls, 1);
+    assert.equal((await findReviewJob(id)).status, 'completed');
+
+    const scope = { id: 'restart-fixture', repository: 'owned/fixture', baseSha: 'a', headSha: 'b' };
+    await assert.rejects(runReviewWorkflow({ ...scope, prepare: async () => {}, review: async () => ({ status: 'completed', findings: [] }), save: async () => { throw Error('simulated disk failure'); } }), /simulated disk failure/);
+    const script = `import mongoose from 'mongoose'; import {runReviewWorkflow} from ${JSON.stringify(new URL('../src/features/analysis/analysis.workflow.js', import.meta.url).href)};
+      try { await mongoose.connect(process.env.MONGODB_URI); const fail=async()=>{throw Error('unexpected repeated work')};
+      const result=await runReviewWorkflow({...${JSON.stringify(scope)},resume:true,prepare:fail,review:fail,save:async r=>({resumed:r.status})});
+      if(result.resumed!=='completed')throw Error('resume failed'); process.stdout.write('resumed-once'); } finally {await mongoose.disconnect();}`;
+    const child = await execute(process.execPath, ['--input-type=module', '-e', script], { cwd: new URL('..', import.meta.url), env: { ...process.env, MONGODB_URI: uri }, timeout: 10000 });
+    assert.equal(child.stdout, 'resumed-once');
+  } finally {
+    await queue.deleteIfExists();
+    // This database name is generated above; never clean up a configured user database.
+    if (mongoose.connection.name === 'prism_integration_' + suffix) await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+  }
+});
+
 test('durable webhook acknowledges only after enqueue succeeds and never starts inline analysis', async () => {
   const previous = process.env.REVIEW_EXECUTION; process.env.REVIEW_EXECUTION = 'queue';
   try {

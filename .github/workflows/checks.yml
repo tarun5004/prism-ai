@@ -27,8 +27,30 @@ jobs:
       - run: python -B -m unittest discover -s server/test -p evaluation_test.py
       - run: node --test client/test/analysis.api.test.js client/test/diff-viewer.test.js
       - run: npm run build --prefix client
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix server
+      - name: Start local Azure Queue emulator
+        run: docker run --detach --name azurite -p 127.0.0.1:10001:10001 mcr.microsoft.com/azure-storage/azurite:latest azurite --queueHost 0.0.0.0 --skipApiVersionCheck
+      - name: Verify durable jobs and checkpoint recovery without model requests
+        env:
+          INTEGRATION_TESTS: 'true'
+        run: node --test --test-name-pattern="durable queue integration" server/test/webhook.test.js
   container:
-    needs: verify
+    needs: [verify, integration]
     runs-on: ubuntu-latest
     permissions:
       contents: read

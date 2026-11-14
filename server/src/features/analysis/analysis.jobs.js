@@ -23,15 +23,19 @@ async function enqueueWebhookReview(job, queue = getReviewQueue()) {
 }
 
 // One message per process suits an event-triggered Container Apps Job.
-async function processNextReview({ queue = getReviewQueue(), analyze = analyzePullRequest } = {}) {
-  const { receivedMessageItems } = await queue.receiveMessages({ numberOfMessages: 1, visibilityTimeout: 900 });
-  const message = receivedMessageItems[0];
-  if (!message) return { status: 'empty' };
-  const id = Buffer.from(message.messageText, 'base64').toString('utf8');
-  const remove = () => queue.deleteMessage(message.messageId, message.popReceipt);
+async function processNextReview({ queue, analyze = analyzePullRequest, resumeId } = {}) {
+  let id = resumeId; let remove = async () => {};
+  if (!resumeId) {
+    queue ||= getReviewQueue();
+    const { receivedMessageItems } = await queue.receiveMessages({ numberOfMessages: 1, visibilityTimeout: 900 });
+    const message = receivedMessageItems[0];
+    if (!message) return { status: 'empty' };
+    id = Buffer.from(message.messageText, 'base64').toString('utf8');
+    remove = () => queue.deleteMessage(message.messageId, message.popReceipt);
+  }
   if (!/^webhook-[a-f\d]{64}$/.test(id)) { await remove(); return { status: 'invalid' }; }
   const owner = randomUUID();
-  const job = await claimReviewJob(id, owner);
+  const job = await claimReviewJob(id, owner, undefined, Boolean(resumeId));
   if (!job) {
     const existing = await findReviewJob(id);
     if (!existing || existing.status !== 'running') await remove();
@@ -40,11 +44,11 @@ async function processNextReview({ queue = getReviewQueue(), analyze = analyzePu
   try {
     if (!await findAnalysis(id)) {
       const { url, options } = job.payload;
-      if (options.installationId && !await consumeReviewBudget('installation:' + options.installationId)) {
+      if (!resumeId && options.installationId && !await consumeReviewBudget('installation:' + options.installationId)) {
         await finishReviewJob(id, owner, 'failed', 'REVIEW_LIMIT'); await remove(); return { status: 'failed', id };
       }
       const githubToken = options.installationId ? await installationToken(options.installationId, options.trigger.repository) : undefined;
-      const result = await analyze(url, { ...options, id, githubToken });
+      const result = await analyze(url, { ...options, id, githubToken, resume: Boolean(resumeId) });
       if (result.body?.status !== 'completed') throw Error('Review did not complete.');
     }
     await finishReviewJob(id, owner, 'completed');

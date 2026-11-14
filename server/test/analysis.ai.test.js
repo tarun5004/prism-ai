@@ -1,5 +1,34 @@
 import assert from 'node:assert/strict';
 
+test('workflow resumes a failed save without repeating retrieval or the model', async () => {
+  const { MemorySaver } = await import('@langchain/langgraph');
+  const { runReviewWorkflow } = await import('../src/features/analysis/analysis.workflow.js');
+  const checkpointer = new MemorySaver();
+  let prepared = 0; let calls = 0; let writes = 0;
+  const options = { id: 'resume-safe', repository: 'owner/repo', baseSha: 'a', headSha: 'b', checkpointer,
+    prepare: async () => { prepared++; }, review: async () => { calls++; return { status: 'completed', findings: [] }; },
+    save: async result => { if (++writes === 1) throw Error('storage offline'); return { body: result }; }, load: async () => assert.fail('not already saved') };
+  await assert.rejects(runReviewWorkflow(options), /storage offline/);
+  const result = await runReviewWorkflow(options);
+  assert.equal(result.body.status, 'completed');
+  assert.equal(calls, 1);
+  assert.equal(prepared, 1);
+  assert.equal(writes, 2);
+});
+
+test('workflow blocks an ambiguous model replay and isolates installation threads', async () => {
+  const { MemorySaver } = await import('@langchain/langgraph');
+  const { runReviewWorkflow } = await import('../src/features/analysis/analysis.workflow.js');
+  const checkpointer = new MemorySaver(); let calls = 0;
+  const options = { id: 'resume-unknown', repository: 'owner/repo', baseSha: 'a', headSha: 'b', checkpointer,
+    prepare: async () => {}, review: async () => { calls++; throw Error('crash after request'); }, save: async () => {}, load: async () => {} };
+  await assert.rejects(runReviewWorkflow(options), /crash after request/);
+  await assert.rejects(runReviewWorkflow(options), { code: 'INTERRUPTED_MODEL_REQUEST' });
+  await assert.rejects(runReviewWorkflow({ ...options, installationId: 9 }), /crash after request/);
+  await assert.rejects(runReviewWorkflow({ ...options, id: 'expired-checkpoint', resume: true }), { code: 'CHECKPOINT_UNAVAILABLE' });
+  assert.equal(calls, 2, 'a separate installation has a separate checkpoint');
+});
+
 test('opt-in review email sends one safe link and duplicate calls never send twice', async () => {
   const { sendReviewEmail } = await import('../src/features/analysis/analysis.mail.js');
   const keys = ['EMAIL_ENABLED', 'EMAIL_FROM', 'APP_ORIGIN']; const previous = keys.map(key => process.env[key]);
