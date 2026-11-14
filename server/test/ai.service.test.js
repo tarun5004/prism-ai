@@ -160,23 +160,28 @@ test('Gemini connectivity is available separately from PR analysis', () => {
   assert.equal(typeof aiService.checkGeminiConnection, 'function');
 });
 
-test('validates structured output through the real SDK with the selected model', async () => {
+test('connectivity uses the documented default model when configuration is blank', async () => {
+  process.env.GEMINI_MODEL = '  ';
   let request;
   globalThis.fetch.mock.mockImplementation(async (url, options) => {
     request = { url: String(url), body: JSON.parse(options.body) };
     return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify(expected) }] }, finishReason: 'STOP' }] });
   });
   assert.deepEqual(await aiService.checkGeminiConnection(), expected);
-  assert.match(request.url, /models\/gemini-3\.8-flash:generateContent/);
+  assert.match(request.url, /models\/gemini-3\.6-flash:generateContent/);
   assert.equal(request.body.generationConfig.responseMimeType, 'application/json');
   assert.deepEqual(request.body.generationConfig.responseJsonSchema.required, ['status', 'provider', 'message']);
 });
 
 test('honors GEMINI_MODEL configuration', async () => {
-  process.env.GEMINI_MODEL = 'configured-model';
+  process.env.GEMINI_MODEL = '  configured-model  ';
   respondWith(JSON.stringify(expected));
   assert.deepEqual(await aiService.checkGeminiConnection(), expected);
   assert.match(String(globalThis.fetch.mock.calls[0].arguments[0]), /models\/configured-model:generateContent/);
+  respondWith(JSON.stringify({ findings: [validFinding], review: contextualReview }));
+  const result = await aiService.runAiAnalysis(reviewPr);
+  assert.equal(result.model, 'configured-model');
+  assert.match(String(globalThis.fetch.mock.calls[1].arguments[0]), /models\/configured-model:generateContent/);
 });
 
 test('rejects a missing or blank key without a request', async () => {
@@ -262,7 +267,7 @@ test('reviews bounded diff through Gemini and preserves report compatibility', a
   const result = await aiService.runAiAnalysis(reviewPr);
   assert.equal(result.status, 'completed');
   assert.deepEqual(result.findings[0], { ...validFinding, category: 'ai-review', confidence: 'low', affectedFiles: ['src/math.js'], recommendedAction: validFinding.suggestedFix, source: 'ai' });
-  assert.match(request.url, /models\/gemini-3\.8-flash:generateContent/);
+  assert.match(request.url, /models\/gemini-3\.6-flash:generateContent/);
   assert.equal(request.body.generationConfig.responseMimeType, 'application/json');
   assert.ok(request.body.contents[0].parts[0].text.includes('Do not send metadata'));
   assert.equal(globalThis.fetch.mock.callCount(), 1);

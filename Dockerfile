@@ -8,14 +8,12 @@ RUN npm run build --prefix client
 
 FROM node:22-bookworm-slim AS dependencies
 WORKDIR /app
-COPY package.json ./
 COPY server/package*.json ./server/
 RUN npm ci --omit=dev --prefix server && npm cache clean --force
 
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production PORT=5000
 WORKDIR /app
-COPY --chown=node:node package.json ./
 COPY --chown=node:node --from=dependencies /app/server/node_modules ./server/node_modules
 COPY --chown=node:node server/package.json ./server/package.json
 COPY --chown=node:node server/src ./server/src

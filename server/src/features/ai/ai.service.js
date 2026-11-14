@@ -2,6 +2,9 @@ import { GoogleGenAI } from '@google/genai';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { prepareAiInput, containsSensitiveText } from './ai.context.js';
 
+// Keep review requests and the connectivity CLI on the same configured/default model.
+const getGeminiModel = () => process.env.GEMINI_MODEL?.trim() || 'gemini-3.6-flash';
+
 const findingFields = {
   title: { type: 'string' },
   severity: { type: 'string', enum: ['high', 'medium', 'low'] },
@@ -35,7 +38,7 @@ const safeNetworkCodes = new Set([
 async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS?.trim() || 120000), onRequest = () => {} } = {}) {
   const startedAt = performance.now();
   const { files, coverage, intent, snippets, memory } = prepareAiInput(pullRequest);
-  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
+  const model = getGeminiModel();
   const validTimeout = Number.isInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 120000;
   const diagnostics = { attempts: 0, runId: randomUUID(), promptVersion: 'pr-review-v2', schemaVersion: 'review-v1', usage: null, ...(validTimeout ? { timeoutMs } : {}) };
   const result = (status, findings = [], error, review) => {
@@ -201,7 +204,7 @@ async function checkGeminiConnection({ timeoutMs = 30000 } = {}) {
       httpOptions: { timeout: timeoutMs, retryOptions: { attempts: 1 } }
     });
     response = await client.models.generateContent({
-      model: process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash',
+      model: getGeminiModel(),
       contents: 'Return JSON with status "ok", provider "gemini", and message "Connection successful". No additional fields.',
       config: {
         abortSignal: signal,
@@ -287,4 +290,4 @@ async function exportReviewTrace(analysis) {
   } catch { return { status: 'unavailable', errorCode: 'TRACE_EXPORT_FAILED', traceId }; }
 }
 
-export { checkGeminiConnection, runAiAnalysis, exportReviewTrace, validateFindings, validateReview };
+export { getGeminiModel, checkGeminiConnection, runAiAnalysis, exportReviewTrace, validateFindings, validateReview };
