@@ -42,7 +42,9 @@ async function processNextReview({ queue, analyze = analyzePullRequest, resumeId
     return { status: existing?.status || 'missing', id };
   }
   try {
-    if (!await findAnalysis(id)) {
+    const existing = await findAnalysis(id);
+    if (existing && existing.status !== 'completed') throw Error('A failed saved report requires a fresh review.');
+    if (!existing) {
       const { url, options } = job.payload;
       if (!resumeId && options.installationId && !await consumeReviewBudget('installation:' + options.installationId)) {
         await finishReviewJob(id, owner, 'failed', 'REVIEW_LIMIT'); await remove(); return { status: 'failed', id };

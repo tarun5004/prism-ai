@@ -90,6 +90,8 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
       return { status: 500, body: { message: 'Analysis could not be saved or completed. Please try again.', ...(error.code === 'INTERRUPTED_MODEL_REQUEST' ? { errorCode: error.code } : {}) } };
     }
     if (error.statusCode === 400) return { status: 400, body: { message: error.message } };
+    // A temporary GitHub failure must not replace a recoverable checkpoint with a failed report.
+    if (resume) return { status: error.statusCode, body: { message: error.message, errorCode: error.code } };
     const failedAnalysis = {
       id,
       ...(installationId ? { installationId } : {}),

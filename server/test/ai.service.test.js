@@ -1,4 +1,10 @@
 import assert from 'node:assert/strict';
+
+test('unsupported provider stays a configuration failure without an invalid stored attribution', async () => {
+  const result = await aiService.runAiAnalysis(reviewPr, { provider: 'other' });
+  assert.equal(result.error, 'INVALID_PROVIDER');
+  assert.equal(result.provider, undefined);
+});
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, mock, test } from 'node:test';

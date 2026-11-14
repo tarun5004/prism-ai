@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
 
+test('resume prerequisite failure never saves a failed report over the recoverable ID', async () => {
+  mock.method(globalThis, 'fetch', async () => Response.json({ message: 'rate limited' }, { status: 429 }));
+  const id = 'resume-github-outage';
+  const result = await analyzePullRequest('https://github.com/audit/repo/pull/1', { id, resume: true });
+  assert.equal(result.status, 502);
+  assert.equal(await findAnalysis(id), undefined);
+});
+
 test('workflow resumes a failed save without repeating retrieval or the model', async () => {
   const { MemorySaver } = await import('@langchain/langgraph');
   const { runReviewWorkflow } = await import('../src/features/analysis/analysis.workflow.js');

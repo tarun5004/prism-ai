@@ -115,3 +115,5 @@ Historical ledger is retained for unique failures/verification history, not as a
 - Live Gemini B01: diff-only **5,938 ms**, bounded-semantic **4,702 ms**; one validated finding and one attempt each; input 852/1,025 characters. No quality/speed improvement or large-context timeout cause is proven by these tiny fixtures.
 - Live Mistral: **429 in 1,399 ms**, one attempt, no retry/fallback. xAI key missing; Grok live acceptance pending.
 - Only two new runtime modules: `ai.retrieval.js` (persistent semantic search), `analysis.workflow.js` (state/checkpoints). Existing services, context, repository, worker, UI and collector were extended.
+
+Final checks after independent review fixes: **144 backend passed + 1 separately passing opt-in Mongo/Azurite integration**, **41 frontend**, **7 Python**, production build and zero production dependency-audit findings. Resume prerequisite failures preserve recoverable IDs; unsupported provider settings preserve deterministic reports. Docker/sample smoke is recorded in the ledger. Hosted acceptance stays open.

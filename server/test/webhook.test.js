@@ -112,6 +112,18 @@ test('queued review is claimed once, completed reports are reused and expired ru
   assert.equal((await findReviewJob(id)).status, 'completed');
 });
 
+test('operator resume never marks a failed saved analysis as completed', async () => {
+  const { processNextReview } = await import('../src/features/analysis/analysis.jobs.js');
+  const { enqueueReviewJob, claimReviewJob, finishReviewJob, saveAnalysis, findReviewJob } = await import('../src/features/analysis/analysis.repository.js');
+  const id = 'webhook-' + '6'.repeat(64);
+  await enqueueReviewJob({ id, payload: { url: 'https://github.com/audit/repo/pull/1', options: {} } });
+  await claimReviewJob(id, 'first'); await finishReviewJob(id, 'first', 'failed');
+  await saveAnalysis({ id, status: 'failed', createdAt: new Date().toISOString(), pullRequest: {}, findings: [] });
+  const result = await processNextReview({ resumeId: id, analyze: async () => { assert.fail('A terminal failed report needs a fresh deliberate review'); } });
+  assert.equal(result.status, 'failed');
+  assert.equal((await findReviewJob(id)).status, 'failed');
+});
+
 test('rejects invalid signatures/configuration before any analysis or repository access', () => {
   const handler = createWebhookHandler({ analyze() { assert.fail('Must not analyze'); }, find() { assert.fail('Must not read storage'); } });
   for (const signature of [undefined, 'sha256=bad', 'sha256=' + '0'.repeat(64)]) {

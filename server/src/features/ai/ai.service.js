@@ -126,7 +126,7 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
       ? (diagnostics.networkCode ? 'network' : diagnostics.httpStatus ? 'provider' : 'request')
       : { MISSING_API_KEY: 'configuration', NO_REVIEWABLE_DIFF: 'input', INVALID_TIMEOUT: 'configuration', INVALID_PROVIDER: 'configuration', MISSING_MODEL: 'configuration', UNSAFE_LOGGING: 'configuration', TIMEOUT: 'timeout', INVALID_RESPONSE: 'response', INVALID_FINDINGS: 'validation', INVALID_REVIEW: 'validation' }[error];
     return {
-      status, findings, coverage, model, provider,
+      status, findings, coverage, model, provider: ['gemini', 'mistral', 'xai'].includes(provider) ? provider : undefined,
       diagnostics: { ...diagnostics, durationMs: Math.round(performance.now() - startedAt), ...(failureCategory ? { failureCategory } : {}) },
       ...(error ? { error } : {}),
       ...(review ? { review } : {})
