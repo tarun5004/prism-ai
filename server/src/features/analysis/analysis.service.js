@@ -7,6 +7,7 @@ import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis } from './analys
 import { postReviewSummary } from '../pullRequest/github.app.js';
 import { runRules } from './analysis.rules.js';
 import { sendReviewEmail } from './analysis.mail.js';
+import { retrieveSemanticContext } from '../ai/ai.retrieval.js';
 
 // Shared by manual requests and verified GitHub events.
 async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = randomUUID(), trigger, expectedRevision, installationId, githubToken, notificationUserId } = {}) {
@@ -36,7 +37,10 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     if (aiEnabled) progress('context');
     // Source enrichment is transient; only validated review evidence reaches storage/API.
     const reviewInput = aiEnabled
-      ? { ...pullRequest, reviewContext: await measure('retrieval', () => fetchReviewContext(pullRequest, { token: githubToken })) } : pullRequest;
+      ? { ...pullRequest, reviewContext: await measure('retrieval', async () => {
+        const context = await fetchReviewContext(pullRequest, { token: githubToken });
+        return retrieveSemanticContext({ ...pullRequest, reviewContext: context }, { installationId });
+      }) } : pullRequest;
     if (aiEnabled) {
       try { reviewInput.reviewMemory = buildReviewMemory(await measure('memory', () => findPreviousAnalysis(pullRequest, installationId)), pullRequest); }
       catch { reviewInput.reviewMemory = null; } // Optional memory cannot discard a current review.

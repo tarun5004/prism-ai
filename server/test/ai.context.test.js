@@ -1,4 +1,36 @@
 import assert from 'node:assert/strict';
+
+test('semantic retrieval indexes safe chunks once and rejects foreign result IDs', async () => {
+  const { retrieveSemanticContext } = await import('../src/features/ai/ai.retrieval.js');
+  const pr = { repository: 'owner/repo', baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), title: 'authorization', changedFiles: [], reviewContext: { snippets: [
+    { filePath: 'src/auth.js', lineSide: 'new', startLine: 10, role: 'direct-import', code: 'export function canDelete(actor, owner) {\n  return actor.id === owner.id;\n}' },
+    { filePath: '.env', lineSide: 'new', startLine: 1, code: 'PASSWORD="private-marker"' }
+  ], omitted: [] } };
+  let ids = []; let embeds = 0; const names = [];
+  const collection = { get: async () => ({ ids }), upsert: async data => { ids = data.ids; assert.ok(!data.documents.join('').includes('private-marker')); }, query: async () => ({ ids: [[...ids, 'foreign-result']] }) };
+  const client = { getOrCreateCollection: async ({ name }) => { names.push(name); return collection; } };
+  const embed = async texts => { embeds++; assert.ok(!texts.join('').includes('private-marker')); return texts.map(() => [1, 0]); };
+  const first = await retrieveSemanticContext(pr, { enabled: true, client, embed, installationId: 7 });
+  assert.equal(first.semanticRetrieval.status, 'completed');
+  assert.equal(first.snippets.length, 1);
+  assert.equal(first.snippets[0].startLine, 10);
+  assert.equal(embeds, 2);
+  await retrieveSemanticContext(pr, { enabled: true, client, embed, installationId: 7 });
+  assert.equal(embeds, 3, 'cached chunks need only the query embedding');
+  await retrieveSemanticContext(pr, { enabled: true, client, embed, installationId: 8 });
+  assert.notEqual(names[0], names[2]);
+});
+
+test('a semantic store failure preserves bounded context and exposes unavailable status', async () => {
+  const { retrieveSemanticContext } = await import('../src/features/ai/ai.retrieval.js');
+  const context = { snippets: [{ filePath: 'a.js', lineSide: 'new', startLine: 1, code: 'hello();' }], omitted: [] };
+  const result = await retrieveSemanticContext({ repository: 'o/r', headSha: 'b'.repeat(40), baseSha: 'a'.repeat(40), reviewContext: context }, {
+    enabled: true, client: { getOrCreateCollection() { throw Error('private service address'); } }
+  });
+  assert.equal(result.semanticRetrieval.status, 'unavailable');
+  assert.deepEqual(result.snippets, context.snippets);
+  assert.ok(!JSON.stringify(result).includes('private service address'));
+});
 import { test } from 'node:test';
 import { prepareAiInput, buildReviewMemory } from '../src/features/ai/ai.context.js';
 
