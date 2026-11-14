@@ -22,6 +22,7 @@ const analysisSchema = new mongoose.Schema(
     },
     aiStatus: { type: String, enum: ['skipped', 'completed', 'partial', 'unavailable'] },
     aiModel: { type: String },
+    aiProvider: { type: String, enum: ['gemini', 'mistral', 'xai'] },
     aiError: { type: String },
     aiCoverage: { type: mongoose.Schema.Types.Mixed },
     aiReview: { type: mongoose.Schema.Types.Mixed },

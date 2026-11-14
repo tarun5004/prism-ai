@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { runAiAnalysis, exportReviewTrace, validateFindings, validateReview } from '../ai/ai.service.js';
+import { getAiConfiguration, runAiAnalysis, exportReviewTrace, validateFindings, validateReview } from '../ai/ai.service.js';
 import { prepareAiInput, buildReviewMemory } from '../ai/ai.context.js';
 import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
 import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis } from './analysis.repository.js';
@@ -32,7 +32,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
       throw new PullRequestError('PR revision changed before webhook review. Use the latest event or analyze the PR manually.', 409);
     }
     const ruleFindings = runRules(pullRequest);
-    const aiEnabled = Boolean(process.env.GEMINI_API_KEY?.trim()) && prepareAiInput(pullRequest).files.length > 0;
+    const aiEnabled = Boolean(getAiConfiguration().apiKey) && prepareAiInput(pullRequest).files.length > 0;
     if (aiEnabled) progress('context');
     // Source enrichment is transient; only validated review evidence reaches storage/API.
     const reviewInput = aiEnabled
@@ -52,6 +52,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
       ...(trigger ? { trigger } : {}),
       aiStatus: aiResult.status,
       aiModel: aiResult.model,
+      aiProvider: aiResult.provider,
       aiCoverage: aiResult.coverage,
       aiDiagnostics: { ...aiResult.diagnostics, pipeline },
       ...(aiResult.review ? { aiReview: aiResult.review } : {}),
