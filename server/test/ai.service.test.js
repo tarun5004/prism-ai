@@ -4,8 +4,45 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import * as aiService from '../src/features/ai/ai.service.js';
 import * as contextService from '../src/features/ai/ai.context.js';
+import { ChatGoogle } from '@langchain/google/node';
+import { getCurrentRunTree } from 'langsmith/traceable';
+import { Client } from 'langsmith';
 
 const expected = { status: 'ok', provider: 'gemini', message: 'Connection successful' };
+
+test('review and connectivity use the LangChain chat interface with automatic retries disabled', async () => {
+  const invoke = ChatGoogle.prototype.invoke;
+  const calls = mock.method(ChatGoogle.prototype, 'invoke', function (messages, options) {
+    assert.equal(this.caller.maxRetries, 0);
+    assert.equal(this.disableStreaming, true);
+    assert.ok(options.signal instanceof AbortSignal);
+    assert.equal(getCurrentRunTree().tracingEnabled, false);
+    return invoke.call(this, messages, options);
+  });
+  respondWith(JSON.stringify({ findings: [validFinding], review: contextualReview }));
+  assert.equal((await aiService.runAiAnalysis(reviewPr)).status, 'completed');
+  respondWith(JSON.stringify(expected));
+  assert.deepEqual(await aiService.checkGeminiConnection(), expected);
+  assert.equal(calls.mock.callCount(), 2);
+});
+
+test('ambient LangSmith tracing cannot export private review prompts', async () => {
+  const keys = ['LANGSMITH_TRACING', 'LANGSMITH_API_KEY'];
+  const previous = keys.map(key => process.env[key]);
+  process.env.LANGSMITH_TRACING = 'true';
+  process.env.LANGSMITH_API_KEY = 'offline-tracing-key';
+  const create = mock.method(Client.prototype, 'createRun', async () => { assert.fail('Raw model tracing must remain disabled'); });
+  const update = mock.method(Client.prototype, 'updateRun', async () => { assert.fail('Raw model tracing must remain disabled'); });
+  try {
+    respondWith(JSON.stringify({ findings: [validFinding], review: contextualReview }));
+    assert.equal((await aiService.runAiAnalysis(reviewPr)).status, 'completed');
+    assert.equal(globalThis.fetch.mock.callCount(), 1);
+    assert.equal(create.mock.callCount(), 0);
+    assert.equal(update.mock.callCount(), 0);
+  } finally {
+    keys.forEach((key, index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; });
+  }
+});
 
 test('lexical guidance ranks relevant sections with exact original coordinates', () => {
   const result = contextService.rankGuidance('# Setup\nInstall npm\n\n# Authorization\nOnly note owners can delete notes.\n\n# Styling\nUse spaces.', 'note authorization delete');
