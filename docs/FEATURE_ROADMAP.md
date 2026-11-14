@@ -2,7 +2,7 @@
 
 Updated **14 November 2026**. This is the single feature backlog. [README](../README.md) = setup; [cheatsheet](FEATURE_CHEATSHEET.md) = beginner explanations; [evaluation guide](beta/DEMO_AND_EVALUATION.md) = quality checks; [historical ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md) = past chunks/failures.
 
-**Goal:** a clean, interview-explainable AI full-stack demo. LangChain, LangGraph and ChromaDB are now required learning features, not optional keywords. They are **planned, not implemented**. Extend one existing review pipeline; do not build a parallel advanced app.
+**Goal:** a clean, interview-explainable AI full-stack demo. LangChain, LangGraph and ChromaDB are now required learning features, not optional keywords. Gemini now uses LangChain; Mistral/Grok integration, ChromaDB and LangGraph are **planned, not implemented**. Extend one existing review pipeline; do not build a parallel advanced app.
 
 ## Implemented today
 
@@ -12,7 +12,7 @@ Implemented means code exists; it does not mean every external integration passe
 | --- | --- | --- |
 | PR retrieval + diff | GitHub metadata/paginated patches, base/head revision guards, old/new evidence navigation, renamed/missing/binary file handling | Bounded snapshots; no repository execution or complete dependency graph |
 | Context + basic RAG pattern | Revision-pinned source windows, selected direct JS/TS imports, opt-in lexical README/CONTRIBUTING chunks with source coordinates | No persistent vectors or production semantic retriever |
-| AI review + rules | Direct Gemini SDK, structured summary/walkthrough/impacts/findings; deterministic risk signals; evidence/schema validation | Failed AI is unavailable, never a successful clean review; evidence match does not prove reasoning |
+| AI review + rules | LangChain ChatGoogle with native Gemini JSON schema, structured summary/walkthrough/impacts/findings; deterministic risk signals; evidence/schema validation | Failed AI is unavailable, never a successful clean review; evidence match does not prove reasoning |
 | Saved reports + feedback | MongoDB reports/revisions; Useful/Incorrect annotations with actor identity and optional reason | Local fallback is volatile; production storage fails closed |
 | Previous-review memory | At most three relevant useful-labelled hints from another revision of the same PR/installation | Existing memory, not training or cross-repository chat memory |
 | Progress + diagnostics | Actual NDJSON stages, time, run/prompt/schema versions, serialized input size and provider token usage when reported | No fixed response-time promise; unknown token counts stay unknown |
@@ -33,7 +33,7 @@ One row = one responsibility. Shared concepts below are extensions, not another 
 
 | Requested skill | Already here | What remains to implement once | Decision |
 | --- | --- | --- | --- |
-| LangChain + provider orchestration | Direct Gemini call and common evidence validators | Common model-call integration for Gemini, Mistral and Grok; normalize results into existing report contract | Required migration; reuse validator/context, no separate review engine |
+| LangChain + provider orchestration | Gemini review/connectivity use ChatGoogle; common evidence validators, explicit no-retry/deadline and private tracing scope | Add Mistral/Grok via the same context/report contract; provider selection/attribution | Gemini migration implemented; multi-provider work pending |
 | RAG | Keyword-based docs retrieval plus source/import context | Connect semantic retrieval to the same bounded context preparation | Extend current RAG pattern; do not count keyword RAG and vector RAG as two apps |
 | ChromaDB + embeddings | Small embedding/cosine comparison experiment only | Store/query bounded code/docs chunks with repository, installation, revision, path and line metadata; isolate scopes and handle stale revisions | Required persistent semantic retrieval; Chroma owns vectors, Mongo owns reports/jobs |
 | LangGraph | Explicit service steps and failure branches | Express fetch/retrieve/review/validate/save using small named graph nodes and explicit validated state | Required orchestration of the same workflow; graph does not replace queue delivery |
@@ -48,10 +48,10 @@ One row = one responsibility. Shared concepts below are extensions, not another 
 
 ## Ordered next work
 
-Each chunk: inspect existing path -> meaningful regression/check -> small implementation -> verify -> commit. This documentation cleanup does not implement any framework.
+Each chunk: inspect existing path -> meaningful regression/check -> small implementation -> verify -> commit. Framework status is explicit: the docs cleanup installed nothing; a later verified Gemini chunk implemented LangChain.
 
 1. **P0 — baseline cleanup complete; CI integration coverage pending.** Removed unused server `prism-ai: file:..` dependency/root lock link and unnecessary backend/runtime Docker copies. Review and smoke share one model selector: explicit `GEMINI_MODEL` wins, otherwise documented `gemini-3.6-flash`. Next separate chunk: add actual Mongo/queue/worker integration coverage to CI. Retain tests before build/deploy and the public sample. Audit simpler hosting options without deleting crash protection blindly.
-2. **P1 — LangChain + multi-provider calls.** Extend `ai.service.js`, existing model/service and provider tests. Start with one selected provider per review, bounded deadline, common schema/evidence checks and honest provider/token/error metadata. Add Mistral/Grok credentials only server-side. No automatic generation retries or fallback until explicitly designed; OpenAI is not an approved additional integration yet.
+2. **P1 — multi-provider calls (Gemini LangChain migration complete).** Extend `ai.service.js`, existing model/service and provider tests. Start with one selected provider per review, bounded deadline, common schema/evidence checks and honest provider/token/error metadata. Add Mistral/Grok credentials only server-side. No automatic generation retries or fallback until explicitly designed; OpenAI is not an approved additional integration yet.
 3. **P1 — ChromaDB semantic RAG.** Extend existing context/retrieval functions; embed a small bounded collection, persist chunks and query only the authorized repo/revision. Preserve original code coordinates, input budgets and sensitive-content filtering. Record retrieval provenance and a small relevance comparison. Chroma runtime/persistence/hosting cost must be settled before enabling it on the live demo; no claim it fits INR200 yet.
 4. **P1 — LangGraph + persistent state.** Wrap existing workflow functions as readable nodes. Reuse MongoDB for scoped checkpoints where supported and keep queue/lease protection separate. Test state transitions, safe failure, restart read-back and explicit handling of unknown model outcomes. Checkpoints are not permission to automatically rerun inference or side effects.
 5. **P1 — integrate memory and observability.** Route existing feedback hints through graph state, retain current-evidence validation, trace actual node/provider timing and verify configured Langfuse ingestion. No training, generic chat memory or second logging service.
@@ -85,6 +85,14 @@ Follow [owner setup](../README.md#release-setup--13-november). No cloud resource
 - **14 November audit:** configured Gemini 3.6 connectivity succeeded; B01 existing review function completed in 5,617 ms, one finding/walkthrough, 466 input / 497 output / 963 total tokens, one attempt; run 9188a9a7-dd4e-41f0-89ea-2d4020d693c1. Synthetic supplied-context call, not a fresh full GitHub PR acceptance or uptime guarantee.
 - Separate earlier small requests returned503/504, including a 966-byte PR input. Success does not resolve intermittent provider availability; timeout inflation/framework migration is not a proven fix.
 - [Saved partial development artifact](beta/evaluation-live-dev.json) preserves original results plus captured demo and tiny retrieval comparison. Two live embedding batches selected the relevant document on 3/3 tiny queries for lexical and semantic methods; this is not a persistent index or measured review improvement. Judgments/full benchmark remain incomplete; no quality score claimed.
+
+## Latest chunk — LangChain Gemini integration
+
+Existing `ai.service.js` now uses `ChatGoogle` from `@langchain/google/node` for review and connectivity. `@langchain/core` is its required peer; explicit `langsmith` dependency scopes automatic LangSmith tracing off. The metadata-only Langfuse exporter is unchanged. Ambient verbose console logging fails closed (`UNSAFE_LOGGING`); keep `LANGCHAIN_VERBOSE` unset/false. Native response schema and existing file/line/evidence validators remain; no agent/tool loop added. Direct `@google/genai` stays for the separate embedding experiment.
+
+`maxRetries=0`, abort deadline, server timeout, output budget and low thinking are explicit. A small API-client hook reads original usage counts because the LangChain message normalizes missing usage to zero and includes thinking in output. Missing counts remain null; no raw response/prompt is persisted by this adapter.
+
+Verified this chunk: actual LangChain-call regression RED/GREEN, **134 backend tests passed**, production dependency audit zero findings. Live B01 completed in 9,352 ms, one finding/walkthrough, 465 input / 500 output / 965 total tokens,thinking unknown, attempts 1, run 16e60aae-5a91-4a2f-ae97-56c18382b430. This synthetic call is not full GitHub acceptance or a reliability guarantee. Docker/review verification is recorded in the ledger. Mistral/Grok selection, Chroma and LangGraph remain next work; no credential changes required for this Gemini migration.
 
 ## Documentation cleanup map
 

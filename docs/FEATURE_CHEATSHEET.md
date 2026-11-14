@@ -26,7 +26,7 @@ Code: `fetchReviewContext()` above; [prepareAiInput() / rankGuidance()](../serve
 
 ## 3. AI review: request se trustworthy output tak
 
-Backend sanitized diff/context ko JSON text banata hai. `runAiAnalysis()` Gemini SDK se summary, impact aur evidence-linked findings maangta hai. JSON Schema expected fields/types describe karta hai. Response ke baad hamara code file, line aur quoted evidence match karta; invalid references reject hote hain.
+Backend sanitized diff/context ko JSON text banata hai. `runAiAnalysis()` shared `invokeGemini()` helper se LangChain `ChatGoogle.invoke()` call karta hai: system instruction + human context -> native Gemini JSON-schema response. Summary, impact aur evidence-linked findings milte hain. JSON Schema expected fields/types describe karta hai. Response ke baad hamara code file, line aur quoted evidence match karta; invalid references reject hote hain.
 
 **Why:** valid JSON aur correct evidence separate checks hain. Evidence match bhi reasoning correct hone ki guarantee nahi.
 
@@ -36,7 +36,7 @@ Code: [ai.service.js](../server/src/features/ai/ai.service.js)—`.rs` nahi.
 
 **Haan—LangChain JavaScript mein bhi use hota hai.** Woh models/tools integrate karne ke common interfaces deta hai. TypeScript separate benefit deta: development-time type mistakes catch karna.
 
-Current flow fixed hai: prepare → one model call → validate → save. Direct SDK keeps it easy to trace. Next agreed chunk mein LangChain se Gemini/Mistral/Grok calls common interface par layenge; abhi migration implemented nahi. Woh automatically better context ya provider uptime nahi deta. TypeScript ke baad bhi external AI output ki runtime validation chahiye.
+Current flow: prepare → LangChain model call → existing validation → save. Gemini migration implemented hai; Mistral/Grok next hain. `ChatGoogle` model messages/request handle karta, hamare validators actual code evidence check karte. No agent loop. Retry off/deadline same; raw prompt LangSmith ko nahi bhejte. Usage hook original provider counts retain karta, missing ko zero nahi bolta. Woh automatically better context ya provider uptime nahi deta. TypeScript ke baad bhi external AI output ki runtime validation chahiye.
 
 References: [LangChain JS](https://docs.langchain.com/oss/javascript/langchain/overview), [TypeScript](https://www.typescriptlang.org/docs/handbook/intro.html).
 
@@ -90,7 +90,7 @@ SDK handshake/tool discovery handle karta. `StdioServerTransport` stdin/stdout s
 
 [Evaluation script](../server/scripts/evaluate-ai.js) known test cases par output collect karta; Python scorer human judgments se quality measure kar sakta. Embedding experiment text ko number-vectors mein convert karke closest docs compare karta; persistent search index nahi.
 
-**Required next, not implemented:** LangChain = common provider calls; Chroma = persistent vectors + semantic retrieval; LangGraph = workflow state/checkpoints. Existing context retrieval aur feedback memory extend karenge, duplicate engine nahi. Remote MCP separate optional future feature hai. Hosting, human scoring aur browser QA bhi pending.
+**Implemented:** LangChain Gemini review/connectivity. **Required next:** Mistral/Grok provider selection, Chroma persistent vectors + semantic retrieval, LangGraph workflow state/checkpoints. Existing context retrieval aur feedback memory extend karenge, duplicate engine nahi. Remote MCP separate optional future feature hai. Hosting, human scoring aur browser QA bhi pending.
 
 **Builder habit:** “Kaunsa data chahiye? Kahan se milega? Kaise verify karunga? Failure pe kya preserve hoga?” Framework uske baad choose karo.
 

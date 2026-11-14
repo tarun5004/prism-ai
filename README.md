@@ -150,14 +150,14 @@ Local inline mode allows two concurrent jobs in the API process; it is for devel
 | [analysis.service.js](server/src/features/analysis/analysis.service.js) | Shared manual/webhook review workflow |
 | [pullRequest.service.js](server/src/features/pullRequest/pullRequest.service.js) | GitHub retrieval and revision-pinned context enrichment |
 | [ai.context.js](server/src/features/ai/ai.context.js) | Input limits, patch references and sensitive-content filtering |
-| [ai.service.js](server/src/features/ai/ai.service.js) | Gemini structured output, prompt, validation and diagnostics |
+| [ai.service.js](server/src/features/ai/ai.service.js) | LangChain Gemini structured output, prompt, validation and diagnostics |
 | [analysis.repository.js](server/src/features/analysis/analysis.repository.js) / [model](server/src/features/analysis/analysis.model.js) | Report storage |
 | [pullRequest.webhook.js](server/src/features/pullRequest/pullRequest.webhook.js) | Signature checks, event filtering and bounded dispatch |
 | [github.repository.js](server/src/features/pullRequest/github.repository.js) | Encrypted expiring sessions and atomic usage counters |
 | [analysis.jobs.js](server/src/features/analysis/analysis.jobs.js) / [review-worker.js](server/scripts/review-worker.js) | Queue dispatch and one-shot worker |
 | [analysis.mail.js](server/src/features/analysis/analysis.mail.js) | Opt-in SMTP notification after persistence |
 
-Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and Google's official `@google/genai` SDK. Azure Storage Queue supports optional local queue testing and the production worker path; LangChain/LangGraph/ChromaDB integration is planned and not installed yet.
+Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and LangChain `@langchain/google` for Gemini review/connectivity. Google's `@google/genai` remains for the separate embedding experiment. Azure Storage Queue supports optional local queue testing and the production worker path; Mistral/Grok, LangGraph and ChromaDB integration remain planned.
 
 ## API, briefly
 
@@ -406,4 +406,11 @@ Provision the web app, queue, identity/scaler and worker job separately first; C
 
 ### Next agreed AI learning features — 14 November
 
-LangChain provider integration (Gemini/Mistral/Grok), ChromaDB semantic RAG and LangGraph state/checkpoints are required next slices, **not implemented today**. Extend the existing context, feedback memory, validators, report and tracing; do not create a parallel review system. See the [comparison and single backlog](docs/FEATURE_ROADMAP.md#comparison-new-request-versus-existing-features). Earlier dated direct-SDK/no-vector notes describe current implementation, not a permanent exclusion.
+LangChain Gemini review/connectivity is implemented. Mistral/Grok provider integration, ChromaDB semantic RAG and LangGraph state/checkpoints remain required next slices, **not implemented today**. Extend the existing context, feedback memory, validators, report and tracing; do not create a parallel review system. See the [comparison and single backlog](docs/FEATURE_ROADMAP.md#comparison-new-request-versus-existing-features). Earlier dated direct-SDK/no-vector notes describe current implementation, not a permanent exclusion.
+
+
+### LangChain Gemini chunk — 14 November
+
+Review and connectivity now call LangChain `ChatGoogle` from the recommended `@langchain/google` integration. It uses native JSON schema; the same application validators still reject unsupported code evidence. No new application files or API-key settings. Retries remain off and deadlines/bounded output remain enforced. Original provider token counts are preserved; ambient LangSmith prompt tracing is disabled, while optional metadata-only Langfuse export continues. Keep `LANGCHAIN_VERBOSE` unset/false: private calls fail closed with `UNSAFE_LOGGING` if it is true, because framework console logging would expose prompts.
+
+**134 backend checks passed.** One actual B01 call completed in 9.35 seconds with one validated finding/walkthrough and 465 input / 500 output / 965 total tokens; thinking usage unknown. This is one synthetic review, not a latency SLA or resolved provider reliability. Multi-provider selection is the next chunk. [Official integration](https://docs.langchain.com/oss/javascript/integrations/chat/google).
