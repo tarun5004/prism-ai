@@ -17,6 +17,17 @@ const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx'
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 const app = await vite.ssrLoadModule('/src/app/App.jsx');
 
+test('provider attribution reflects the saved review and semantic retrieval status', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
+    id: 'mistral-report', status: 'completed', aiStatus: 'completed', aiProvider: 'mistral', aiModel: 'mistral-small-latest',
+    pullRequest: {}, findings: [], aiCoverage: { semanticRetrieval: { status: 'completed', indexedChunks: 3, retrievedChunks: 2, cacheHit: true, embeddingCalls: 1 } }
+  } }));
+  assert.match(html, /Mistral/);
+  assert.match(html, /mistral-small-latest/);
+  assert.match(html, /Chroma/);
+  assert.ok(!html.includes('Gemini returned'));
+});
+
 test('email opt-in is explicit and unavailable delivery disables the control', () => {
   const html = renderToStaticMarkup(createElement(app.EmailPreference, { session: { emailAvailable: false, emailNotifications: false } }));
   assert.match(html, /Review-ready emails/);

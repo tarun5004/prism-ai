@@ -8,7 +8,7 @@ function getAiStatusDetails(analysis) {
         return { tone: 'warning', label: 'AI review not completed', message: 'The PR analysis failed. No successful AI review is confirmed.' };
     }
     if (analysis.aiStatus === 'completed') {
-        return { tone: 'success', label: 'AI analysis completed', message: 'Gemini returned a validated response. Findings remain advisory.' };
+        return { tone: 'success', label: 'AI analysis completed', message: 'The model returned a validated response. Findings remain advisory.' };
     }
     if (analysis.aiStatus === 'partial') {
         return { tone: 'warning', label: 'AI analysis partial', message: analysis.aiError === 'INVALID_FINDINGS' ? 'Some AI findings were rejected. Available validated findings and completed rule-based results are shown.' : 'AI reviewed limited diff context. Available validated findings and completed rule-based results are shown.' };
@@ -22,7 +22,10 @@ function getAiStatusDetails(analysis) {
             INVALID_RESPONSE: 'The AI response could not be validated.',
             INVALID_FINDINGS: 'The AI findings could not be validated.',
             INVALID_REVIEW: 'The AI review explanation could not be validated. Any valid findings are shown separately.',
-            INVALID_TIMEOUT: 'AI request configuration needs attention.'
+            INVALID_TIMEOUT: 'AI request configuration needs attention.',
+            INVALID_PROVIDER: 'Select a supported AI provider on the server.',
+            MISSING_MODEL: 'The selected provider needs a model name.',
+            UNSAFE_LOGGING: 'Disable verbose model logging on the server.'
         };
         const reason = analysis.aiError === 'API_ERROR' && analysis.aiDiagnostics?.httpStatus === 504
             ? 'The AI request exceeded its processing deadline.'
@@ -146,14 +149,17 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                             <Sparkles size={19} />
                             <div>
                                 <strong>{aiReview.label}</strong><p>{aiReview.message}</p>
+                                {(analysis.aiProvider || analysis.aiModel) && <p>Provider: {({ gemini: 'Google Gemini', mistral: 'Mistral', xai: 'xAI / Grok' })[analysis.aiProvider] || 'not recorded'} · Model: {analysis.aiModel || 'not recorded'}</p>}
                                 {analysis.aiCoverage && <p>AI input: {analysis.aiCoverage.analyzedFiles ?? 0} of {analysis.aiCoverage.totalFiles ?? files.length} fetched files included; {analysis.aiCoverage.skippedFiles?.length || 0} skipped; {analysis.aiCoverage.truncatedFiles?.length || 0} limited patches. Prepared input does not confirm a successful AI review.</p>}
                                 {analysis.aiCoverage && <p>{analysis.aiCoverage.contextSnippets || 0} source windows included; {analysis.aiCoverage.contextOmissions?.length || 0} context omissions. Direct-import retrieval is limited and does not trace every caller.</p>}
+                                {analysis.aiCoverage?.semanticRetrieval && <p>Chroma retrieval: {analysis.aiCoverage.semanticRetrieval.status}. {analysis.aiCoverage.semanticRetrieval.status === 'completed' ? `${analysis.aiCoverage.semanticRetrieval.retrievedChunks} of ${analysis.aiCoverage.semanticRetrieval.indexedChunks} chunks selected; ${analysis.aiCoverage.semanticRetrieval.cacheHit ? 'cached vectors' : 'new vectors indexed'}; ${analysis.aiCoverage.semanticRetrieval.embeddingCalls} embedding call(s).` : 'Bounded source context remains the fallback.'}</p>}
                                 {analysis.aiStatus === 'partial' && analysis.aiError === 'INVALID_REVIEW' && <p>The AI explanation was rejected because its structure or code references could not be validated.</p>}
                                 {diagnostics && <details className="ai-diagnostics"><summary>Request details</summary><p>
                                     Prompt {diagnostics.promptVersion || 'not recorded'} · Schema {diagnostics.schemaVersion || 'not recorded'}<br />
                                     Input tokens: {diagnostics.usage?.inputTokens ?? 'unknown'} · Output: {diagnostics.usage?.outputTokens ?? 'unknown'} · Thinking: {diagnostics.usage?.thinkingTokens ?? 'unknown'}<br />
                                     {Number.isSafeInteger(diagnostics.inputCharacters) && Number.isSafeInteger(diagnostics.inputBytes) && <>Context: {diagnostics.inputCharacters} characters · {diagnostics.inputBytes} UTF-8 bytes (excluding instructions/schema)<br /></>}
                                     {diagnostics.runId && <>Run: <code>{diagnostics.runId}</code><br /></>}
+                                    {diagnostics.workflow?.engine === 'langgraph' && <>Workflow: LangGraph · checkpointed model/save boundary<br /></>}
                                     {Number.isFinite(diagnostics.durationMs) && `${(diagnostics.durationMs / 1000).toFixed(1)}s elapsed. `}
                                     {Number.isFinite(diagnostics.timeoutMs) && `${diagnostics.timeoutMs / 1000}s timeout. `}
                                     {Number.isInteger(diagnostics.httpStatus) && `Provider HTTP ${diagnostics.httpStatus}. `}
