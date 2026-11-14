@@ -325,6 +325,7 @@ async function exportReviewTrace(analysis) {
       if (!['github', 'retrieval', 'memory', 'model'].includes(stage.name) || !Number.isFinite(stage.durationMs) || stage.durationMs < 0 || !Number.isFinite(Date.parse(stage.startedAt))) continue;
       const attributes = [...common, attribute('langfuse.observation.type', stage.name === 'model' ? 'generation' : stage.name === 'retrieval' ? 'retriever' : 'span')];
       if (stage.name === 'model') {
+        if (['gemini', 'mistral', 'xai'].includes(analysis.aiProvider)) attributes.push(attribute('gen_ai.provider.name', analysis.aiProvider));
         if (typeof analysis.aiModel === 'string' && !containsSensitiveText(analysis.aiModel)) attributes.push(attribute('gen_ai.request.model', analysis.aiModel.slice(0, 100)));
         for (const [name, field] of [['input_tokens', 'inputTokens'], ['output_tokens', 'outputTokens']]) {
           const count = analysis.aiDiagnostics?.usage?.[field];

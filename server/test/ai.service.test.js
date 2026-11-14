@@ -213,11 +213,12 @@ test('optional Langfuse export sends linked OTLP spans without repository or rev
     const spans = JSON.parse(options.body).resourceSpans[0].scopeSpans[0].spans;
     assert.equal(spans.length, 2);
     assert.equal(spans[1].parentSpanId, spans[0].spanId);
+    assert.ok(spans[1].attributes.some(item => item.key === 'gen_ai.provider.name' && item.value.stringValue === 'mistral'));
     assert.ok(spans.every(span => /^[a-f\d]{32}$/.test(span.traceId)));
     assert.ok(!options.body.includes('private-code'));
     return Response.json({});
   });
-  const result = await aiService.exportReviewTrace({ aiStatus: 'completed', aiModel: 'gemini-test', pullRequest: { description: 'private-code' }, findings: [{ explanation: 'private-code' }], aiDiagnostics: { promptVersion: 'pr-review-v2', usage: { inputTokens: 12, outputTokens: 4 }, pipeline: { startedAt: new Date().toISOString(), stages: [{ name: 'model', startedAt: new Date().toISOString(), durationMs: 12, status: 'completed' }] } } });
+  const result = await aiService.exportReviewTrace({ aiStatus: 'completed', aiProvider: 'mistral', aiModel: 'gemini-test', pullRequest: { description: 'private-code' }, findings: [{ explanation: 'private-code' }], aiDiagnostics: { promptVersion: 'pr-review-v2', usage: { inputTokens: 12, outputTokens: 4 }, pipeline: { startedAt: new Date().toISOString(), stages: [{ name: 'model', startedAt: new Date().toISOString(), durationMs: 12, status: 'completed' }] } } });
   assert.equal(result.status, 'exported');
 });
 

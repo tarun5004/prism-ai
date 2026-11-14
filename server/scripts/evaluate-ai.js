@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import { prepareAiInput } from '../src/features/ai/ai.context.js';
-import { runAiAnalysis } from '../src/features/ai/ai.service.js';
+import { runAiAnalysis, getAiConfiguration } from '../src/features/ai/ai.service.js';
 import { rankGuidance, containsSensitiveText } from '../src/features/ai/ai.context.js';
 import { GoogleGenAI } from '@google/genai';
 
@@ -149,7 +149,7 @@ async function collectEvaluation(options, analyze = runAiAnalysis) {
     schemaVersion: 1, runId: randomUUID(), createdAt: new Date().toISOString(),
     mode: options.live ? 'live' : 'dry-run', datasetVersion: dataset.version, datasetSha256: hash(raw),
     split: selected[0].split, caseIds: selected.map(item => item.id),
-    engine: { ...sourceHashes, configuredModel: process.env.GEMINI_MODEL?.trim() || null },
+    engine: { ...sourceHashes, configuredProvider: getAiConfiguration().provider, configuredModel: getAiConfiguration().model || null },
     cases: selected.map(item => ({ caseId: item.id, status: 'not_run', findings: [], attempts: 0, durationMs: null, rejectedFindings: 0 })),
     judgments: [],
     note: 'Original synthetic fixtures. Dry-run makes no model calls. Human judgments are required before claiming semantic accuracy.'
@@ -169,7 +169,7 @@ async function collectEvaluation(options, analyze = runAiAnalysis) {
         const result = await analyze(input);
         if (!['completed', 'partial', 'unavailable', 'skipped'].includes(result?.status) || !Array.isArray(result.findings)) throw Error('Invalid analysis result');
         Object.assign(record, {
-          status: result.status, findings: result.findings, model: result.model || null,
+          status: result.status, findings: result.findings, model: result.model || null, provider: result.provider || null,
           attempts: result.diagnostics?.attempts || 0, durationMs: Math.round(performance.now() - started),
           timeoutMs: result.diagnostics?.timeoutMs || null,
           rejectedFindings: result.coverage?.rejectedFindings || 0,
@@ -192,7 +192,7 @@ async function main() {
     const options = parseOptions(process.argv.slice(2));
     if (options.live || options.semantic) {
       config({ path: fileURLToPath(new URL('../.env', import.meta.url)), quiet: true });
-      if (!process.env.GEMINI_API_KEY?.trim()) throw Error('GEMINI_API_KEY is required for --live. No requests made.');
+      if (options.semantic ? !process.env.GEMINI_API_KEY?.trim() : !getAiConfiguration().apiKey) throw Error('Selected provider key is required. No requests made.');
     }
     if (options.retrieval) {
       const run = await collectRetrievalEvaluation(options);
