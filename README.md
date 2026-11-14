@@ -6,7 +6,7 @@ Paste a GitHub PR URL—or receive a signed PR webhook—and get a saved review 
 
 Built as a small MERN + Gemini project. Feedback is advisory: PRism does not run your repository tests, approve a merge or guarantee that a PR is safe.
 
-[Feature status & next steps](docs/FEATURE_ROADMAP.md) · [UI direction](docs/UI_DIRECTION.md) · [Evaluation notes](docs/beta/DEMO_AND_EVALUATION.md)
+[Feature status & next steps](docs/FEATURE_ROADMAP.md) · [How features work](docs/FEATURE_CHEATSHEET.md) · [Evaluation notes](docs/beta/DEMO_AND_EVALUATION.md)
 
 > **Delivery status — 13 November 2026:** the current V0 is on the local `integration/v0-demo` branch. Remote `main` does not contain this full V0; the integration branch is not published yet. Publishing it and reviewing its PR remain release steps. There is no verified public deployment URL.
 
@@ -51,7 +51,7 @@ LANGFUSE_SECRET_KEY=your-project-secret-key
 LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ```
 
-Use your project region's HTTPS origin. No tracing SDK, LangChain, LangGraph or vector database is required for these bounded demo features.
+Use your project region's HTTPS origin. This implemented slice uses no tracing SDK, LangChain, LangGraph or vector database. Their new planned roles are listed in the current roadmap.
 
 Historical 12 November checks: **120 backend**, **7 Python evaluation**, **38 frontend** passed; production build passed. Actual production-mode HTTP checks returned 200 for health, the public sample and `/demo`, and 503 for private analysis GET/POST in demo-only mode. Independent review found no important/critical defects. Browser interaction, real Langfuse ingestion and hosted GitHub onboarding remain unverified. These results supersede the earlier dated verification below; they do not establish model accuracy.
 
@@ -157,7 +157,7 @@ Local inline mode allows two concurrent jobs in the API process; it is for devel
 | [analysis.jobs.js](server/src/features/analysis/analysis.jobs.js) / [review-worker.js](server/scripts/review-worker.js) | Queue dispatch and one-shot worker |
 | [analysis.mail.js](server/src/features/analysis/analysis.mail.js) | Opt-in SMTP notification after persistence |
 
-Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and Google's official `@google/genai` SDK. Azure Storage Queue supports optional local queue testing and the production worker path; no vector database or agent framework is required.
+Stack: React 19, Vite, plain CSS, Express 5, Mongoose/MongoDB and Google's official `@google/genai` SDK. Azure Storage Queue supports optional local queue testing and the production worker path; LangChain/LangGraph/ChromaDB integration is planned and not installed yet.
 
 ## API, briefly
 
@@ -216,7 +216,7 @@ The recruiter-facing code path is **Install on GitHub → select repositories �
 
 Deployment target: at or below INR200/month for the whole recruiter demo, using available free/student allowances; this is a target, not a guaranteed bill cap. No paid host or public deployment was created by this evaluation slice. Provider API quota/billing is separate from consumer subscriptions.
 
-Track acceptance criteria and completed work in [FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md). Older phase/beta documents describe earlier milestones; use the roadmap as the current status source.
+Track acceptance criteria and completed work in [FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md). The roadmap is the single feature backlog; the historical ledger records past decisions and checks.
 
 ## GitHub App setup (owner actions)
 
@@ -304,7 +304,7 @@ A real HTTP POST for the repository's test PR #1 then retrieved GitHub metadata/
 
 Request details now show exact serialized contents characters and UTF-8 bytes, excluding system instructions/schema. Counts are not token estimates, and raw serialized prompts are not persisted. The optional live embedding comparison completed two bounded calls: lexical and semantic retrieval both selected the labelled relevant document on all three tiny queries. This is not review accuracy, a persistent vector index or evidence that embeddings improve the production path.
 
-Fresh checks: **122 backend**, **38 frontend**, **7 Python** checks and production build passed. Public demo API/SPA/health returned 200; demo-only private history returned 503. Existing environment changes were preserved, no new dependencies/application files were added. See the [capability audit and priorities](docs/FEATURE_ROADMAP.md#ai-capability-audit-and-priorities) before choosing another framework.
+Fresh checks: **122 backend**, **38 frontend**, **7 Python** checks and production build passed. Public demo API/SPA/health returned 200; demo-only private history returned 503. Existing environment changes were preserved, no new dependencies/application files were added. See the [feature comparison and priorities](docs/FEATURE_ROADMAP.md#comparison-new-request-versus-existing-features) before choosing another framework.
 
 
 ## Release setup — 13 November
@@ -402,3 +402,8 @@ The existing [workflow](.github/workflows/checks.yml) runs tests, builds the ima
 Provision the web app, queue, identity/scaler and worker job separately first; CD only updates existing images. Make the GHCR image public if Azure pulls anonymously. Grant the deployment identity access only to the intended resources. Hosted Actions/OIDC and actual deployment remain untested; the workflow was parsed locally. Both image updates are sequential, not an atomic release, so inspect both resources after deploying.
 
 **Next manual acceptance:** register/install/connect the GitHub App → opt in → open a PR → enqueue → run worker → inspect saved report/email status → replay → confirm no second review → remove repository access and confirm denial. Then test actual SMTP, a second account, browser layouts and hosted triggers before calling the live release complete.
+
+
+### Next agreed AI learning features — 14 November
+
+LangChain provider integration (Gemini/Mistral/Grok), ChromaDB semantic RAG and LangGraph state/checkpoints are required next slices, **not implemented today**. Extend the existing context, feedback memory, validators, report and tracing; do not create a parallel review system. See the [comparison and single backlog](docs/FEATURE_ROADMAP.md#comparison-new-request-versus-existing-features). Earlier dated direct-SDK/no-vector notes describe current implementation, not a permanent exclusion.

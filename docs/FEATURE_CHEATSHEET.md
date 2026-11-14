@@ -1,6 +1,6 @@
 # PRism AI — humne actually build kaise kiya?
 
-**13 Nov 2026.** Ek section at a time padho. Pattern: input lo → process/verify karo → result return karo → failure handle karo.
+**14 Nov 2026.** Ek section at a time padho. Pattern: input lo → process/verify karo → result return karo → failure handle karo.
 
 ## 1. PR fetch + diff viewer
 
@@ -36,7 +36,7 @@ Code: [ai.service.js](../server/src/features/ai/ai.service.js)—`.rs` nahi.
 
 **Haan—LangChain JavaScript mein bhi use hota hai.** Woh models/tools integrate karne ke common interfaces deta hai. TypeScript separate benefit deta: development-time type mistakes catch karna.
 
-Current flow fixed hai: prepare → one model call → validate → save. Direct SDK keeps it easy to trace. Model ko tools choose karwane/multiple integrations ki need aaye toh LangChain useful option hai. Woh automatically better context ya provider uptime nahi deta. TypeScript ke baad bhi external AI output ki runtime validation chahiye.
+Current flow fixed hai: prepare → one model call → validate → save. Direct SDK keeps it easy to trace. Next agreed chunk mein LangChain se Gemini/Mistral/Grok calls common interface par layenge; abhi migration implemented nahi. Woh automatically better context ya provider uptime nahi deta. TypeScript ke baad bhi external AI output ki runtime validation chahiye.
 
 References: [LangChain JS](https://docs.langchain.com/oss/javascript/langchain/overview), [TypeScript](https://www.typescriptlang.org/docs/handbook/intro.html).
 
@@ -54,9 +54,9 @@ Code: [findPreviousAnalysis()](../server/src/features/analysis/analysis.reposito
 
 ## 6. Webhook: paste kiye bina review kaise starts?
 
-GitHub PR event par `POST /api/webhooks/github` bhejta hai. [app.js](../server/src/app.js) original bytes preserve karta. [Webhook handler](../server/src/features/pullRequest/pullRequest.webhook.js) shared secret se signature calculate/compare karta; mismatch reject. Valid event ko 202 acknowledge karke same analysis service call karta hai.
+GitHub PR event par `POST /api/webhooks/github` bhejta hai. [app.js](../server/src/app.js) original bytes preserve karta. [Webhook handler](../server/src/features/pullRequest/pullRequest.webhook.js) shared secret se signature calculate/compare karta; mismatch reject. Queue mode mein pehle Mongo job save aur queue mein ID send karta, phir 202. Worker same analysis service chalata. Local inline mode 202 ke baad API process mein service chalata.
 
-**Why:** webhook second entry point hai, separate review engine nahi. Revision-based ID duplicate reviews rokta. 202 means accepted, completed nahi; crash ke baad redelivery needed.
+**Why:** webhook second entry point hai, separate review engine nahi. Revision-based ID duplicate reviews rokta. 202 means accepted, completed nahi. Inline crash mein pending work lost ho sakta; queued interrupted model outcome unknown rakhte hain, blind retry nahi.
 
 **GitHub connect/comment:** [github.app.js](../server/src/features/pullRequest/github.app.js) callback verify karke session/repo access check karta. Optional summary flag par installation token se comment post karta. Live App onboarding/comment verification pending.
 
@@ -90,7 +90,7 @@ SDK handshake/tool discovery handle karta. `StdioServerTransport` stdin/stdout s
 
 [Evaluation script](../server/scripts/evaluate-ai.js) known test cases par output collect karta; Python scorer human judgments se quality measure kar sakta. Embedding experiment text ko number-vectors mein convert karke closest docs compare karta; persistent search index nahi.
 
-**Pending/conditional:** Chroma = vectors store/search; LangGraph = saved checkpoints/branching/pause-resume; remote MCP = hosted authenticated connector. Yeh implemented nahi. Hosting, human scoring aur browser QA bhi pending.
+**Required next, not implemented:** LangChain = common provider calls; Chroma = persistent vectors + semantic retrieval; LangGraph = workflow state/checkpoints. Existing context retrieval aur feedback memory extend karenge, duplicate engine nahi. Remote MCP separate optional future feature hai. Hosting, human scoring aur browser QA bhi pending.
 
 **Builder habit:** “Kaunsa data chahiye? Kahan se milega? Kaise verify karunga? Failure pe kya preserve hoga?” Framework uske baad choose karo.
 
@@ -106,3 +106,10 @@ Detailed status: [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md). Live AI reliability u
 **Email:** `analysis.mail.js` report save hone ke baad connected user's opt-in, current repo access aur verified GitHub email check karta. Atomic send claim duplicate sends rokta; SMTP failure report ko delete nahi karta. Session expire/logout pe mail authorization bhi end; reconnect se renew. Nodemailer transport hai, mailbox provider nahi.
 
 **Docker + CI/CD:** same image API ya one-shot worker chala sakti. Workflow pehle tests/build/container smoke karta; deploy manual, integration branch aur protected production environment se gated hai. Local Docker verified; actual Azure trigger, GitHub onboarding aur SMTP test pending. [Setup steps](../README.md#release-setup--13-november).
+
+
+## 12. UI rules: future edits mein kya preserve karein?
+
+Charcoal background, orange actions, green success/additions, amber attention aur red failures. Local Inter/JetBrains Mono fonts; evidence beside diff; readable normal zoom. Reference screenshots 60–70% zoom par the, pixel-size target nahi. Sticky nav, expanding hero cards, restrained motion/reduced-motion support and outlined/faded footer wordmark retain karo.
+
+Routes: `/` introduction, `/app` submission, `/analyses` history, `/analyses/:id` report, `/demo` captured sample. Native history/deep links work; production serves SPA fallback. Narrow screens par columns stack/wrap; touch/keyboard controls accessible rahen. No invented customers, metrics, successful review or live integration claims. UI guidance ke liye separate competing design doc nahi chahiye.

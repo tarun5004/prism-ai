@@ -1,4 +1,6 @@
-# PR workflow polish implementation plan
+# PR workflow implementation history
+
+> Historical record only. Earlier scope exclusions, themes, limits and verification statuses are dated. Current scope/status/backlog: [FEATURE_ROADMAP.md](../../FEATURE_ROADMAP.md). LangChain/LangGraph/ChromaDB became required planned extensions on14November; earlier deferrals do not override that decision.
 
 ## 2026-11-02 — approved E1 evaluation and zero-cost constraint
 
@@ -41,7 +43,7 @@ New interaction/source-link checks failed before implementation; all 32 frontend
 User approved implementation after reference analysis. Use PRism AI branding, charcoal/orange styling and existing local fonts. Screenshots were captured at 60–70% zoom: use readable fluid sizing at normal zoom, not screenshot-sized text. Landing at `/`, workspace at `/app`, history/report URLs unchanged. No invented customers, review metrics, login, webhook or MCP claims. Keep running workspace state while visiting the introduction. No new application files or dependencies are needed.
 
 - [x] Chunk 1: extend App.jsx with isolated landing components, real internal CTA links, interactive feature preview, context explanation and oversized outlined/masked PRism AI footer. Update DashboardPage workspace links; extend existing render/route tests, observe failure then pass, commit on frontend branch.
-- [x] Chunk 2: replace theme variables with accessible charcoal/orange colors; add scoped landing layout, responsive grids, restrained transitions and reduced-motion support in styles.css. Update contrast checks and UI_DIRECTION.md; verify targeted tests/build, commit.
+- [x] Chunk 2: replace theme variables with accessible charcoal/orange colors; add scoped landing layout, responsive grids, restrained transitions and reduced-motion support in styles.css. Update contrast checks and UI guidelines (now in FEATURE_CHEATSHEET.md); verify targeted tests/build, commit.
 - [x] Integrate, review, verify direct production-preview routes. Browser visual/interaction QA only if a surface is available. Preserve existing user configuration and rule files; do not call GitHub/Gemini.
 
 Review focus: hidden workspace must retain active request state; landing must not start history requests before entering workspace; modified clicks remain normal links; no fabricated live data; narrow-screen content must wrap; footer must fit viewport width.
@@ -224,3 +226,10 @@ Docker slice: multistage frontend/runtime image, non-root, env excluded, one ima
 CI/CD slice: existing workflow adds tested container build/smoke, optional manual integration-only GHCR publish, protected production environment and Azure OIDC update of existing web/worker resources. YAML syntax/job gates parsed locally; hosted Actions/OIDC/deployment not run. No Azure resource, public image, external email or main merge created.
 
 Final independent branch review: one important issue, no critical findings. Mail-token lifetime could extend beyond parent session when opting in near expiry. Reproduced with time-advance regression (RED); repository now exposes authoritative session expiry and derived mail authorization retains it (GREEN). Full backend130/130 passed after fix. Minor follow-ups remain owner account/browser/SMTP/cloud acceptance and explicit interrupted-job recovery; no repeat review loop. README/roadmap/cheatsheet updated with local queue, one-shot worker, opt-in verified email, shared image and gated CD instructions. No actual cloud deployment or external email sent.
+
+
+## 14 November — documentation consolidation
+
+User requested docs cleanup and comparison before deeper feature implementation. Removed seven obsolete/overlapping Markdown files; preserved UI constraints in cheatsheet, four manual rule scenarios in evaluation guide and current requirements in roadmap. Retained unique execution/failure history here and all machine-readable evaluation fixtures/artifacts. Replaced competing roadmap narratives with current status, deduplicated comparison and one ordered backlog. LangChain/provider migration, Chroma semantic RAG and LangGraph checkpoints are required planned work; existing lexical retrieval, feedback memory, Langfuse, MCP and queue are reused, not duplicated. Updated conflicting agent rules and inbound links. No runtime code, dependency, env, live provider or cloud changes in this chunk. Documentation/link checks recorded at commit time; prior runtime suite results remain dated.
+
+Docs verification: all7remainingMarkdown files checked;50local links and7anchors resolve; all7intended removals confirmed; TC-01..TC-04 preserved in evaluation guide and planned skill names present in roadmap. git diff --check passed. Runtime suites not rerun for prose-only changes; no provider calls. User server/.env.example remains unstaged.

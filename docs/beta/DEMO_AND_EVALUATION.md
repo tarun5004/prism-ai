@@ -3,10 +3,10 @@
 ## Before the Demo
 
 1. Clone or open the project from a clean working tree.
-2. Copy `server/.env.example` to `server/.env` when environment values are needed.
+2. On first setup only, copy `server/.env.example` to `server/.env`; preserve an existing private configuration.
 3. Run `npm run install:all`.
 4. Start the app with `npm run dev`.
-5. Prepare the four Pull Request URLs in [TEST_CASES.md](TEST_CASES.md).
+5. Prepare the four Pull Request URLs in [manual rule scenarios](#manual-rule-scenarios).
 6. Confirm that GitHub access is available for the selected repository.
 
 MongoDB is optional for the local demo. Without `MONGODB_URI`, the API uses in-memory history. With MongoDB configured, the same report shape is stored persistently.
@@ -33,7 +33,7 @@ MongoDB is optional for the local demo. Without `MONGODB_URI`, the API uses in-m
 
 ## Evaluation Notes
 
-Record one row per test case in [TEST_CASES.md](TEST_CASES.md). Use the following simple measures:
+Record one row per test case in [manual rule scenarios](#manual-rule-scenarios). Use the following simple measures:
 
 ### Finding precision
 
@@ -98,9 +98,9 @@ node server/scripts/evaluate-ai.js --live --case B01 --out "$env:TEMP/prism-eval
 node server/scripts/evaluate-ai.js --live --split dev --out "$env:TEMP/prism-eval-dev-live.json"
 ```
 
-Use `--split heldout` only for a frozen checkpoint, not repeated prompt tuning. `--case` and `--split` are mutually exclusive. Batch collection saves each case, keeps provider/configuration failures, and continues to remaining selected cases. If a process stops mid-case, its saved record is marked interrupted; there is no automatic resume/retry. Inspect the artifact before deciding whether to spend another request. The CLI returns a nonzero exit code when a selected case fails/skips, while preserving the run file.
+Use `--split heldout` only for a frozen checkpoint, not repeated prompt tuning. `--case` and `--split` are mutually exclusive. Batch collection saves each case and keeps provider/configuration failures. A 429 stops the batch; other failures can continue to remaining selected cases. If a process stops mid-case, its saved record is marked interrupted; there is no automatic resume/retry. Inspect the artifact before deciding whether to spend another request. The CLI returns a nonzero exit code when a selected case fails/skips, while preserving the run file.
 
-The artifact includes run ID/time, dataset version/hash, selected case IDs/split, AI-service/context source hashes, actual model and deadline when available, findings, rejection counts, attempts and case timing. No gold bugs/labels are sent to Gemini. Future token-usage diagnostics are a separate E2 task.
+The artifact includes run ID/time, dataset version/hash, selected case IDs/split, AI-service/context source hashes, actual model and deadline when available, findings, rejection counts, attempts and case timing. No gold bugs/labels are sent to Gemini. Provider-reported token usage and prompt/schema/run diagnostics are already preserved when available.
 
 ### 3. Judge meaning, not just the cited line
 
@@ -156,3 +156,41 @@ python -B server/scripts/evaluate_ai.py --run docs/beta/evaluation-live-dev.json
 ```
 
 Retrieval has a separate original fixture (`retrieval-cases.json`) and offline artifact (`retrieval-offline.json`). Run `node server/scripts/evaluate-ai.js --retrieval-experiment --out NEW-FILE.json` for lexical hit@1 without API calls. Add `--semantic` only for an intentional embedding comparison; it makes up to two SDK calls, no automatic retry. It uses the same official Gemini SDK, explicit task types and validated cosine vectors. A mocked vector test does not establish live embedding performance or better review quality. Production retrieval remains opt-in lexical guidance; existing context limits and sensitive-content filtering still apply.
+
+
+## Manual rule scenarios
+
+These four live-PR checks exercise deterministic signals; they are separate from frozen AI bug-detection cases. Add actual PR URLs/observations when run. Never fill results from expectation alone.
+
+### Expected Finding Rules
+
+The expected results below describe signals, not proof of defects. A reviewer must still inspect the evidence.
+
+| ID | Pull Request shape | Expected signals | Why it matters |
+| --- | --- | --- | --- |
+| TC-01 | Change a route, controller, API, schema, or service file without changing its contract documentation | `breaking-change`; usually `test-gap` | Checks API-facing change detection |
+| TC-02 | Change an authentication, permission, token, password, or database file | `security-concern`; usually `test-gap` | Checks high-attention security signaling |
+| TC-03 | Change eight or more files, including a shared utility and its callers | `hidden-impact`; usually `test-gap` | Checks broad-change prioritization |
+| TC-04 | Change only a test or spec file | No required risk signal | Checks that the report can be useful with no findings |
+
+## Run Record
+
+Complete this table during the evaluation. Do not fill observed values before running the analysis.
+
+| ID | Pull Request URL | Expected | Observed | False positives | Misses | Response time |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-01 | _Add URL_ |  |  |  |  |  |
+| TC-02 | _Add URL_ |  |  |  |  |  |
+| TC-03 | _Add URL_ |  |  |  |  |  |
+| TC-04 | _Add URL_ |  |  |  |  |  |
+
+## Classification Rules
+
+- Correct: the finding category is expected and the evidence supports it.
+- False positive: the finding is not relevant to the Pull Request after manual inspection.
+- Miss: an expected signal is absent from the report.
+- Partial: the category is useful but the evidence or affected-file list is incomplete.
+
+## Regression Use
+
+Run the same four cases after changes to the rule logic, context selection, or AI prompt. Keep the previous run record so improvements and regressions are visible.
