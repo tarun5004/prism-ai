@@ -70,6 +70,12 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { createAnalysis, setFindingFeedback } from '../src/features/analysis/analysis.controller.js';
 import { findAnalysis, listAnalyses, saveAnalysis, findPreviousAnalysis } from '../src/features/analysis/analysis.repository.js';
 import Analysis from '../src/features/analysis/analysis.model.js';
+
+test('Groq attribution is accepted by the persisted report schema', () => {
+  const report = new Analysis({ id: 'groq-report', status: 'completed', createdAt: new Date().toISOString(), pullRequest: {}, aiProvider: 'groq', aiStatus: 'completed' });
+  assert.equal(report.validateSync(), undefined);
+  assert.equal(report.toObject().aiProvider, 'groq');
+});
 import { analyzePullRequest } from '../src/features/analysis/analysis.service.js';
 
 let originalKey;

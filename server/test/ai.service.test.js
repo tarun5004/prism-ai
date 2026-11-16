@@ -16,15 +16,22 @@ import { Client } from 'langsmith';
 
 const expected = { status: 'ok', provider: 'gemini', message: 'Connection successful' };
 
-test('Mistral and Grok use the same validated report contract and record their actual provider', async () => {
-  for (const provider of ['mistral', 'xai']) {
+test('Mistral, Grok and Groq use the same validated report contract and record their actual provider', async () => {
+  for (const provider of ['mistral', 'xai', 'groq']) {
     process.env.AI_PROVIDER = provider;
     process.env.MISTRAL_API_KEY = 'offline-mistral'; process.env.XAI_API_KEY = 'offline-xai'; process.env.XAI_MODEL = 'grok-test';
+    process.env.GROQ_API_KEY = 'offline-groq';
     globalThis.fetch.mock.mockImplementation(async (url, options) => {
-      assert.equal(new URL(String(url)).hostname, provider === 'mistral' ? 'api.mistral.ai' : 'api.x.ai');
+      assert.equal(new URL(String(url)).hostname, { mistral: 'api.mistral.ai', xai: 'api.x.ai', groq: 'api.groq.com' }[provider]);
       const body = JSON.parse(options.body);
       assert.equal(body.stream || false, false);
       assert.equal(body.response_format.type, 'json_schema');
+      if (provider === 'groq') {
+        assert.equal(body.model, 'openai/gpt-oss-120b');
+        assert.equal(body.response_format.json_schema.strict, true);
+        assert.deepEqual(body.response_format.json_schema.schema.required, ['findings', 'review']);
+        assert.equal(new Headers(options.headers).get('authorization'), 'Bearer offline-groq');
+      }
       return Response.json({ id: 'review', object: 'chat.completion', created: 1, model: body.model, choices: [{ index: 0, message: { role: 'assistant', content: JSON.stringify({ findings: [validFinding], review: contextualReview }) }, finish_reason: 'stop' }], usage: { prompt_tokens: 42, completion_tokens: 23, total_tokens: 65 } });
     });
     const result = await aiService.runAiAnalysis(reviewPr);
@@ -41,13 +48,16 @@ test('unknown providers and missing provider keys fail without falling back to G
   assert.equal((await aiService.runAiAnalysis(reviewPr)).error, 'INVALID_PROVIDER');
   process.env.AI_PROVIDER = 'mistral'; delete process.env.MISTRAL_API_KEY;
   assert.equal((await aiService.runAiAnalysis(reviewPr)).error, 'MISSING_API_KEY');
+  process.env.AI_PROVIDER = 'groq'; delete process.env.GROQ_API_KEY;
+  assert.equal((await aiService.runAiAnalysis(reviewPr)).error, 'MISSING_API_KEY');
   assert.equal(globalThis.fetch.mock.callCount(), 0);
 });
 
 test('alternate-provider failures and deadlines never trigger another provider or retry', async () => {
-  for (const provider of ['mistral', 'xai']) {
+  for (const provider of ['mistral', 'xai', 'groq']) {
     process.env.AI_PROVIDER = provider;
     process.env.MISTRAL_API_KEY = 'offline-mistral'; process.env.XAI_API_KEY = 'offline-xai'; process.env.XAI_MODEL = 'grok-test';
+    process.env.GROQ_API_KEY = 'offline-groq';
     let calls = 0;
     globalThis.fetch.mock.mockImplementation(async () => { calls++; return Response.json({ error: { message: 'private provider error', type: 'unavailable' } }, { status: 503 }); });
     const failed = await aiService.runAiAnalysis(reviewPr);
@@ -172,12 +182,13 @@ test('default review deadline is 120 seconds in SDK headers and diagnostics', as
   assert.equal(new Headers(options.headers).get('x-server-timeout'), '120');
   assert.equal(globalThis.fetch.mock.callCount(), 1);
 });
-const environmentKeys = ['AI_PROVIDER', 'MISTRAL_API_KEY', 'MISTRAL_MODEL', 'XAI_API_KEY', 'XAI_MODEL', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_API_URL', 'AI_API_KEY', 'LANGFUSE_ENABLED', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL'];
+const environmentKeys = ['AI_PROVIDER', 'MISTRAL_API_KEY', 'MISTRAL_MODEL', 'XAI_API_KEY', 'XAI_MODEL', 'GROQ_API_KEY', 'GROQ_MODEL', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_API_URL', 'AI_API_KEY', 'LANGFUSE_ENABLED', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL'];
 let originalEnvironment;
 
 beforeEach(() => {
   originalEnvironment = Object.fromEntries(environmentKeys.map((key) => [key, process.env[key]]));
   delete process.env.AI_PROVIDER;
+  delete process.env.GROQ_MODEL;
   process.env.GEMINI_API_KEY = 'offline-test-key';
   delete process.env.GEMINI_MODEL;
   delete process.env.GEMINI_TIMEOUT_MS;

@@ -435,12 +435,18 @@ AI_PROVIDER=gemini
 # To select Mistral instead: AI_PROVIDER=mistral
 MISTRAL_API_KEY=your-private-key
 MISTRAL_MODEL=mistral-small-latest
+# Groq is different from Grok/xAI. Select explicitly; keys are not interchangeable.
+# To select Groq: AI_PROVIDER=groq
+GROQ_API_KEY=your-private-key
+GROQ_MODEL=openai/gpt-oss-120b
 # To select Grok: AI_PROVIDER=xai, plus both values below
 XAI_API_KEY=your-private-key
 XAI_MODEL=your-accessible-model-id
 ```
 
-`GEMINI_TIMEOUT_MS` is the existing shared review deadline (1–120000 ms) for all selected providers. Model availability is account-dependent. Mistral/Grok use the same JSON/evidence validators and saved report shape. xAI uses LangChain's OpenAI-compatible adapter pointed only at `api.x.ai`; this does not integrate OpenAI's API.
+`GEMINI_TIMEOUT_MS` is the existing shared review deadline (1–120000 ms) for all selected providers. Model availability is account-dependent. Mistral/Grok/Groq use the same JSON/evidence validators and saved report shape. Groq and xAI reuse LangChain's OpenAI-compatible adapter at their respective fixed API hosts; this does not send requests to OpenAI's API. Provider switching is explicit, with no automatic fallback or retries. Changing providers does not regenerate old saved reports.
+
+Local verification on **16 November 2026**: the real PR #3 was fetched using a GitHub App installation token, reviewed by Groq `openai/gpt-oss-120b`, validated and saved in MongoDB in about 8.9 seconds (model: 4.2 seconds). Six scoped LangGraph checkpoints were confirmed. This was a service-level verification, not a new webhook delivery or email/comment test. Gemini's exact adapter request also returned HTTP 504 through cURL; Mistral returned 429. Groq's 20B model returned a schema-validation error on the full review, so the verified 120B model is the Groq default. These individual runs do not establish provider reliability or AI quality scores.
 
 Optional Chroma semantic retrieval needs a separate persistent local service:
 

@@ -12,6 +12,7 @@ function getAiConfiguration(provider = process.env.AI_PROVIDER?.trim() || 'gemin
   const options = {
     gemini: { model: getGeminiModel(), apiKey: process.env.GEMINI_API_KEY?.trim() },
     mistral: { model: process.env.MISTRAL_MODEL?.trim() || 'mistral-small-latest', apiKey: process.env.MISTRAL_API_KEY?.trim() },
+    groq: { model: process.env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b', apiKey: process.env.GROQ_API_KEY?.trim() },
     xai: { model: process.env.XAI_MODEL?.trim(), apiKey: process.env.XAI_API_KEY?.trim() }
   };
   return { provider, ...(Object.hasOwn(options, provider) ? options[provider] : {}) };
@@ -41,14 +42,15 @@ async function invokeReviewModel(options) {
   const chat = provider === 'mistral'
     ? new Model({ apiKey, model, maxTokens: options.maxOutputTokens, maxRetries: 0, httpClient: { request: transport } })
     : new Model({ apiKey, model, maxTokens: options.maxOutputTokens, maxRetries: 0, timeout: timeoutMs, useResponsesApi: false,
-      configuration: { baseURL: 'https://api.x.ai/v1', fetch: transport, maxRetries: 0 } });
+      // Groq and Grok/xAI are different services; never send their keys to each other's host.
+      configuration: { baseURL: provider === 'groq' ? 'https://api.groq.com/openai/v1' : 'https://api.x.ai/v1', fetch: transport, maxRetries: 0 } });
   const responseFormat = provider === 'mistral'
     ? { type: 'json_schema', jsonSchema: { name: 'prism_review', schemaDefinition: schema, strict: true } }
     : { type: 'json_schema', json_schema: { name: 'prism_review', schema, strict: true } };
   // Mistral's adapter switches to streaming if invoke receives a signal; transport enforces it instead.
   const message = await withRunTree(new RunTree({ name: 'prism.private-model-call', tracingEnabled: false }), () => chat.invoke([
     ['system', systemInstruction], ['human', contents]
-  ], { callbacks: [], response_format: responseFormat, ...(provider === 'xai' ? { signal } : {}) }));
+  ], { callbacks: [], response_format: responseFormat, ...(provider !== 'mistral' ? { signal } : {}) }));
   return { text: message.text, finishReason: finishReason === 'stop' ? 'STOP' : finishReason };
 }
 
@@ -126,13 +128,13 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
       ? (diagnostics.networkCode ? 'network' : diagnostics.httpStatus ? 'provider' : 'request')
       : { MISSING_API_KEY: 'configuration', NO_REVIEWABLE_DIFF: 'input', INVALID_TIMEOUT: 'configuration', INVALID_PROVIDER: 'configuration', MISSING_MODEL: 'configuration', UNSAFE_LOGGING: 'configuration', TIMEOUT: 'timeout', INVALID_RESPONSE: 'response', INVALID_FINDINGS: 'validation', INVALID_REVIEW: 'validation' }[error];
     return {
-      status, findings, coverage, model, provider: ['gemini', 'mistral', 'xai'].includes(provider) ? provider : undefined,
+      status, findings, coverage, model, provider: ['gemini', 'mistral', 'xai', 'groq'].includes(provider) ? provider : undefined,
       diagnostics: { ...diagnostics, durationMs: Math.round(performance.now() - startedAt), ...(failureCategory ? { failureCategory } : {}) },
       ...(error ? { error } : {}),
       ...(review ? { review } : {})
     };
   };
-  if (!['gemini', 'mistral', 'xai'].includes(provider)) return result('unavailable', [], 'INVALID_PROVIDER');
+  if (!['gemini', 'mistral', 'xai', 'groq'].includes(provider)) return result('unavailable', [], 'INVALID_PROVIDER');
   if (!model) return result('unavailable', [], 'MISSING_MODEL');
   if (!apiKey) return result('skipped', [], 'MISSING_API_KEY');
   if (files.length === 0) return result('skipped', [], 'NO_REVIEWABLE_DIFF');
@@ -325,7 +327,7 @@ async function exportReviewTrace(analysis) {
       if (!['github', 'retrieval', 'memory', 'model'].includes(stage.name) || !Number.isFinite(stage.durationMs) || stage.durationMs < 0 || !Number.isFinite(Date.parse(stage.startedAt))) continue;
       const attributes = [...common, attribute('langfuse.observation.type', stage.name === 'model' ? 'generation' : stage.name === 'retrieval' ? 'retriever' : 'span')];
       if (stage.name === 'model') {
-        if (['gemini', 'mistral', 'xai'].includes(analysis.aiProvider)) attributes.push(attribute('gen_ai.provider.name', analysis.aiProvider));
+        if (['gemini', 'mistral', 'xai', 'groq'].includes(analysis.aiProvider)) attributes.push(attribute('gen_ai.provider.name', analysis.aiProvider));
         if (typeof analysis.aiModel === 'string' && !containsSensitiveText(analysis.aiModel)) attributes.push(attribute('gen_ai.request.model', analysis.aiModel.slice(0, 100)));
         for (const [name, field] of [['input_tokens', 'inputTokens'], ['output_tokens', 'outputTokens']]) {
           const count = analysis.aiDiagnostics?.usage?.[field];
