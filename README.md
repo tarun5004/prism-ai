@@ -428,10 +428,11 @@ Review and connectivity now call LangChain `ChatGoogle` from the recommended `@l
 
 ### Framework setup — 14 November
 
-Use existing `server/.env`; no frontend credentials or TypeScript migration. Gemini remains the default. One provider per review, no automatic retry/fallback:
+Use existing `server/.env`; no frontend credentials or TypeScript migration. Gemini remains the default. One provider per review, no automatic fallback:
 
 ```dotenv
 AI_PROVIDER=gemini
+AI_MAX_RETRIES=0
 # To select Mistral instead: AI_PROVIDER=mistral
 MISTRAL_API_KEY=your-private-key
 MISTRAL_MODEL=mistral-small-latest
@@ -444,11 +445,15 @@ XAI_API_KEY=your-private-key
 XAI_MODEL=your-accessible-model-id
 ```
 
-`GEMINI_TIMEOUT_MS` is the existing shared review deadline (1–120000 ms) for all selected providers. Model availability is account-dependent. Mistral/Grok/Groq use the same JSON/evidence validators and saved report shape. Groq and xAI reuse LangChain's OpenAI-compatible adapter at their respective fixed API hosts; this does not send requests to OpenAI's API. Provider switching is explicit, with no automatic fallback or retries. Changing providers does not regenerate old saved reports.
+`GEMINI_TIMEOUT_MS` is the existing shared review deadline (1–120000 ms) for all selected providers. Model availability is account-dependent. Mistral/Grok/Groq use the same JSON/evidence validators and saved report shape. Groq and xAI reuse LangChain's OpenAI-compatible adapter at their respective fixed API hosts; this does not send requests to OpenAI's API. Provider switching is explicit, with no automatic fallback. Changing providers does not regenerate old saved reports.
+
+`AI_MAX_RETRIES=0` preserves one-request behavior. Opt in with `1` for at most two actual requests to the same provider within the original shared deadline. Only returned HTTP 502/503/504 or Groq's known HTTP 400 `json_validate_failed` qualify; the latter gets a short schema reminder without replaying failed output. Authentication, quota/429, ordinary bad requests, local evidence/response rejection and ambiguous client/network timeouts do not retry. Less than 1.5 seconds remaining also prevents retry. SDK retries remain disabled; report details retain actual attempt count and retry reason. Retries may consume extra quota/cost, and usage reports cover returned successful usage, not unknown work on failed attempts. Crash recovery still refuses to replay `model_started` checkpoints automatically. The local owner configuration currently opts in to one retry.
 
 Local verification on **16 November 2026**: the real PR #3 was fetched using a GitHub App installation token, reviewed by Groq `openai/gpt-oss-120b`, validated and saved in MongoDB in about 8.9 seconds (model: 4.2 seconds). Six scoped LangGraph checkpoints were confirmed. This was a service-level verification, not a new webhook delivery or email/comment test. Gemini's exact adapter request also returned HTTP 504 through cURL; Mistral returned 429. Groq's 20B model returned a schema-validation error on the full review, so the verified 120B model is the Groq default. These individual runs do not establish provider reliability or AI quality scores.
 
 Gemini follow-up, **16 November 2026** (unresolved): identical synthetic review requests with/without `x-server-timeout` returned HTTP 504 `DEADLINE_EXCEEDED` in 44.4 seconds / reached the 45-second client deadline. An isolated `MINIMAL` reasoning configuration also returned 504 in 44.7 seconds; the same adapter with `gemini-3.1-flash-lite` returned 503 in 2.9 seconds. These probes did not change the application configuration. A prior tiny cURL request did succeed, so this is not evidence that all Gemini inference is permanently unavailable or that LangChain is the root cause. No speculative timeout increase, automatic retry or fallback was added. Keep the verified provider selected; after upstream recovery, `npm run test:gemini --prefix server` checks connectivity, but a successful full PR review is still required before switching back. When reporting the issue to Google, include the model, UTC timestamp, deadline, HTTP status, sanitized request and elapsed time; exclude API keys, private source and authorization headers.
+
+Webhook/comment follow-up, **16 November 2026**: GitHub confirmed an actual `opened` delivery redelivery to the public endpoint with HTTP 202. Public signed ping returned 200, bad signature 401, private report without a session 401, and public demo 200. A real App bot summary was posted to PR #3; repeating the summary call returned `existing` and GitHub showed exactly one matching comment. Two signed replay runs through the real Express handler and temporary MongoDB databases saved reports with `aiStatus=unavailable`; one exposed Groq HTTP 400 `json_validate_failed`. Replay kept one report and the same model run ID. The same PR/context subsequently completed through Groq in about six seconds, so AI reliability remains unresolved despite the earlier successful report. Temporary databases were removed. A fresh test commit was rejected with GitHub 403, leaving the fixture unchanged; a new `synchronize` delivery is unverified. SMTP credentials are absent, so email inbox delivery is unverified; nine selected offline checks for summaries, emails, revisions and webhook handling passed. Local bot summaries were enabled; email remains opt-in and unconfigured.
 
 Optional Chroma semantic retrieval needs a separate persistent local service:
 

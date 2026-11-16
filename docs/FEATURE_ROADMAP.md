@@ -1,8 +1,31 @@
 # PRism AI — current features and next work
 
-Updated **14 November 2026**. This is the single feature backlog. [README](../README.md) = setup; [cheatsheet](FEATURE_CHEATSHEET.md) = beginner explanations; [evaluation guide](beta/DEMO_AND_EVALUATION.md) = quality checks; [historical ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md) = past chunks/failures.
+Updated **16 November 2026**. This is the single feature backlog. [README](../README.md) = setup and dated live verification; [cheatsheet](FEATURE_CHEATSHEET.md) = beginner explanations; [evaluation guide](beta/DEMO_AND_EVALUATION.md) = quality checks; [historical ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md) = past chunks/failures.
 
 **Goal:** a clean, interview-explainable AI full-stack demo. LangChain, LangGraph and ChromaDB are now required learning features, not optional keywords. LangChain providers, bounded Chroma RAG and Mongo-backed LangGraph checkpoints are implemented; external acceptance remains separate. Extend one existing review pipeline; do not build a parallel advanced app.
+
+## CodeRabbit comparison — 16 November
+
+Sources: [public architecture](https://docs.coderabbit.ai/overview/architecture), [context engineering](https://www.coderabbit.ai/blog/the-art-and-science-of-context-engineering), [review lifecycle](https://docs.coderabbit.ai/guides/code-review-overview). This compares documented capabilities; exact internal prompts, retry/fallback policies and infrastructure are not established by these sources.
+
+| Area | CodeRabbit describes | Prism today / implication |
+| --- | --- | --- |
+| Context | Repository exploration, code graph, intent and guidelines | PR metadata, pinned windows/direct imports, optional docs/Chroma. Bounded retrieval is not a complete dependency graph |
+| Verification | Specialized verification agents | Exact evidence/schema checks. A matching line does not prove a finding's reasoning; human-labelled cases remain necessary |
+| Incremental reviews | Changes since the previous review | Revision deduplication, then the current base-to-head PR diff. Deduplication is not incremental review |
+| Static analysis | Sandboxed repository analysis with linters/SAST | Keyword/path heuristics only; keep their signals distinct from confirmed bugs. No untrusted repository execution |
+| Review generation | Specialized agents and context-dependent prompts/models | One bounded call generates findings and narrative together. Splitting work may isolate failures but costs more calls; not proven to fix our 5-line fixture |
+| Reliability | Public pages do not establish an exact retry policy | Keep timeouts, transport errors, provider JSON rejection and local evidence rejection separate. Do not copy an assumed fallback design |
+
+**Immediate fix:** Groq HTTP 400 `json_validate_failed` now becomes `INVALID_RESPONSE` / response failure, retaining HTTP status and one-attempt diagnostics without storing `failed_generation`. Other HTTP 400 errors retain their provider classification. Regression reproduced before the fix; 104 focused offline checks passed afterward. No live calls were made for this comparison.
+
+**Reliability slice:** added opt-in `AI_MAX_RETRIES=1`: at most one same-provider retry for returned 502/503/504 or known Groq JSON-generation rejection, sharing the original timeout. Auth/quota failures, ordinary 400s, local invalid evidence and ambiguous client timeouts do not retry. Actual attempts/retry reason persist and display; failed generation text stays private. Default remains zero; local owner configuration opts in. This is our bounded demo policy, not a claim about CodeRabbit's private retry implementation.
+
+**Controlled contract experiment:** four Groq requests on two owned fixtures, with retries disabled. Current combined contract: buggy average rejected with HTTP 400; clean add completed with zero findings. Experimental flat contract: buggy average completed with a supported finding; clean add completed but produced an unsupported generic validation finding. Flat output was normalized only in the throwaway experiment and was **not adopted**. Two cases do not establish a quality score, failure rate or latency improvement.
+
+**Verification after the slice:** 149 backend checks passed, one opt-in external integration skipped; 41 frontend checks and production build passed. New real PR #3 service report `781c14a3-fdc3-4da1-a32e-e867036642b2` completed with Groq in one attempt (model: 3.6 seconds) and was read back from MongoDB. A signed event replay through the real HTTP handler, GitHub App credentials, live Groq and an isolated MongoDB database completed in 8.7 seconds; duplicate replay retained one report/run. The temporary database was removed. These were signed local replays, not a fresh GitHub commit delivery. Retry recovery was exercised offline; no live retry recovery or sustained availability is claimed.
+
+**Next slices:** measure supported/duplicate/incorrect findings on labelled cases; add incremental diff review if repeated full-PR cost warrants it. No agent swarm, full clone/sandbox or extra hosted infrastructure is needed for this demo. CodeRabbit-style context work does not itself resolve Gemini's upstream 503/504 responses.
 
 ## Implemented today
 
@@ -12,7 +35,7 @@ Implemented means code exists; it does not mean every external integration passe
 | --- | --- | --- |
 | PR retrieval + diff | GitHub metadata/paginated patches, base/head revision guards, old/new evidence navigation, renamed/missing/binary file handling | Bounded snapshots; no repository execution or complete dependency graph |
 | Context + basic RAG pattern | Revision-pinned source windows, selected direct JS/TS imports, opt-in lexical README/CONTRIBUTING chunks with source coordinates | Optional Chroma: sanitized chunks, persistent vectors and top-4 semantic retrieval; local live test passed, hosted store pending |
-| AI review + rules | LangChain Gemini/Mistral/xAI adapters with native JSON schema, structured summary/walkthrough/impacts/findings; deterministic risk signals; evidence/schema validation | Failed AI is unavailable, never a successful clean review; evidence match does not prove reasoning |
+| AI review + rules | LangChain Gemini/Mistral/xAI/Groq adapters with native JSON schema, structured summary/walkthrough/impacts/findings; deterministic risk signals; evidence/schema validation | Failed AI is unavailable, never a successful clean review; evidence match does not prove reasoning. Live Groq successes and schema-generation failures both observed |
 | Saved reports + feedback | MongoDB reports/revisions; Useful/Incorrect annotations with actor identity and optional reason | Local fallback is volatile; production storage fails closed |
 | Previous-review memory | At most three relevant useful-labelled hints from another revision of the same PR/installation | Existing memory, not training or cross-repository chat memory |
 | Progress + diagnostics | Actual NDJSON stages, time, run/prompt/schema versions, serialized input size and provider token usage when reported | No fixed response-time promise; unknown token counts stay unknown |
@@ -48,7 +71,7 @@ One row = one responsibility. Shared concepts below are extensions, not another 
 
 Each chunk: inspect existing path -> meaningful regression/check -> small implementation -> verify -> commit. Framework status is explicit: the docs cleanup installed nothing; a later verified Gemini chunk implemented LangChain.
 
-1. **Owner setup:** register/install/connect GitHub App; add xAI key/model if desired; resolve Mistral 429. Verify two-account access and repo removal.
+1. **Review reliability:** GitHub App registration/install/login and one real bot summary are now verified. Diagnose provider timeouts and invalid structured output separately; retain strict evidence checks and recorded failures. Verify two-account access and repo removal; resolve Mistral 429 only if using that provider.
 2. **Quality:** human-label dev results, compare providers/context on identical fixtures; keep held-out cases untouched.
 3. **Optional external acceptance:** Langfuse ingestion, opted-in SMTP/PR comment, desktop MCP and browser checks.
 4. **Hosting last:** settle persistent Chroma cost/retention or leave semantic retrieval off; then Azure queue/worker/OIDC and end-to-end acceptance. INR200/month remains a target, not a guaranteed cap.
@@ -59,8 +82,8 @@ Prefer existing files; a new module is justified only for a distinct responsibil
 
 ## Manual acceptance still open
 
-- GitHub App registration/credentials, real installation/login, repo removal and second-account isolation.
-- Actual optional PR comment and SMTP delivery after explicit opt-in; provider/sender setup.
+- Repo removal, second-account isolation and a fresh post-Groq-switch commit event (the automated test commit was denied with GitHub 403).
+- Actual SMTP delivery after explicit opt-in and sender setup. A real PR summary and duplicate-comment prevention passed on 16 November.
 - Real Langfuse ingestion, compatible desktop MCP setup and browser/mobile interaction QA.
 - Human evaluation and a project-license decision.
 - Hosted CI/OIDC, Azure queue/identity/scaler/job setup, HTTPS and deployment; no public URL verified.

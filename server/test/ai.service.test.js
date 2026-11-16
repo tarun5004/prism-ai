@@ -53,6 +53,76 @@ test('unknown providers and missing provider keys fail without falling back to G
   assert.equal(globalThis.fetch.mock.callCount(), 0);
 });
 
+test('Groq schema-generation rejection is a response failure and never leaks failed output', async () => {
+  process.env.GROQ_API_KEY = 'offline-groq';
+  for (const code of ['json_validate_failed', 'invalid_request_error']) {
+    globalThis.fetch.mock.mockImplementation(async () => Response.json({ error: {
+      code, type: 'invalid_request_error', message: 'private provider detail', failed_generation: 'private source code'
+    } }, { status: 400 }));
+    const result = await aiService.runAiAnalysis(reviewPr, { provider: 'groq' });
+    assert.equal(result.status, 'unavailable');
+    assert.equal(result.error, code === 'json_validate_failed' ? 'INVALID_RESPONSE' : 'API_ERROR');
+    assert.equal(result.diagnostics.failureCategory, code === 'json_validate_failed' ? 'response' : 'provider');
+    assert.equal(result.diagnostics.httpStatus, 400);
+    assert.equal(result.diagnostics.attempts, 1);
+    assert.equal(result.review, undefined);
+    assert.deepEqual(result.findings, []);
+    assert.ok(!JSON.stringify(result).includes('private'));
+  }
+  assert.equal(globalThis.fetch.mock.callCount(), 2);
+});
+
+test('one opt-in retry repairs a Groq schema rejection within the same provider and deadline', async () => {
+  process.env.GROQ_API_KEY = 'offline-groq';
+  const requests = [];
+  globalThis.fetch.mock.mockImplementation(async (url, options) => {
+    requests.push({ url: String(url), signal: options.signal });
+    if (requests.length === 1) return Response.json({ error: { code: 'json_validate_failed', message: 'private rejected generation' } }, { status: 400 });
+    return Response.json({ id: 'review', choices: [{ index: 0, message: { role: 'assistant', content: JSON.stringify({ findings: [validFinding], review: contextualReview }) }, finish_reason: 'stop' }], usage: { prompt_tokens: 42, completion_tokens: 23, total_tokens: 65 } });
+  });
+  const result = await aiService.runAiAnalysis(reviewPr, { provider: 'groq', maxRetries: 1 });
+  assert.equal(result.status, 'completed');
+  assert.equal(result.diagnostics.attempts, 2);
+  assert.equal(result.diagnostics.retryReason, 'INVALID_RESPONSE');
+  assert.equal(result.diagnostics.httpStatus, undefined);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].url, requests[1].url);
+  assert.equal(requests[0].signal, requests[1].signal);
+  assert.ok(!JSON.stringify(result).includes('private'));
+});
+
+test('retry policy never repeats auth, quota, ordinary bad requests or expired deadlines', async () => {
+  process.env.GROQ_API_KEY = 'offline-groq';
+  for (const status of [400, 401, 403, 429, 503]) {
+    let calls = 0;
+    globalThis.fetch.mock.mockImplementation(async () => { calls++; return Response.json({ error: { code: 'invalid_request_error' } }, { status }); });
+    const result = await aiService.runAiAnalysis(reviewPr, { provider: 'groq', maxRetries: 1, timeoutMs: status === 503 ? 500 : 10000 });
+    assert.equal(result.status, 'unavailable');
+    assert.equal(calls, 1);
+  }
+  for (const maxRetries of [-1, 2, NaN]) {
+    const before = globalThis.fetch.mock.callCount();
+    const result = await aiService.runAiAnalysis(reviewPr, { provider: 'groq', maxRetries });
+    assert.equal(result.error, 'INVALID_RETRY_LIMIT');
+    assert.equal(globalThis.fetch.mock.callCount(), before);
+  }
+});
+
+test('transient retries stop after two requests and do not retry a local validation failure', async () => {
+  let calls = 0;
+  globalThis.fetch.mock.mockImplementation(async () => { calls++; return Response.json({ error: { message: 'unavailable' } }, { status: 503 }); });
+  const result = await aiService.runAiAnalysis(reviewPr, { maxRetries: 1 });
+  assert.equal(calls, 2);
+  assert.equal(result.diagnostics.attempts, 2);
+  assert.equal(result.diagnostics.retryReason, 'HTTP_503');
+  assert.equal(result.diagnostics.httpStatus, 503);
+  assert.equal(result.status, 'unavailable');
+  respondWith('not-json');
+  const before = globalThis.fetch.mock.callCount();
+  assert.equal((await aiService.runAiAnalysis(reviewPr, { maxRetries: 1 })).error, 'INVALID_RESPONSE');
+  assert.equal(globalThis.fetch.mock.callCount(), before + 1);
+});
+
 test('alternate-provider failures and deadlines never trigger another provider or retry', async () => {
   for (const provider of ['mistral', 'xai', 'groq']) {
     process.env.AI_PROVIDER = provider;
@@ -182,12 +252,13 @@ test('default review deadline is 120 seconds in SDK headers and diagnostics', as
   assert.equal(new Headers(options.headers).get('x-server-timeout'), '120');
   assert.equal(globalThis.fetch.mock.callCount(), 1);
 });
-const environmentKeys = ['AI_PROVIDER', 'MISTRAL_API_KEY', 'MISTRAL_MODEL', 'XAI_API_KEY', 'XAI_MODEL', 'GROQ_API_KEY', 'GROQ_MODEL', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_API_URL', 'AI_API_KEY', 'LANGFUSE_ENABLED', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL'];
+const environmentKeys = ['AI_PROVIDER', 'AI_MAX_RETRIES', 'MISTRAL_API_KEY', 'MISTRAL_MODEL', 'XAI_API_KEY', 'XAI_MODEL', 'GROQ_API_KEY', 'GROQ_MODEL', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_API_URL', 'AI_API_KEY', 'LANGFUSE_ENABLED', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL'];
 let originalEnvironment;
 
 beforeEach(() => {
   originalEnvironment = Object.fromEntries(environmentKeys.map((key) => [key, process.env[key]]));
   delete process.env.AI_PROVIDER;
+  delete process.env.AI_MAX_RETRIES;
   delete process.env.GROQ_MODEL;
   process.env.GEMINI_API_KEY = 'offline-test-key';
   delete process.env.GEMINI_MODEL;

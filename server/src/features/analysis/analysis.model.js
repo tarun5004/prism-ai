@@ -39,6 +39,7 @@ const analysisSchema = new mongoose.Schema(
       durationMs: { type: Number },
       timeoutMs: { type: Number },
       attempts: { type: Number },
+      retryReason: String,
       httpStatus: { type: Number },
       networkCode: { type: String },
       failureCategory: { type: String }

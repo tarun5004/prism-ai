@@ -20,6 +20,7 @@ function getAiStatusDetails(analysis) {
             TIMEOUT: 'The AI request timed out.',
             API_ERROR: 'The AI provider could not complete the request.',
             INVALID_RESPONSE: 'The AI response could not be validated.',
+            INVALID_RETRY_LIMIT: 'AI retry configuration must be 0 or 1.',
             INVALID_FINDINGS: 'The AI findings could not be validated.',
             INVALID_REVIEW: 'The AI review explanation could not be validated. Any valid findings are shown separately.',
             INVALID_TIMEOUT: 'AI request configuration needs attention.',
@@ -164,6 +165,7 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                                     {Number.isFinite(diagnostics.timeoutMs) && `${diagnostics.timeoutMs / 1000}s timeout. `}
                                     {Number.isInteger(diagnostics.httpStatus) && `Provider HTTP ${diagnostics.httpStatus}. `}
                                     {Number.isInteger(diagnostics.attempts) && `${diagnostics.attempts} attempt(s).`}
+                                    {diagnostics.retryReason && ` Retry reason: ${diagnostics.retryReason}.`}
                                 </p></details>}
                                 {analysis.emailNotification && <p>Email notification: {({ sent: 'sent', sending: 'delivery outcome pending', skipped: 'not sent (disabled, no opt-in or authorization unavailable)', unavailable: 'delivery unavailable; report remains saved' })[analysis.emailNotification.status] || 'unknown'}.</p>}
                                 {diagnostics?.pipeline?.stages?.length > 0 && <details className="ai-diagnostics"><summary>Review stages</summary><ul>{diagnostics.pipeline.stages.map((stage, index) => <li key={index}>{({ github: 'GitHub data', retrieval: 'Context retrieval', memory: 'Revision memory', model: 'AI request' })[stage.name] || 'Review step'}: {(stage.durationMs / 1000).toFixed(2)}s · {stage.status}</li>)}</ul><p>External trace: {diagnostics.tracing?.status || 'not recorded'}</p></details>}
