@@ -6,3 +6,5 @@
 export function shouldAutoReview({ isDraft, reviewsPaused }) {
   return !isDraft || !reviewsPaused;
 }
+
+// Hosted review smoke test: Gemini Flash-Lite deployment.
