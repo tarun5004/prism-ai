@@ -19,6 +19,46 @@ import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis, s
 
 afterEach(() => mock.restoreAll());
 
+test('accepted reviews poll saved job status without a second POST and can resume by report URL', async () => {
+  const id = 'webhook-' + 'a'.repeat(64);
+  const report = { id, status: 'completed', pullRequest: {}, findings: [] };
+  let polls = 0; let posts = 0; const stages = []; let acceptedId;
+  const request = mock.method(globalThis, 'fetch', async (url, options) => {
+    if (options?.method === 'POST') { posts++; return Response.json({ id, status: 'queued' }, { status: 202 }); }
+    if (url.endsWith('/job')) return Response.json({ id, status: ++polls === 1 ? 'running' : 'completed' });
+    return polls >= 2 ? Response.json(report) : Response.json({ message: 'Analysis not found.' }, { status: 404 });
+  });
+  assert.deepEqual(await createAnalysis('https://github.com/a/b/pull/1', { onAccepted: value => { acceptedId = value; }, onProgress: stage => stages.push(stage), wait: async () => {} }), report);
+  assert.equal(acceptedId, id);
+  assert.equal(posts, 1);
+  assert.deepEqual(stages, ['queued', 'running']);
+  polls = 0;
+  assert.deepEqual(await loadAnalysis(id, { wait: async () => {} }), report);
+  assert.equal(posts, 1, 'Reloading a pending report must not start another review');
+  assert.ok(request.mock.calls.every(call => call.arguments[1]?.credentials === 'include'));
+});
+
+test('job polling is bounded, cancellable and rejects terminal failures or invalid states', async () => {
+  const id = 'webhook-' + 'b'.repeat(64);
+  let status = 'queued'; let calls = 0;
+  mock.method(globalThis, 'fetch', async url => {
+    calls++;
+    return url.endsWith('/job') ? Response.json({ id, status }) : Response.json({}, { status: 404 });
+  });
+  await assert.rejects(loadAnalysis(id, { wait: async () => {}, maxPolls: 2 }), /still.*progress|still.*queued/i);
+  assert.equal(calls, 3, 'One report lookup and two bounded job lookups');
+  for (const value of ['unknown', 'failed', 'skipped', 'invented']) {
+    status = value;
+    await assert.rejects(loadAnalysis(id, { wait: async () => {} }), /interrupted|failed|skipped|invalid/i);
+  }
+  status = 'queued';
+  const abort = new AbortController();
+  await assert.rejects(loadAnalysis(id, { signal: abort.signal, wait: async () => { abort.abort(); } }), /cancelled/i);
+  const before = calls;
+  await assert.rejects(loadAnalysis(id, { signal: abort.signal }), /cancelled/i);
+  assert.equal(calls, before, 'An already cancelled read makes no request');
+});
+
 test('public demo reads its fixed endpoint and rejects a private report-shaped response', async () => {
   const report = { id: 'demo-b01', status: 'completed', pullRequest: {}, findings: [], sample: { readOnly: true } };
   const request = mock.method(globalThis, 'fetch', async url => { assert.equal(url, '/api/demo/report'); return Response.json(report); });

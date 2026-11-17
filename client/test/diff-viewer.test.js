@@ -17,6 +17,15 @@ const viewer = await vite.ssrLoadModule('/src/features/dashboard/DiffViewer.jsx'
 const dashboard = await vite.ssrLoadModule('/src/features/dashboard/DashboardPage.jsx');
 const app = await vite.ssrLoadModule('/src/app/App.jsx');
 
+test('queued review page explains accepted background work without claiming completed AI', () => {
+  for (const pendingStage of ['queued', 'running']) {
+    const html = renderToStaticMarkup(createElement(dashboard.ReviewPage, { pendingStage }));
+    assert.match(html, pendingStage === 'queued' ? /Review queued/ : /Review running/);
+    assert.match(html, /close this page/i);
+    assert.ok(!html.includes('AI analysis completed'));
+  }
+});
+
 test('provider attribution reflects the saved review and semantic retrieval status', () => {
   const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
     id: 'mistral-report', status: 'completed', aiStatus: 'completed', aiProvider: 'mistral', aiModel: 'mistral-small-latest',
@@ -26,6 +35,15 @@ test('provider attribution reflects the saved review and semantic retrieval stat
   assert.match(html, /mistral-small-latest/);
   assert.match(html, /Chroma/);
   assert.ok(!html.includes('Gemini returned'));
+});
+
+test('existing saved HTTP 403 reports explain provider access denial', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
+    id: 'denied-provider', status: 'completed', aiStatus: 'unavailable', aiError: 'API_ERROR',
+    aiProvider: 'groq', aiDiagnostics: { httpStatus: 403 }, pullRequest: {}, findings: []
+  } }));
+  assert.match(html, /denied access from this deployment/);
+  assert.ok(!html.includes('AI analysis completed'));
 });
 
 test('email opt-in is explicit and unavailable delivery disables the control', () => {
@@ -105,6 +123,18 @@ test('introduction presents working features and routes every trial CTA into the
   const entry = renderToStaticMarkup(createElement(app.default));
   assert.ok(!entry.includes('pull-request-url'), 'Initial landing must not mount the workspace');
   assert.ok(!entry.includes('dashboard-shell'));
+});
+
+test('home offers GitHub connection in its main content and a review entry after login', () => {
+  const guest = renderToStaticMarkup(createElement(app.LandingPage, { session: { enabled: true, authenticated: false, installUrl: 'https://github.com/apps/prism/installations/new' } }));
+  assert.match(guest, /id="home-workspace"/);
+  assert.match(guest, /href="\/api\/github\/login"/);
+  assert.match(guest, /Connect GitHub/);
+  assert.match(guest, /Install on GitHub/);
+  const connected = renderToStaticMarkup(createElement(app.LandingPage, { session: { enabled: true, authenticated: true, login: 'reviewer' } }));
+  assert.match(connected, /Connected as reviewer/);
+  assert.match(connected, /Start a review/);
+  assert.match(connected, /Saved analyses/);
 });
 
 test('internal home navigation avoids reload and preserves modified-click behavior', () => {

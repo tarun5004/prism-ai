@@ -19,6 +19,8 @@ function getAiStatusDetails(analysis) {
         const errors = {
             TIMEOUT: 'The AI request timed out.',
             API_ERROR: 'The AI provider could not complete the request.',
+            PROVIDER_ACCESS_DENIED: 'The AI provider denied access from this deployment. Check provider permissions and supported deployment regions.',
+            PROVIDER_REGION_UNAVAILABLE: 'The AI provider does not support this deployment region. Move the worker to a supported region.',
             INVALID_RESPONSE: 'The AI response could not be validated.',
             INVALID_RETRY_LIMIT: 'AI retry configuration must be 0 or 1.',
             INVALID_FINDINGS: 'The AI findings could not be validated.',
@@ -28,7 +30,9 @@ function getAiStatusDetails(analysis) {
             MISSING_MODEL: 'The selected provider needs a model name.',
             UNSAFE_LOGGING: 'Disable verbose model logging on the server.'
         };
-        const reason = analysis.aiError === 'API_ERROR' && analysis.aiDiagnostics?.httpStatus === 504
+        const reason = analysis.aiError === 'API_ERROR' && analysis.aiDiagnostics?.httpStatus === 403
+            ? errors.PROVIDER_ACCESS_DENIED
+            : analysis.aiError === 'API_ERROR' && analysis.aiDiagnostics?.httpStatus === 504
             ? 'The AI request exceeded its processing deadline.'
             : typeof analysis.aiError === 'string' && Object.hasOwn(errors, analysis.aiError) ? errors[analysis.aiError] : 'AI analysis could not be completed.';
         return { tone: 'warning', label: 'AI analysis unavailable', message: `${reason} ${rulesMessage}` };
@@ -268,6 +272,8 @@ function DashboardPage({ route = { page: 'overview' }, onNavigate, userId }) {
     const activeRequest = useRef(0);
     const historyRequest = useRef(0);
     const reviewRequest = useRef(null);
+    const currentRoute = useRef(route);
+    currentRoute.current = route;
     const startedAt = useRef(0);
     const [receivedStages, setReceivedStages] = useState([]);
     const progressStage = receivedStages.at(-1) || 'connecting';
@@ -313,17 +319,33 @@ function DashboardPage({ route = { page: 'overview' }, onNavigate, userId }) {
         setReceivedStages([]);
         setErrorMessage('');
         setIsSubmitting(true);
+        let acceptedId;
         try {
             const result = await createAnalysis(pullRequestUrl.trim(), {
                 signal: controller.signal,
-                onProgress: stage => { if (sequence === activeRequest.current) setReceivedStages(current => [...current, stage]); }
+                onAccepted: id => {
+                    acceptedId = id;
+                    controller.analysisId = id;
+                    if (sequence === activeRequest.current) {
+                        setReportError(null);
+                        onNavigate?.('/analyses/' + encodeURIComponent(id));
+                    }
+                },
+                onProgress: stage => {
+                    controller.stage = stage;
+                    if (sequence === activeRequest.current && (!acceptedId || currentRoute.current.analysisId === acceptedId)) setReceivedStages(current => [...current, stage]);
+                }
             });
             if (sequence !== activeRequest.current) return;
-            setAnalysis(result);
+            if (!acceptedId || currentRoute.current.analysisId === result.id) setAnalysis(result);
             setRecentAnalyses(current => [result, ...current.filter(item => item.id !== result.id)].slice(0, 20));
-            onNavigate?.('/analyses/' + encodeURIComponent(result.id));
+            if (!acceptedId && currentRoute.current.page === 'overview') onNavigate?.('/analyses/' + encodeURIComponent(result.id));
         } catch (error) {
-            if (sequence === activeRequest.current) { setErrorMessage(error.message); refreshHistory(); }
+            if (sequence === activeRequest.current) {
+                setErrorMessage(error.message);
+                if (acceptedId && currentRoute.current.analysisId === acceptedId) setReportError({ analysisId: acceptedId, message: error.message });
+                refreshHistory();
+            }
         } finally {
             if (reviewRequest.current === controller) reviewRequest.current = null;
             if (sequence === activeRequest.current) setIsSubmitting(false);
@@ -331,15 +353,20 @@ function DashboardPage({ route = { page: 'overview' }, onNavigate, userId }) {
     }
 
     useEffect(() => {
-        setReportError(null);
         if (route.page !== 'review' || analysis?.id === route.analysisId) return;
-        let cancelled = false;
-        loadAnalysis(route.analysisId).then(result => {
-            if (!cancelled) setAnalysis(result);
+        if (reviewRequest.current?.analysisId === route.analysisId) {
+            setReceivedStages([reviewRequest.current.stage || 'queued']);
+            return;
+        }
+        setReportError(null);
+        setReceivedStages([]);
+        const controller = new AbortController();
+        loadAnalysis(route.analysisId, { signal: controller.signal, onProgress: stage => { if (!controller.signal.aborted) setReceivedStages(current => [...current, stage]); } }).then(result => {
+            if (!controller.signal.aborted) setAnalysis(result);
         }).catch(error => {
-            if (!cancelled) setReportError({ analysisId: route.analysisId, message: error.message });
+            if (!controller.signal.aborted) setReportError({ analysisId: route.analysisId, message: error.message });
         });
-        return () => { cancelled = true; };
+        return () => controller.abort();
     }, [route.page, route.analysisId, analysis?.id, reportReload]);
     const pageTitles = { overview: 'Start a new review', analyses: 'Saved analyses', review: 'Pull request review', 'not-found': 'Page not found' };
     const currentReport = route.page === 'review' && analysis?.id === route.analysisId ? analysis : null;
@@ -357,7 +384,7 @@ function DashboardPage({ route = { page: 'overview' }, onNavigate, userId }) {
                 <header className="topbar"><div><p className="eyebrow">Workspace / {route.page === 'overview' ? 'New review' : 'Analyses'}</p><h1 tabIndex={-1}>{pageTitles[route.page] || 'Page not found'}</h1><p className="muted-text">{route.page === 'overview' ? 'Bring a pull request into focus with code changes and grounded feedback.' : route.page === 'analyses' ? 'Reopen a saved report and inspect its exact revision.' : 'Inspect the saved diff, context and advisory findings.'}</p></div><span className="beta-badge">V0 <span className="status-dot" /></span></header>
                 {route.page === 'overview' && <OverviewPage pullRequestUrl={pullRequestUrl} onUrlChange={setPullRequestUrl} onSubmit={submitAnalysis} isSubmitting={isSubmitting} error={errorMessage} progressStage={progressStage} elapsedSeconds={elapsedSeconds} receivedStages={receivedStages} onNavigate={onNavigate} />}
                 {route.page === 'analyses' && <AnalysesPage reports={recentAnalyses} status={historyStatus} error={historyError} onReload={refreshHistory} onNavigate={onNavigate} />}
-                {route.page === 'review' && <ReviewPage userId={userId} analysis={currentReport} error={reportError?.analysisId === route.analysisId ? reportError.message : ''} onRetry={() => setReportReload(value => value + 1)} onNavigate={onNavigate} />}
+                {route.page === 'review' && <ReviewPage userId={userId} analysis={currentReport} pendingStage={progressStage} error={reportError?.analysisId === route.analysisId ? reportError.message : ''} onRetry={() => setReportReload(value => value + 1)} onNavigate={onNavigate} />}
                 {route.page === 'not-found' && <section className="welcome-section"><div><h2>This page does not exist</h2><p className="muted-text">Choose a destination from the navigation or start a new review.</p><RouteLink className="text-button" to="/app" onNavigate={onNavigate}>Back to new review</RouteLink></div></section>}
             </main>
         </div>
@@ -401,12 +428,14 @@ function AnalysesPage({ reports = [], status = 'loading', error, onReload, onNav
     </section>;
 }
 
-function ReviewPage({ analysis, error, onRetry, onNavigate, userId }) {
+function ReviewPage({ analysis, error, onRetry, onNavigate, userId, pendingStage }) {
     return <>
         <RouteLink className="text-button back-link" to="/analyses" onNavigate={onNavigate}>← All analyses</RouteLink>
         {error ? <section className="welcome-section" role="alert"><AlertTriangle size={21} /><div><h2>Report could not be opened</h2><p className="muted-text">{error}</p><button type="button" className="text-button" onClick={onRetry}>Try again</button></div></section>
             : analysis ? <AnalysisReport key={analysis.id} analysis={analysis} userId={userId} />
-                : <p className="report-loading muted-text" role="status"><LoaderCircle className="spin" size={18} />Loading saved report…</p>}
+                : ['queued', 'running'].includes(pendingStage)
+                    ? <section className="welcome-section" role="status"><LoaderCircle className="spin" size={18} /><div><h2>{pendingStage === 'queued' ? 'Review queued' : 'Review running'}</h2><p>You can close this page and reopen this URL later. Accepted work continues on the server.</p></div></section>
+                    : <p className="report-loading muted-text" role="status"><LoaderCircle className="spin" size={18} />Loading saved report…</p>}
     </>;
 }
 function DemoPage({ onNavigate }) {

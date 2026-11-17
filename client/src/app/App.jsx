@@ -81,14 +81,14 @@ function App() {
   }, [pathname]);
 
   return <>
-    {(session?.enabled || connectionError) && <div className="connection-bar">
+    {route.page !== 'landing' && (session?.enabled || connectionError) && <div className="connection-bar">
       <span>{session?.authenticated ? `Connected as ${session.login}` : 'Connect GitHub to review your installed repositories.'}</span>
       {session?.installUrl && <a href={session.installUrl}>Install on GitHub ↗</a>}
       {session?.authenticated ? <button type="button" disabled={connectionBusy} onClick={signOut}>Sign out</button> : <a href={githubLoginUrl}>Connect GitHub</a>}
       {session?.authenticated && <EmailPreference session={session} busy={connectionBusy} onChange={changeEmailPreference} />}
       {connectionError && <><span role="alert">{connectionError}</span><button type="button" disabled={connectionBusy} onClick={refreshSession}>Retry connection</button></>}
     </div>}
-    {route.page === 'landing' && <LandingPage onNavigate={navigate} />}
+    {route.page === 'landing' && <LandingPage onNavigate={navigate} session={session} connectionError={connectionError} connectionBusy={connectionBusy} onSignOut={signOut} onRetry={refreshSession} onEmailChange={changeEmailPreference} />}
     {route.page === 'demo' && <DemoPage onNavigate={navigate} />}
     {/* Keep an active review mounted when its user visits the introduction. */}
     {(workspaceVisited || !['landing', 'demo'].includes(route.page)) && (session && !session.demoOnly && (!session.enabled || session.authenticated)
@@ -133,7 +133,7 @@ function FeatureShowcase({ activeIndex, onSelect }) {
   </section>;
 }
 
-function LandingPage({ onNavigate }) {
+function LandingPage({ onNavigate, session, connectionError, connectionBusy, onSignOut, onRetry, onEmailChange }) {
   const [activeFeature, setActiveFeature] = useState(0);
   const [activeContext, setActiveContext] = useState(0);
   const context = contextSteps[activeContext];
@@ -143,6 +143,19 @@ function LandingPage({ onNavigate }) {
     <header className="landing-header"><nav className="landing-nav landing-width" aria-label="Main navigation"><RouteLink className="brand-lockup" to="/" onNavigate={onNavigate} aria-label="PRism AI home"><span className="brand-mark">P</span>PRism AI</RouteLink><div className="landing-nav-links"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="https://github.com/tarun5004/prism-ai" target="_blank" rel="noopener noreferrer">View source ↗</a><RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses</RouteLink></div>{trial('landing-cta landing-cta-small')}</nav></header>
     <main id="landing-main">
       <section className="landing-hero landing-width"><div><p className="landing-eyebrow">PULL REQUEST INTELLIGENCE</p><h1 tabIndex={-1}>Understand the change.<br /><span>Before you merge.</span></h1></div><div className="hero-copy"><p>Code changes fast.<br />Make sense of the diff, the context and the risk—with evidence you can inspect.</p>{trial('landing-cta')}<RouteLink className="sample-review-button" to="/demo" onNavigate={onNavigate}>See a sample review →</RouteLink><small>Personal demo · Bring a GitHub PR URL</small></div></section>
+      <section id="home-workspace" className="landing-width home-workspace" aria-labelledby="home-workspace-title">
+        <div><p className="landing-eyebrow">YOUR GITHUB WORKSPACE</p><h2 id="home-workspace-title">{session?.authenticated ? `Connected as ${session.login}` : 'Bring your next pull request.'}</h2>
+          <p>{session?.authenticated ? 'Start a review or reopen a saved report for an exact revision.' : 'Install PRism on your repositories, then connect GitHub to review your changes.'}</p></div>
+        <div className="home-workspace-actions">
+          {session?.enabled && !session.authenticated && <a className="landing-cta" href={githubLoginUrl}>Connect GitHub ↗</a>}
+          {session?.installUrl && <a href={session.installUrl}>Install on GitHub ↗</a>}
+          {(session?.authenticated || session?.enabled === false && !session?.demoOnly) && <RouteLink className="landing-cta" to="/app" onNavigate={onNavigate}>Start a review ↗</RouteLink>}
+          <RouteLink to="/analyses" onNavigate={onNavigate}>Saved analyses →</RouteLink>
+          {session?.authenticated && <><EmailPreference session={session} busy={connectionBusy} onChange={onEmailChange} /><button type="button" disabled={connectionBusy} onClick={onSignOut}>Sign out</button></>}
+          {session?.demoOnly && <p>Live repository access is disabled on this deployment. Explore the recorded review above.</p>}
+          {connectionError && <><p role="alert">{connectionError}</p><button type="button" disabled={connectionBusy} onClick={onRetry}>Retry connection</button></>}
+        </div>
+      </section>
       <FeatureShowcase activeIndex={activeFeature} onSelect={setActiveFeature} />
       <div className="landing-capabilities landing-width"><span>Built for a clearer review</span><span>GitHub PRs</span><span>Unified diffs</span><span>Gemini + rules</span><span>Saved reports</span></div>
       <section className="landing-statement landing-width"><div className="context-lines" aria-hidden="true">{[0, 1, 2, 3, 4].map(index => <i key={index} />)}</div><div><p className="landing-eyebrow">LESS GUESSWORK. MORE CONTEXT.</p><h2>A diff shows what changed.<br />A review helps you understand why it matters.</h2><p className="landing-muted">Move from changed lines to potential impact, with clear evidence and honest limits.</p></div></section>

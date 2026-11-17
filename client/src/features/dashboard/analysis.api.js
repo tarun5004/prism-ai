@@ -54,6 +54,7 @@ async function readProgress(response, onProgress) {
 }
 
 async function request(path, options, failureMessage, onProgress) {
+  if (options?.signal?.aborted) throw new Error('The review request was cancelled. Accepted work continues on the server.');
   let response;
   try {
     response = await fetch(`${apiBaseUrl}/analyses${path}`, { ...options, credentials: 'include' });
@@ -66,7 +67,8 @@ async function request(path, options, failureMessage, onProgress) {
   }
   let result;
   try { result = await response.json(); } catch { throw new Error(failureMessage); }
-  if (!response.ok) throw new Error(result.message || result.error || failureMessage);
+  if (!response.ok) throw Object.assign(new Error(result.message || result.error || failureMessage), { status: response.status });
+  if (response.status === 202) return { acceptedJob: result };
   return result;
 }
 
@@ -82,17 +84,59 @@ async function loadSampleAnalysis(options) {
     || reports[0] || null;
 }
 
-async function loadAnalysis(id) {
-  const result = await request(`/${encodeURIComponent(id)}`, undefined, 'This report could not be loaded.');
+async function readReport(id, signal) {
+  const result = await request(`/${encodeURIComponent(id)}`, { signal }, 'This report could not be loaded.');
   if (!isReport(result)) throw new Error('The server returned an invalid response for this report.');
   return result;
 }
 
-async function createAnalysis(pullRequestUrl, { onProgress, signal } = {}) {
+function waitForPoll(signal) {
+  return new Promise((resolve, reject) => {
+    const cancel = () => { clearTimeout(timer); signal?.removeEventListener('abort', cancel); reject(new Error('The review request was cancelled. Accepted work continues on the server.')); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', cancel); resolve(); }, 5000);
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
+  });
+}
+
+async function waitForAnalysis(id, { signal, onProgress = () => {}, wait = waitForPoll, maxPolls = 120 } = {}) {
+  let previous;
+  for (let attempt = 0; attempt < maxPolls; attempt++) {
+    const job = await request(`/${encodeURIComponent(id)}/job`, { signal }, 'Review job could not be loaded.');
+    if (!job || job.id !== id || !['queued', 'running', 'completed', 'failed', 'unknown', 'skipped'].includes(job.status)) throw new Error('The server returned an invalid review job.');
+    if (job.status === 'completed') return readReport(id, signal);
+    if (job.status === 'failed') {
+      try { return await readReport(id, signal); }
+      catch (error) { if (error.status !== 404) throw error; }
+      throw new Error('Review failed. Check the saved job before starting another review.');
+    }
+    if (job.status === 'unknown') throw new Error('Review was interrupted. Operator recovery is required; it will not retry AI automatically.');
+    if (job.status === 'skipped') throw new Error('Review was skipped by repository controls or the review policy.');
+    if (previous !== job.status) onProgress(job.status);
+    previous = job.status;
+    if (attempt + 1 < maxPolls) await wait(signal);
+  }
+  throw new Error('Review is still queued or in progress. Reopen this report URL later; do not submit it again.');
+}
+
+async function loadAnalysis(id, options = {}) {
+  try { return await readReport(id, options.signal); }
+  catch (error) { if (error.status !== 404 || !/^webhook-[a-f\d]{64}$/.test(id)) throw error; }
+  return waitForAnalysis(id, options);
+}
+
+async function createAnalysis(pullRequestUrl, { onProgress, signal, onAccepted = () => {}, ...pollOptions } = {}) {
   const result = await request('', {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(onProgress ? { Accept: 'application/x-ndjson' } : {}) },
     body: JSON.stringify({ pullRequestUrl }), signal
   }, 'Analysis could not be created.', onProgress);
+  if (result?.acceptedJob) {
+    const job = result.acceptedJob;
+    if (typeof job.id !== 'string' || !/^webhook-[a-f\d]{64}$/.test(job.id) || !['queued', 'running', 'completed', 'failed', 'unknown', 'skipped'].includes(job.status)) throw new Error('The server returned an invalid accepted review.');
+    onAccepted(job.id);
+    onProgress?.('queued');
+    return waitForAnalysis(job.id, { ...pollOptions, onProgress, signal });
+  }
   if (!isReport(result)) throw new Error('The server returned an invalid response for this analysis.');
   return result;
 }
