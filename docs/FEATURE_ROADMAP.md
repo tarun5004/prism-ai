@@ -318,3 +318,15 @@ Malaysia rollout status:
 - Final verification: frontend **59 passed**; backend **172 passed, 1 optional integration skipped**; Python **7 passed**; production build passed. Browser checks passed desktop/mobile widths, keyboard/touch stage and footer controls, provider reset, reduced motion and all six color contrast pairs. Minimum active-text contrast is **4.58:1**. No page errors or POST requests in the presentation checks.
 - Commit groups: server bootstrap; Pip identity; dashboard components; client startup/connection modules; hero/color foundation; review features; context pipeline; onboarding/Azure walkthrough; CI explorer; footer; page composition/tests; GitLab dependency fix; documentation. Foundational modules precede the final page wiring so each section stays reviewable.
 - Credential-pattern/path scan of the 75 pending source/doc candidates found no matches. Local secrets, private parameters and browser artifacts stay ignored. Commit authorization does not include pushing or deploying; no new live AI or hosted pipeline execution was performed.
+
+### 2026-11-18: homepage palette and trail follow-up
+
+- The owner rejected the vivid/mustard and interim balanced palette experiments. The final approved homepage palette uses 20% lower HSL lightness for non-yellow accent/surface families, with readable text shades; yellow remains unchanged.
+- Homepage trail ownership/lifecycle changes were pushed in `a019659`; approved palette changes were pushed and deployed in `6d026ae`. The old balanced-surface plan is retained as superseded design context, not an implementation instruction.
+
+### 2026-11-18: GitHub Dark default workspace
+
+- The owner's final choice is GitHub.com's actual Dark default theme, superseding the light/mint and Universe workspace experiments. Applied official canvas, surface, border, foreground, link, green primary-button and diff-state values; removed decorative rainbow borders. Homepage remains unchanged.
+- Shared brand declarations live in `client/src/shared/palette.css`; dashboard presentation is split into feature-owned style files. No review/auth/polling contract, provider or infrastructure change. New-review guidance explains saved diffs, evidence navigation and reopening reports.
+- Compared 17 principal workspace tokens against GitHub's live `dark-534def0b30583f22.css`; all match. Frontend **61 tests** and production build pass, including a fresh run before publication. Existing browser checks cover widths 320/390/768/1440, filtering, evidence navigation, history empty/error/reload states and unavailable AI status. Sampled minimum text/control contrast: **4.63:1**.
+- Browser sample uses the real local read-only report; private views use explicitly mocked session/history/report data. No new AI call or GitHub write during UI checks. The owner subsequently authorized source publication; this workspace iteration does not include an Azure deployment.
