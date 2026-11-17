@@ -10,6 +10,18 @@ Built as a small MERN + Gemini project. Feedback is advisory: PRism does not run
 
 > **Delivery status — 13 November 2026:** the current V0 is on the local `integration/v0-demo` branch. Remote `main` does not contain this full V0; the integration branch is not published yet. Publishing it and reviewing its PR remain release steps. There is no verified public deployment URL.
 
+## Source organization and local design preview
+
+- `client/src/main.jsx` delegates React root mounting to `bootstrap.jsx`.
+- `client/src/app/` composes routes and connection state; `shared/` owns the brand, links and email preference control.
+- `client/src/features/landing/` owns the homepage, illustrative interactions, onboarding and cloud explanation. Styles are grouped by visual section in `styles/`.
+- `client/src/features/dashboard/` owns review requests in `useReviewWorkspace.js`. Its `pages/`, `report/` and `components/` folders render focused parts of the workspace; API/polling contracts remain in `analysis.api.js`.
+- `server/src/server.js` delegates HTTP startup to `bootstrap/http.js`; `server/scripts/review-worker.js` delegates worker startup to `bootstrap/worker.js`. Express middleware stays in `app.js`, database setup in `config/`, business logic in `features/`.
+
+For a local design preview, start the API with `DEMO_ONLY=true`, then run `npm run dev --prefix client -- --host 127.0.0.1 --port 5178` in another terminal. Open `http://127.0.0.1:5178/`. The interactive examples only change local UI state; `/demo` loads a recorded fixture from the API without a model request.
+
+Demo-only mode disables private workspace access and GitHub login. Clear `DEMO_ONLY` before using the normal configured workflow. Browser checks with mocked authentication do not verify real OAuth.
+
 ## Take a 60-second tour
 
 1. Open `/`: the introduction explains the workflow. **Try it for free** opens `/app`.
