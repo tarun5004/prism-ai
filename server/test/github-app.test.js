@@ -7,6 +7,61 @@ import app from '../src/app.js';
 
 afterEach(() => mock.restoreAll());
 
+test('inline advisory reviews map validated AI findings to latest PR diff and deduplicate', async () => {
+  const keys = ['GITHUB_POST_INLINE', 'GITHUB_APP_SLUG']; const old = keys.map(key => process.env[key]);
+  process.env.GITHUB_POST_INLINE = 'true'; process.env.GITHUB_APP_SLUG = 'prism';
+  let posted; let stale = false;
+  const headSha = 'b'.repeat(40);
+  const changedFiles = [{ path: 'math.js', additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-return sum / count;\n+return sum;' }];
+  const report = { id: 'inline-test', installationId: 7, status: 'completed', aiStatus: 'completed', pullRequest: { url: 'https://github.com/demo/repo/pull/2', baseSha: 'a'.repeat(40), headSha, changedFiles },
+    findings: [{ source: 'ai', title: 'Incorrect average', severity: 'medium', filePath: 'math.js', lineNumber: 1, lineSide: 'new', evidence: 'return sum;', explanation: 'Returns total instead of average.', suggestedFix: 'Divide by item count.' }, { source: 'rule', title: 'Do not post heuristics' }] };
+  mock.method(globalThis, 'fetch', async (url, options) => {
+    if (options.method === 'POST') { posted = JSON.parse(options.body); return Response.json({ id: 3 }); }
+    if (String(url).includes('/reviews?')) return Response.json(posted ? [{ body: posted.body, user: { login: 'prism[bot]' } }] : []);
+    return Response.json({ head: { sha: stale ? 'c'.repeat(40) : headSha }, state: 'open' });
+  });
+  const getToken = async () => 'bot-token';
+  try {
+    assert.equal((await github.postInlineReview(report, { getToken, getPullRequest: async () => ({ ...report.pullRequest, changedFiles }) })).status, 'posted');
+    assert.equal(posted.event, 'COMMENT'); assert.equal(posted.commit_id, headSha);
+    assert.equal(posted.comments.length, 1); assert.equal(posted.comments[0].side, 'RIGHT');
+    assert.equal((await github.postInlineReview(report, { getToken })).status, 'existing');
+    posted = null; stale = true;
+    assert.equal((await github.postInlineReview(report, { getToken })).errorCode, 'STALE_REVISION');
+    assert.equal(posted, null);
+  } finally { keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; }); }
+});
+
+test('GitHub commit status is advisory and unavailable AI never turns green', async () => {
+  const previous = process.env.GITHUB_POST_STATUS; process.env.GITHUB_POST_STATUS = 'true';
+  const origin = process.env.APP_ORIGIN; process.env.APP_ORIGIN = 'https://demo.example';
+  const states = [];
+  mock.method(globalThis, 'fetch', async (_url, options) => { states.push(JSON.parse(options.body)); return Response.json({}); });
+  const report = { id: 'status-test', installationId: 7, aiStatus: 'unavailable', pullRequest: { url: 'https://github.com/demo/repo/pull/2', headSha: 'b'.repeat(40) } };
+  try {
+    assert.equal((await github.postReviewStatus(report, { getToken: async () => 'bot-token' })).status, 'posted');
+    assert.equal(states[0].state, 'error'); assert.equal(states[0].context, 'prism-ai/review');
+    await github.postReviewStatus({ ...report, aiStatus: 'completed' }, { getToken: async () => 'bot-token' });
+    assert.equal(states[1].state, 'success'); assert.match(states[1].description, /advisory/i);
+  } finally { if (previous === undefined) delete process.env.GITHUB_POST_STATUS; else process.env.GITHUB_POST_STATUS = previous; if (origin === undefined) delete process.env.APP_ORIGIN; else process.env.APP_ORIGIN = origin; }
+});
+
+test('a concurrent inline duplicate cannot release the first publisher lock', async () => {
+  const old = process.env.GITHUB_POST_INLINE; process.env.GITHUB_POST_INLINE = 'true';
+  let release; let calls = 0;
+  const blocked = new Promise(resolve => { release = resolve; });
+  const report = { id: 'inline-concurrent', installationId: 7, pullRequest: { url: 'https://github.com/demo/repo/pull/9', headSha: 'd'.repeat(40) } };
+  mock.method(globalThis, 'fetch', async () => Response.json({ state: 'closed' }));
+  const getToken = async () => { calls++; await blocked; return 'token'; };
+  const first = github.postInlineReview(report, { getToken });
+  try {
+    await github.postInlineReview(report, { getToken });
+    const third = github.postInlineReview(report, { getToken });
+    assert.equal(calls, 1);
+    release(); await third; await first;
+  } finally { release(); if (old === undefined) delete process.env.GITHUB_POST_INLINE; else process.env.GITHUB_POST_INLINE = old; }
+});
+
 test('persistent authentication encrypts payloads and consumes browser state once', async () => {
   const { sealAuthData, openAuthData, writeAuthRecord, readAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
   const previous = process.env.SESSION_ENCRYPTION_KEY;

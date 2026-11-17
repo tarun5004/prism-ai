@@ -5,6 +5,8 @@ const analysisSchema = new mongoose.Schema(
     id: { type: String, required: true, unique: true },
     installationId: { type: Number, index: true },
     githubFeedback: { status: { type: String, enum: ['posted', 'existing', 'unavailable', 'skipped'] }, errorCode: String },
+    githubInline: { status: String, errorCode: String },
+    githubStatus: { status: String, errorCode: String },
     emailNotification: { status: { type: String, enum: ['sending', 'sent', 'unavailable', 'skipped'] }, errorCode: String },
     status: { type: String, required: true },
     createdAt: { type: String, required: true },

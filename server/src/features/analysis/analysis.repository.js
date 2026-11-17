@@ -102,6 +102,14 @@ async function saveGitHubFeedback(id, feedback) {
   return report;
 }
 
+async function saveReviewDelivery(id, delivery) {
+  const fields = { githubInline: delivery.githubInline, githubStatus: delivery.githubStatus };
+  if (mongoose.connection.readyState === 1) return Analysis.findOneAndUpdate({ id }, { $set: fields }, { new: true }).lean();
+  const report = analyses.get(id);
+  if (report) Object.assign(report, fields);
+  return report;
+}
+
 async function claimEmailNotification(id) {
   if (mongoose.connection.readyState === 1) return Boolean(await Analysis.findOneAndUpdate({ id, 'emailNotification.status': { $exists: false } }, { $set: { emailNotification: { status: 'sending' } } }).lean());
   if (process.env.NODE_ENV === 'production') throw Error('Persistent report storage unavailable.');
@@ -135,3 +143,4 @@ async function findPreviousAnalysis(pullRequest, installationId, { successfulOnl
 export { findAnalysis, listAnalyses, saveAnalysis, saveFindingFeedback, saveGitHubFeedback, findPreviousAnalysis };
 export { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob };
 export { claimEmailNotification, saveEmailNotification };
+export { saveReviewDelivery };

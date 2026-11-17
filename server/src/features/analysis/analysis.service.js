@@ -4,8 +4,8 @@ import { getAiConfiguration, runAiAnalysis, exportReviewTrace, validateFindings,
 import { prepareAiInput, buildReviewMemory } from '../ai/ai.context.js';
 import { fetchPullRequest, fetchReviewContext, fetchRepositoryPolicy, fetchIncrementalReview, PullRequestError } from '../pullRequest/pullRequest.service.js';
 import { applyReviewPolicy } from '../pullRequest/review.policy.js';
-import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis, findAnalysis } from './analysis.repository.js';
-import { postReviewSummary } from '../pullRequest/github.app.js';
+import { saveAnalysis, saveGitHubFeedback, saveReviewDelivery, findPreviousAnalysis, findAnalysis } from './analysis.repository.js';
+import { postReviewSummary, postInlineReview, postReviewStatus } from '../pullRequest/github.app.js';
 import { runRules } from './analysis.rules.js';
 import { sendReviewEmail } from './analysis.mail.js';
 import { retrieveSemanticContext } from '../ai/ai.retrieval.js';
@@ -13,6 +13,7 @@ import { retrieveSemanticContext } from '../ai/ai.retrieval.js';
 // Shared by manual requests and verified GitHub events.
 async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = randomUUID(), trigger, expectedRevision, installationId, githubToken, notificationUserId, resume = false } = {}) {
   const pipeline = { startedAt: new Date().toISOString(), stages: [] };
+  let statusReport;
   // This small wrapper records real stages; optional failures remain visible in the report.
   async function measure(name, work) {
     const stage = { name, startedAt: new Date().toISOString(), status: 'completed' };
@@ -45,6 +46,8 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
       pullRequest = applyReviewPolicy(pullRequest, policy);
     }
     const ruleFindings = runRules(pullRequest);
+    statusReport = { id, installationId, pullRequest };
+    await postReviewStatus(statusReport, { pending: true });
     const aiEnabled = Boolean(getAiConfiguration().apiKey) && prepareAiInput(pullRequest).files.length > 0;
     let reviewInput = pullRequest;
     const { runReviewWorkflow } = await import('./analysis.workflow.js');
@@ -88,6 +91,11 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
 
         progress('saving');
         const saved = await saveAnalysis(analysis);
+        if (installationId && (process.env.GITHUB_POST_INLINE === 'true' || process.env.GITHUB_POST_STATUS === 'true')) {
+          saved.githubInline = await postInlineReview(saved);
+          saved.githubStatus = await postReviewStatus(saved);
+          try { await saveReviewDelivery(id, saved); } catch { /* Report remains usable even if delivery tracking is unavailable. */ }
+        }
         saved.emailNotification = await sendReviewEmail(saved, notificationUserId || trigger?.actorId);
         if (installationId && process.env.GITHUB_POST_REVIEW === 'true') {
           const feedback = await postReviewSummary(saved);
@@ -98,6 +106,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
       }
     });
   } catch (error) {
+    if (statusReport) await postReviewStatus(statusReport);
     if (!(error instanceof PullRequestError)) {
       return { status: 500, body: { message: 'Analysis could not be saved or completed. Please try again.', ...(error.code === 'INTERRUPTED_MODEL_REQUEST' ? { errorCode: error.code } : {}) } };
     }

@@ -1,6 +1,9 @@
 import { createHash, randomBytes, sign } from 'node:crypto';
 import { Router } from 'express';
 import { writeAuthRecord, readAuthRecord, deleteAuthRecord, incrementReviewCounter } from './github.repository.js';
+import { fetchPullRequest } from './pullRequest.service.js';
+import { prepareAiInput, containsSensitiveText } from '../ai/ai.context.js';
+import { validateFindings } from '../ai/ai.service.js';
 
 const posting = new Set();
 const appMode = () => Boolean(process.env.GITHUB_APP_ID);
@@ -104,9 +107,72 @@ async function installationToken(installationId, repository) {
   let jwt;
   try { jwt = unsigned + '.' + sign('RSA-SHA256', Buffer.from(unsigned), process.env.GITHUB_APP_PRIVATE_KEY?.replaceAll('\\n', '\n')).toString('base64url'); }
   catch { throw failure(503, 'GitHub App signing is not configured.'); }
-  const result = await githubRequest(`/app/installations/${installationId}/access_tokens`, jwt, { repositories: [repository.split('/')[1]], permissions: { contents: 'read', pull_requests: process.env.GITHUB_POST_REVIEW === 'true' ? 'write' : 'read' } });
+  const result = await githubRequest(`/app/installations/${installationId}/access_tokens`, jwt, { repositories: [repository.split('/')[1]], permissions: {
+    contents: 'read', pull_requests: process.env.GITHUB_POST_REVIEW === 'true' || process.env.GITHUB_POST_INLINE === 'true' ? 'write' : 'read',
+    ...(process.env.GITHUB_POST_STATUS === 'true' ? { statuses: 'write' } : {}) } });
   if (typeof result.token !== 'string' || !result.token) throw failure(502, 'Installation access unavailable.');
   return result.token;
+}
+
+function reportScope(report) {
+  const match = report.pullRequest?.url?.match(/^https:\/\/github\.com\/([a-z\d-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/i);
+  if (!match || !Number.isSafeInteger(report.installationId) || !/^[a-f\d]{40}$/i.test(report.pullRequest.headSha || '')
+    || !/^[a-z\d_-]{1,128}$/i.test(report.id || '')) throw Error('Invalid report scope');
+  return { repository: `${match[1]}/${match[2]}`, number: match[3], headSha: report.pullRequest.headSha };
+}
+
+const advisoryText = text => text.replaceAll('@', '@\u200b').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+async function postInlineReview(report, { getToken = installationToken, getPullRequest = fetchPullRequest } = {}) {
+  if (process.env.GITHUB_POST_INLINE !== 'true' || !report.installationId) return { status: 'skipped' };
+  let key; let acquired = false;
+  try {
+    const { repository, number, headSha } = reportScope(report);
+    key = `inline:${report.installationId}:${repository.toLowerCase()}:${number}:${headSha}`;
+    if (posting.has(key)) return { status: 'unavailable', errorCode: 'POST_IN_PROGRESS' };
+    posting.add(key);
+    acquired = true;
+    const token = await getToken(report.installationId, repository);
+    const path = `/repos/${repository}/pulls/${number}`;
+    const latest = await githubRequest(path, token);
+    if (latest.state !== 'open' || latest.head?.sha !== headSha) return { status: 'unavailable', errorCode: 'STALE_REVISION' };
+    const marker = `<!-- prism-inline:${createHash('sha256').update(key).digest('hex')} -->`;
+    for (let page = 1; page <= 3; page++) {
+      const reviews = await githubRequest(`${path}/reviews?per_page=100&page=${page}`, token);
+      if (!Array.isArray(reviews)) throw Error('Invalid reviews');
+      if (reviews.some(review => review.user?.login === `${process.env.GITHUB_APP_SLUG}[bot]` && review.body?.includes(marker))) return { status: 'existing' };
+      if (reviews.length < 100) break;
+      if (page === 3) return { status: 'unavailable', errorCode: 'REVIEW_SCAN_LIMIT' };
+    }
+    // Incremental old-side coordinates differ from the actual PR diff. Revalidate
+    // against the current full PR; unmappable findings remain in the web report.
+    const current = await getPullRequest(report.pullRequest.url, { token });
+    if (current.headSha !== headSha) return { status: 'unavailable', errorCode: 'STALE_REVISION' };
+    const candidates = report.findings.filter(item => item.source === 'ai');
+    const findings = validateFindings(candidates, prepareAiInput(current).files)
+      .filter(item => !containsSensitiveText([item.title, item.explanation, item.suggestedFix].join('\n'))).slice(0, 5);
+    if (!findings.length) return { status: 'skipped' };
+    const comments = findings.map(item => ({ path: item.filePath, line: item.lineNumber, side: item.lineSide === 'old' ? 'LEFT' : 'RIGHT',
+      body: advisoryText(`**${item.severity}: ${item.title}**\n\n${item.explanation}\n\nSuggested action: ${item.suggestedFix}\n\nAdvisory AI finding; verify before changing code.`) }));
+    await githubRequest(`${path}/reviews`, token, { event: 'COMMENT', commit_id: headSha, body: `${marker}\nPRism AI advisory findings. This is not merge approval.`, comments });
+    return { status: 'posted' };
+  } catch { return { status: 'unavailable', errorCode: 'INLINE_POST_FAILED' }; }
+  finally { if (acquired) posting.delete(key); }
+}
+
+async function postReviewStatus(report, { getToken = installationToken, pending = false } = {}) {
+  if (process.env.GITHUB_POST_STATUS !== 'true' || !report.installationId) return { status: 'skipped' };
+  try {
+    const { repository, headSha } = reportScope(report);
+    const origin = new URL(process.env.APP_ORIGIN);
+    if (origin.origin !== process.env.APP_ORIGIN || !['http:', 'https:'].includes(origin.protocol)) throw Error('Invalid origin');
+    const token = await getToken(report.installationId, repository);
+    const state = pending ? 'pending' : report.aiStatus === 'completed' ? 'success' : 'error';
+    await githubRequest(`/repos/${repository}/statuses/${headSha}`, token, { state, context: 'prism-ai/review',
+      description: pending ? 'Review in progress (advisory)' : state === 'success' ? 'AI review completed; advisory, not merge approval' : 'AI review incomplete or unavailable; inspect report',
+      target_url: `${origin.origin}/analyses/${report.id}` });
+    return { status: 'posted' };
+  } catch { return { status: 'unavailable', errorCode: 'STATUS_POST_FAILED' }; }
 }
 
 async function postReviewSummary(report, { getToken = installationToken } = {}) {
@@ -208,3 +274,4 @@ function createGitHubRoutes() {
 }
 
 export { appMode, requireSession, canReadReport, userRepositories, installationToken, createGitHubRoutes, consumeReviewBudget, postReviewSummary, notificationRecipient };
+export { postInlineReview, postReviewStatus };
