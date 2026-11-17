@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <title>PRism AI — Pip, your curious code companion</title>
   <path d="M32 14V7" stroke="#263c32" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="32" cy="6" r="5" fill="#68bd89" stroke="#263c32" stroke-width="2"/>
-  <path d="M10 26H5v18h6m43-18h5v18h-6" fill="#e4876b" stroke="#263c32" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M23 54h18v8H23z" fill="#68bd89" stroke="#263c32" stroke-width="2"/>
-  <rect x="9" y="14" width="46" height="43" rx="15" fill="#d1b02d" stroke="#263c32" stroke-width="2.5"/>
+  <circle cx="32" cy="6" r="5" fill="#7bce9d" stroke="#263c32" stroke-width="2"/>
+  <path d="M10 26H5v18h6m43-18h5v18h-6" fill="#ed967d" stroke="#263c32" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M23 54h18v8H23z" fill="#7bce9d" stroke="#263c32" stroke-width="2"/>
+  <rect x="9" y="14" width="46" height="43" rx="15" fill="#e2c33d" stroke="#263c32" stroke-width="2.5"/>
   <path d="M13 33v-4c0-7 5-11 12-11h14" stroke="#fff4ce" stroke-width="3" stroke-linecap="round"/>
   <rect x="16" y="23" width="32" height="26" rx="10" fill="#263c32"/>
   <ellipse cx="25" cy="33" rx="4" ry="5" fill="#eff0e9"/>
   <ellipse cx="39" cy="33" rx="4" ry="5" fill="#eff0e9"/>
   <circle cx="26" cy="32" r="1.8" fill="#263c32"/>
   <circle cx="40" cy="32" r="1.8" fill="#263c32"/>
-  <path d="M28 42q4 4 8 0" stroke="#68bd89" stroke-width="2" stroke-linecap="round"/>
-  <path d="m48 12 5-7 5 7-5 7z" fill="#62afd8" stroke="#263c32" stroke-width="1.5"/>
+  <path d="M28 42q4 4 8 0" stroke="#7bce9d" stroke-width="2" stroke-linecap="round"/>
+  <path d="m48 12 5-7 5 7-5 7z" fill="#76bde5" stroke="#263c32" stroke-width="1.5"/>
 </svg>

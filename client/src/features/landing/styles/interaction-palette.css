@@ -1,23 +1,23 @@
 /* One coordinated palette, shared by cards, steps and educational diagrams. */
 .landing {
-  --accent-coral: #e4876b;
-  --soft-coral: #f0d2c5;
-  --ink-coral: #542b1f;
-  --accent-green: #68bd89;
-  --soft-green: #d1e3d4;
-  --ink-green: #1c422f;
-  --accent-yellow: #d1b02d;
-  --soft-yellow: #eadfb2;
-  --ink-yellow: #4f400f;
-  --accent-blue: #62afd8;
-  --soft-blue: #cfe3ed;
-  --ink-blue: #173b50;
-  --accent-orange: #e79549;
-  --soft-orange: #ecd7bd;
-  --ink-orange: #4c2d11;
-  --accent-lilac: #a18cc9;
-  --soft-lilac: #e0d6ec;
-  --ink-lilac: #312244;
+  --accent-coral: #ed967d;
+  --soft-coral: #f6e0d6;
+  --ink-coral: #633425;
+  --accent-green: #7bce9d;
+  --soft-green: #e0eee2;
+  --ink-green: #225039;
+  --accent-yellow: #e2c33d;
+  --soft-yellow: #f4edce;
+  --ink-yellow: #615015;
+  --accent-blue: #76bde5;
+  --soft-blue: #dfeef4;
+  --ink-blue: #1d455b;
+  --accent-orange: #f3a45b;
+  --soft-orange: #f5e4d0;
+  --ink-orange: #593515;
+  --accent-lilac: #b2a1d5;
+  --soft-lilac: #ece6f3;
+  --ink-lilac: #44335d;
 }
 .landing [data-color='coral'] {
   --step-color: var(--accent-coral);
