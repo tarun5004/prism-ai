@@ -77,6 +77,27 @@ Verified PR webhook ─┘          │
 - **Application code checks the output:** malformed findings and invalid evidence references are rejected. Matching evidence does not itself prove that the model's reasoning is correct.
 - **The database preserves the report:** MongoDB when connected; in-memory storage for local fallback. New manual runs get new report IDs.
 
+## GitLab CI checks
+
+[.gitlab-ci.yml](.gitlab-ci.yml) reuses the existing tests without application secrets or live model requests:
+
+1. `javascript_tests`: install locked server dependencies, run backend/frontend Node tests, publish JUnit reports. Backend test-file concurrency is bounded at two to reduce startup contention on small runners.
+2. `python_checks`: run the existing evaluation-scoring unit tests with Python 3.12.
+3. `queue_integration`: use isolated MongoDB 8 and Azurite service containers to verify duplicate jobs, pause controls and process-restart recovery. `TEST_MONGODB_HOST` and `TEST_AZURE_STORAGE_CONNECTION_STRING` change only test endpoints; localhost remains the default. The Azurite key in YAML is a public emulator key, not an Azure credential.
+4. `frontend_build`: runs only after all test jobs pass, installs locked client dependencies and builds the frontend.
+
+Node JUnit reports appear in GitLab's pipeline test view. XML reports and `client/dist/` are downloadable job artifacts with a configured seven-day expiry; they are not permanent evidence. A failed test fails its job and blocks the build. Branch/MR rules avoid duplicate push pipelines when an MR pipeline already exists.
+
+Keep GitHub as the primary repository. GitLab receives a separate copy when you push to its remote; this file does not automatically synchronize GitHub pushes or publish GitHub PR checks. No deployment, registry publication, paid API credentials or Azure resources are configured here. GitLab-hosted runner verification/quota can still prevent execution. Configuration validation and local checks do not prove a hosted pipeline passed.
+
+Example after configuring a `gitlab` remote for the intended private project:
+
+```powershell
+git push gitlab HEAD
+```
+
+Open **Build → Pipelines** to inspect the resulting run. The existing GitHub Actions workflow is retained. [GitLab services](https://docs.gitlab.com/ci/services/) · [CI Lint](https://docs.gitlab.com/api/lint/).
+
 ## Run it locally
 
 Use Node.js **22.12+** and npm. MongoDB is optional for exploration; use it for persistent history and restart-safe webhook deduplication.

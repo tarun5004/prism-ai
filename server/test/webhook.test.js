@@ -125,8 +125,9 @@ test('durable queue integration: real Mongo, Azurite duplicates and process rest
   const { saveAnalysis, findReviewJob } = await import('../src/features/analysis/analysis.repository.js');
   const { runReviewWorkflow } = await import('../src/features/analysis/analysis.workflow.js');
   const suffix = randomUUID().replaceAll('-', '');
-  const uri = 'mongodb://127.0.0.1:27017/prism_integration_' + suffix;
-  const queue = new QueueClient('UseDevelopmentStorage=true', 'prism-test-' + suffix);
+  const host = process.env.TEST_MONGODB_HOST || '127.0.0.1';
+  const uri = `mongodb://${host}:27017/prism_integration_${suffix}`;
+  const queue = new QueueClient(process.env.TEST_AZURE_STORAGE_CONNECTION_STRING || 'UseDevelopmentStorage=true', 'prism-test-' + suffix);
   try {
     await mongoose.connect(uri, { serverSelectionTimeoutMS: 3000 });
     const { ReviewJob } = await import('../src/features/analysis/analysis.model.js');
