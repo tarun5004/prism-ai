@@ -127,6 +127,8 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                     <span>{formatDate(analysis.createdAt)}</span>
                     {pr.headSha ? <code title={pr.headSha}>{pr.headBranch} @ {pr.headSha.slice(0, 8)}</code> : <span>{analysis.sample ? 'Owned fixture snapshot; no GitHub commit' : 'Revision not recorded in this older report'}</span>}
                     {pr.baseSha && <code title={pr.baseSha}>base {pr.baseBranch} @ {pr.baseSha.slice(0, 8)}</code>}
+                    {pr.reviewScope?.mode === 'incremental' && <span>Incremental review since {pr.diffBaseSha?.slice(0, 8)}; earlier unchanged code was not reviewed again.</span>}
+                    {pr.reviewScope?.excludedPaths?.length > 0 && <span>{pr.reviewScope.excludedPaths.length} file(s) excluded by repository settings.</span>}
                 </div>
                 {!successful && <p className="error-message" role="alert">{getFailureMessage(analysis)}</p>}
                 {pr.filesComplete === false && <p className="diff-warning">File retrieval is incomplete: {files.length} of {pr.totalChangedFiles ?? 'an unknown number of'} files were saved. This report covers only the available files.</p>}

@@ -29,6 +29,26 @@ test('repository settings use trusted base SHA; missing is default and malformed
 });
 
 afterEach(() => mock.restoreAll());
+
+test('incremental review requires a successful same-scope ancestor and complete compare', async () => {
+  const { fetchIncrementalReview } = await import('../src/features/pullRequest/pullRequest.service.js');
+  const current = { url, key: 'demo/project#12', baseSha: 'a'.repeat(40), headSha: 'c'.repeat(40), changedFiles: [{ path: 'full.js' }] };
+  const previous = { id: 'previous', installationId: 7, aiStatus: 'completed', pullRequest: { ...current, headSha: 'b'.repeat(40) } };
+  let response = { status: 'ahead', base_commit: { sha: previous.pullRequest.headSha }, merge_base_commit: { sha: previous.pullRequest.headSha }, files: [file] };
+  let calls = 0;
+  mock.method(globalThis, 'fetch', async address => { calls++; assert.match(String(address), /compare\/b{40}\.\.\.c{40}$/); return Response.json(response); });
+  const result = await fetchIncrementalReview(current, previous, { installationId: 7 });
+  assert.equal(result.reviewScope.mode, 'incremental');
+  assert.equal(result.diffBaseSha, previous.pullRequest.headSha);
+  assert.equal(result.changedFiles[0].path, file.filename);
+  assert.equal((await fetchIncrementalReview(current, { ...previous, installationId: 8 }, { installationId: 7 })).reviewScope.mode, 'full');
+  assert.equal((await fetchIncrementalReview(current, { ...previous, aiStatus: 'unavailable' }, { installationId: 7 })).reviewScope.mode, 'full');
+  assert.equal(calls, 1);
+  response = { ...response, merge_base_commit: { sha: 'd'.repeat(40) } };
+  assert.equal((await fetchIncrementalReview(current, previous, { installationId: 7 })).reviewScope.fallbackReason, 'compare-unavailable-or-incomplete');
+  response = { ...response, merge_base_commit: response.base_commit, files: Array(300).fill(file) };
+  assert.equal((await fetchIncrementalReview(current, previous, { installationId: 7 })).reviewScope.mode, 'full');
+});
 const url = 'https://github.com/demo/project/pull/12';
 const metadata = { title: 'Example', html_url: url, changed_files: 101, base: { ref: 'main', sha: 'base' }, head: { ref: 'fix', sha: 'head' } };
 const file = { filename: 'new.js', previous_filename: 'old.js', status: 'renamed', additions: 1, deletions: 0, changes: 1, patch: '@@ -0,0 +1 @@\n+hello();' };

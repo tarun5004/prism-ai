@@ -47,7 +47,7 @@ async function retrieveSemanticContext(pullRequest, { installationId, enabled = 
     if (!chunks.length) return { ...original, semanticRetrieval: { status: 'empty', embeddingCalls } };
     const model = process.env.GEMINI_EMBEDDING_MODEL?.trim() || 'gemini-embedding-001';
     // Different installation/revision/model never shares a collection or vector dimension.
-    const scope = hash(JSON.stringify([installationId || 'local', pullRequest.repository.toLowerCase(), pullRequest.baseSha, pullRequest.headSha, model]));
+    const scope = hash(JSON.stringify([installationId || 'local', pullRequest.repository.toLowerCase(), pullRequest.baseSha, pullRequest.diffBaseSha || pullRequest.baseSha, pullRequest.headSha, model]));
     const records = new Map(chunks.map(chunk => [hash(scope + JSON.stringify(chunk)), chunk]));
     const store = client || await chromaClient(AbortSignal.timeout(20000));
     const collection = await store.getOrCreateCollection({ name: 'prism-' + scope.slice(0, 36), embeddingFunction: null,
@@ -63,7 +63,7 @@ async function retrieveSemanticContext(pullRequest, { installationId, enabled = 
     };
     if (missing.length) await collection.upsert({ ids: missing, documents: missing.map(id => records.get(id).code),
       embeddings: await vectors(missing.map(id => records.get(id).code), 'RETRIEVAL_DOCUMENT'),
-      metadatas: missing.map(id => { const chunk = records.get(id); return { filePath: chunk.filePath, lineSide: chunk.lineSide, startLine: chunk.startLine, revision: chunk.lineSide === 'old' ? pullRequest.baseSha : pullRequest.headSha }; }) });
+      metadatas: missing.map(id => { const chunk = records.get(id); return { filePath: chunk.filePath, lineSide: chunk.lineSide, startLine: chunk.startLine, revision: chunk.lineSide === 'old' ? pullRequest.diffBaseSha || pullRequest.baseSha : pullRequest.headSha }; }) });
     const query = JSON.stringify({ ...prepared.intent, files: prepared.files.map(file => file.filePath) }).slice(0, 1000);
     const result = await collection.query({ queryEmbeddings: await vectors([query], 'RETRIEVAL_QUERY'), nResults: Math.min(4, ids.length), include: [] });
     // Use only current trusted chunks, never unverified text returned by the store.

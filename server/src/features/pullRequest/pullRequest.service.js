@@ -75,6 +75,28 @@ async function fetchRepositoryPolicy(pullRequest, { token = process.env.GITHUB_T
   } catch { throw new PullRequestError('Repository policy could not be read or is invalid. Check .prism.json on the base revision.', 502, 'REVIEW_POLICY_INVALID'); }
 }
 
+async function fetchIncrementalReview(current, previous, { installationId, token = process.env.GITHUB_TOKEN } = {}) {
+  const full = reason => ({ ...current, reviewScope: { mode: 'full', fallbackReason: reason } });
+  const old = previous?.pullRequest;
+  if (previous?.aiStatus !== 'completed' || (previous.installationId || undefined) !== installationId
+    || old?.key?.toLowerCase() !== current.key?.toLowerCase() || old?.baseSha !== current.baseSha
+    || !/^[a-f\d]{40}$/i.test(old?.headSha || '') || old.headSha === current.headSha) return full('no-compatible-baseline');
+  try {
+    const { owner, repository } = parsePullRequestUrl(current.url);
+    const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'prism-ai', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    const data = await requestGitHub(`${githubApiBaseUrl}/repos/${owner}/${repository}/compare/${old.headSha}...${current.headSha}`,
+      { headers, signal: AbortSignal.timeout(15000) }, 4 * 1024 * 1024);
+    // GitHub comparison files cap at 300. At the boundary, prefer a full review.
+    if (data.status !== 'ahead' || data.base_commit?.sha !== old.headSha || data.merge_base_commit?.sha !== old.headSha
+      || !Array.isArray(data.files) || data.files.length >= 300 || data.files.some(file => typeof file?.filename !== 'string')) throw Error('Incomplete compare');
+    return { ...current, diffBaseSha: old.headSha, totalChangedFiles: data.files.length, filesComplete: true,
+      changedFiles: data.files.map(file => ({ path: file.filename, ...(file.previous_filename ? { previousPath: file.previous_filename } : {}),
+        status: file.status, additions: file.additions, deletions: file.deletions, changes: file.changes,
+        patchAvailable: Boolean(file.patch), patch: typeof file.patch === 'string' ? file.patch : '' })),
+      reviewScope: { mode: 'incremental', previousAnalysisId: previous.id, fromSha: old.headSha, toSha: current.headSha } };
+  } catch { return full('compare-unavailable-or-incomplete'); }
+}
+
 async function fetchPullRequest(pullRequestUrl, { token = process.env.GITHUB_TOKEN } = {}) {
   const { owner, repository, number } = parsePullRequestUrl(pullRequestUrl);
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'prism-ai-beta' };
@@ -174,7 +196,7 @@ async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_G
 
   for (const file of candidates.slice(0, 5)) {
     const oldSide = file.status === 'removed' || (file.additions === 0 && file.deletions > 0);
-    const sha = oldSide ? pullRequest.baseSha : pullRequest.headSha;
+    const sha = oldSide ? pullRequest.diffBaseSha || pullRequest.baseSha : pullRequest.headSha;
     const path = oldSide ? file.previousPath || file.path : file.path;
     seen.add(`${sha}:${path}`);
     try {
@@ -231,4 +253,4 @@ async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_G
   return result;
 }
 
-export { fetchPullRequest, fetchReviewContext, fetchRepositoryPolicy, PullRequestError };
+export { fetchPullRequest, fetchReviewContext, fetchRepositoryPolicy, fetchIncrementalReview, PullRequestError };

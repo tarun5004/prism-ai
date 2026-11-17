@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { getAiConfiguration, runAiAnalysis, exportReviewTrace, validateFindings, validateReview } from '../ai/ai.service.js';
 import { prepareAiInput, buildReviewMemory } from '../ai/ai.context.js';
-import { fetchPullRequest, fetchReviewContext, fetchRepositoryPolicy, PullRequestError } from '../pullRequest/pullRequest.service.js';
+import { fetchPullRequest, fetchReviewContext, fetchRepositoryPolicy, fetchIncrementalReview, PullRequestError } from '../pullRequest/pullRequest.service.js';
 import { applyReviewPolicy } from '../pullRequest/review.policy.js';
 import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis, findAnalysis } from './analysis.repository.js';
 import { postReviewSummary } from '../pullRequest/github.app.js';
@@ -32,6 +32,12 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     if (typeof pullRequest.key === 'string') pullRequest.key = pullRequest.key.toLowerCase();
     if (expectedRevision && (pullRequest.baseSha !== expectedRevision.baseSha || pullRequest.headSha !== expectedRevision.headSha)) {
       throw new PullRequestError('PR revision changed before webhook review. Use the latest event or analyze the PR manually.', 409);
+    }
+    pullRequest.reviewScope = { mode: 'full' };
+    if (trigger?.action === 'synchronize' || trigger?.command === 'review') {
+      let previous;
+      try { previous = await findPreviousAnalysis(pullRequest, installationId, { successfulOnly: true }); } catch { /* Full diff remains safe if history is unavailable. */ }
+      pullRequest = await measure('incremental', () => fetchIncrementalReview(pullRequest, previous, { installationId, token: githubToken }));
     }
     if (process.env.REVIEW_REPOSITORY_CONFIG === 'true') {
       const policy = await measure('policy', () => fetchRepositoryPolicy(pullRequest, { token: githubToken }));

@@ -114,7 +114,7 @@ function prepareAiInput(pullRequest) {
   coverage.contextSnippets = snippets.length;
   coverage.retrievalMode = pullRequest?.reviewContext?.scope || 'diff-only';
   if (pullRequest?.reviewContext?.semanticRetrieval) coverage.semanticRetrieval = pullRequest.reviewContext.semanticRetrieval;
-  coverage.contextSources = snippets.map(snippet => ({ filePath: snippet.filePath, lineSide: snippet.lineSide, startLine: snippet.startLine, endLine: snippet.startLine + snippet.code.split('\n').length - 1, role: snippet.role, revision: snippet.lineSide === 'old' ? pullRequest.baseSha || null : pullRequest.headSha || null }));
+  coverage.contextSources = snippets.map(snippet => ({ filePath: snippet.filePath, lineSide: snippet.lineSide, startLine: snippet.startLine, endLine: snippet.startLine + snippet.code.split('\n').length - 1, role: snippet.role, revision: snippet.lineSide === 'old' ? pullRequest.diffBaseSha || pullRequest.baseSha || null : pullRequest.headSha || null }));
   coverage.contextOmissions = contextOmissions;
   const memory = sanitizeReviewMemory(pullRequest.reviewMemory, pullRequest);
   coverage.memorySource = memory ? { analysisId: memory.analysisId, headSha: memory.headSha, acceptedFindings: memory.findings.length } : null;

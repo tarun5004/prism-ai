@@ -120,11 +120,13 @@ async function saveEmailNotification(id, notification) {
 }
 
 // Same-PR, same-installation history supplies hints, never current code evidence.
-async function findPreviousAnalysis(pullRequest, installationId) {
+async function findPreviousAnalysis(pullRequest, installationId, { successfulOnly = false } = {}) {
   if (typeof pullRequest.key !== 'string' || !/^[a-f\d]{40}$/i.test(pullRequest.headSha || '') || !/^[a-f\d]{40}$/i.test(pullRequest.baseSha || '')) return null;
   const query = { status: 'completed', installationId: installationId || { $exists: false }, 'pullRequest.key': pullRequest.key.toLowerCase(), $or: [{ 'pullRequest.headSha': { $ne: pullRequest.headSha } }, { 'pullRequest.baseSha': { $ne: pullRequest.baseSha } }] };
-  if (mongoose.connection.readyState === 1) return Analysis.findOne(query).sort({ createdAt: -1 }).select('id pullRequest findings feedback').lean();
+  if (successfulOnly) query.aiStatus = 'completed';
+  if (mongoose.connection.readyState === 1) return Analysis.findOne(query).sort({ createdAt: -1 }).select('id installationId aiStatus pullRequest findings feedback').lean();
   return Array.from(analyses.values()).filter(report => report.status === 'completed' && (report.installationId || undefined) === installationId
+    && (!successfulOnly || report.aiStatus === 'completed')
     && report.pullRequest?.key?.toLowerCase() === pullRequest.key.toLowerCase()
     && (report.pullRequest.headSha !== pullRequest.headSha || report.pullRequest.baseSha !== pullRequest.baseSha))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
