@@ -1,6 +1,17 @@
 # PRism AI — humne actually build kaise kiya?
 
-**14 Nov 2026.** Ek section at a time padho. Pattern: input lo → process/verify karo → result return karo → failure handle karo.
+**17 Nov 2026.** Ek section at a time padho. Pattern: input lo → process/verify karo → result return karo → failure handle karo.
+
+## New: CodeRabbit-style core review loop
+
+- **Settings:** `.prism.json` se ignored folders aur short review guidelines milti hain. Trusted base commit se read hoti hai; contributor apne PR se apna review disable nahi kar sakta. [Setup](../README.md#core-pr-review-controls--17-november).
+- **Incremental:** pehle A review hua, ab B push hua: compatible history ho to A-to-B diff review karo. Force-push ya incomplete data ho to full diff lo. Report scope clear dikhati hai.
+- **Inline findings:** optional GitHub code-line comments. Latest head aur exact diff evidence recheck; maximum five unique AI findings. No automatic approval or code edits.
+- **Commands:** PR conversation mein `@prism-ai help`, `review`, `full review`, `pause`, `resume`, `summary`. Signature ke baad actual GitHub write permission check hoti hai. Random commenter AI quota consume nahi kar sakta.
+- **Pause:** MongoDB mein save hota hai; restart ke baad bhi yaad rahega. Worker start hone se pehle check karta hai. Already-running model call cancel nahi hoti.
+- **Status:** optional `prism-ai/review`. Green means review completed, bug-free code ya merge approval nahi. Partial/unavailable AI green nahi hoti.
+
+Do focused modules: [review.policy.js](../server/src/features/pullRequest/review.policy.js) settings validation ke liye; [review.controls.js](../server/src/features/pullRequest/review.controls.js) commands/pause ke liye. Baaki existing services extend hue; new dependency ya paid infrastructure nahi.
 
 ## 1. PR fetch + diff viewer
 

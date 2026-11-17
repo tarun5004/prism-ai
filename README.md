@@ -253,7 +253,55 @@ Use the PEM text with literal `\n` escapes where the deployment environment cann
 
 Sessions, consumed OAuth state and review counters now persist in MongoDB. Tokens are encrypted with AES-256-GCM; keep the same private `SESSION_ENCRYPTION_KEY` across API/worker restarts. Authorization rechecks GitHub before report reads and feedback writes. Allowances are six starts per actor/installation per hour, thirty globally per hour and `REVIEW_MONTHLY_LIMIT` globally per UTC month (default 100). These count review starts, not provider tokens or money, and do not guarantee a billing cap.
 
-`GITHUB_POST_REVIEW=true` enables one advisory bot summary/link per installation/repository/base/head revision. It scans at most 300 existing comments, posts after saving, never approves or merges, and records failed delivery without erasing the report. Grant PR write only when enabling it. No real summary was posted during verification.
+`GITHUB_POST_REVIEW=true` enables one advisory bot summary/link per installation/repository/base/head revision. It scans at most 300 existing comments, posts after saving, never approves or merges, and records failed delivery without erasing the report. Grant PR write only when enabling it. A real summary and sequential duplicate prevention were verified on the owned PR on 16 November; the new features below have separate acceptance boundaries.
+
+### Core PR review controls — 17 November
+
+The same pipeline now supports incremental reviews, repository settings, inline findings, PR commands and advisory commit status. This is a bounded implementation inspired by [CodeRabbit's review lifecycle](https://docs.coderabbit.ai/guides/code-review-overview), [commands](https://docs.coderabbit.ai/reference/review-commands) and [configuration](https://docs.coderabbit.ai/reference/configuration), not full commercial parity or its private implementation.
+
+**Owner setup:** add desired switches to the existing ignored `server/.env`; do not replace your credentials. All new switches default off.
+
+```dotenv
+REVIEW_REPOSITORY_CONFIG=true
+GITHUB_REVIEW_COMMANDS=true
+GITHUB_POST_INLINE=true
+GITHUB_POST_STATUS=false
+```
+
+1. GitHub App **Permissions & events**: Contents read, Pull requests read/write. Subscribe to **Pull request** and **Issue comment** events. Commands use PR conversation comments, not inline review threads. Save and approve installation permission changes if requested.
+2. Optional status: grant **Commit statuses read/write**, then set `GITHUB_POST_STATUS=true`. This uses commit statuses, not the Checks API. Do not use this advisory context as a required merge gate.
+3. Restart backend and worker. On a non-draft PR in an installed repository, post `@prism-ai help`, then `@prism-ai review`. Only fresh write/maintain/admin permission is accepted; read-only users and bots cannot trigger commands.
+
+| Command (prefix `@prism-ai`) | Behavior |
+| --- | --- |
+| `review` | Incremental from a compatible successful baseline, otherwise full diff |
+| `full review` | Complete current PR diff |
+| `pause` | Stop future automatic work for this installation/repo/PR |
+| `resume` | Enable future automatic events; does not immediately run a review |
+| `summary` | Link latest saved report; it may describe an older revision |
+| `help` | List commands |
+
+Explicit reviews bypass pause once and consume normal review allowances. Same comment ID means same job across redelivery/pushes; post a new command for a deliberate fresh run. Edited comments are ignored. Pause persists without expiry in MongoDB; no-database development fallback is volatile. Already-running inference is not cancelled; queued jobs recheck pause before starting.
+
+**Incremental scope:** `synchronize` events compare the last successfully AI-reviewed head against current head only for the same installation/PR/base and a proven ancestor. Force-push, changed base, partial/failed baseline, unavailable history or comparison at the 300-file boundary falls back to full review. The actual patch and `diffBaseSha` are saved and shown; unchanged earlier code is not reviewed again. Manual UI reviews stay full.
+
+**Repository settings:** optional `.prism.json` is read at the PR **base SHA**, so a contributor cannot change their own effective settings. Missing config uses defaults; malformed/unavailable configured policy fails closed. Paths are literal files or directory prefixes ending in `/`, without glob syntax.
+
+```json
+{
+  "autoReview": true,
+  "ignorePaths": ["vendor/", "generated/", "package-lock.json"],
+  "pathInstructions": [
+    { "path": "server/src/", "instructions": "Check resource ownership before modifying a user's records." }
+  ]
+}
+```
+
+Limits: 8 KiB config, 20 ignored paths, 10 guidelines of 500 characters. Guidelines cannot override security/evidence rules, authorize tool execution or prove defects. Exclusions remain visible. `autoReview:false` suppresses automatic reviews; deliberate authorized review still works.
+
+**GitHub delivery:** optional inline feedback posts at most five unique validated AI findings in a `COMMENT` review, pinned to the reviewed head. Stale/closed PRs are skipped. Incremental findings must also map onto the current full PR diff; unmappable ones remain in the web report. No approvals, requested changes, auto-fixes or merges. Rules are not posted as confirmed AI bugs. Optional `prism-ai/review` status is green only for completed AI, never partial/unavailable AI, and explicitly means advisory completion. Missing write permissions/network failures preserve reports; core read tokens do not request optional status permissions. Sequential/in-process duplicate checks are not an exactly-once guarantee after ambiguous network/process crashes.
+
+Verification: mocked GitHub/model contracts and real local Mongo/Azurite restart/queue checks are recorded in [the feature ledger](docs/FEATURE_ROADMAP.md). New command/inline/status delivery still needs live acceptance after the App setup above. No new hosted CI run, deployment, paid model request or live GitHub comment/status was made for this slice.
 
 No host account, paid service, license or deployment URL was created. Free/student hosting eligibility and sleep limits need checking; sleeping instances can miss GitHub's webhook response deadline. No always-on/free-unlimited claim is made.
 

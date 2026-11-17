@@ -1,10 +1,30 @@
 # PRism AI — current features and next work
 
-Updated **16 November 2026**. This is the single feature backlog. [README](../README.md) = setup and dated live verification; [cheatsheet](FEATURE_CHEATSHEET.md) = beginner explanations; [evaluation guide](beta/DEMO_AND_EVALUATION.md) = quality checks; [historical ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md) = past chunks/failures.
+Updated **17 November 2026**. This is the single feature backlog. [README](../README.md) = setup and dated live verification; [cheatsheet](FEATURE_CHEATSHEET.md) = beginner explanations; [evaluation guide](beta/DEMO_AND_EVALUATION.md) = quality checks; [historical ledger](superpowers/plans/2026-10-31-pr-workflow-polish.md) = past chunks/failures.
 
 **Goal:** a clean, interview-explainable AI full-stack demo. LangChain, LangGraph and ChromaDB are now required learning features, not optional keywords. LangChain providers, bounded Chroma RAG and Mongo-backed LangGraph checkpoints are implemented; external acceptance remains separate. Extend one existing review pipeline; do not build a parallel advanced app.
 
-## CodeRabbit comparison — 16 November
+## Core PR loop delivery — 17 November
+
+User authorized plan-first autonomous implementation with small local commits and beginner-readable code. [Implementation plan](superpowers/plans/2026-11-16-core-review-workflow.md). Scope: the core GitHub PR-review loop, not the entire CodeRabbit commercial product. No new runtime dependency or hosted resource.
+
+| Added capability | Existing module / boundary |
+| --- | --- |
+| Repository policy + path guidelines | New small `review.policy.js`; strict optional base-SHA `.prism.json`, literal ignored paths, bounded instructions, visible exclusions. Opt-in environment switch; no contributor-controlled self-disable |
+| Incremental review | Existing fetch/repository/service compare a compatible successful prior head; same installation/PR/base and proven ancestor. Uncertain/incomplete compare falls back full. Store actual patch and `diffBaseSha`; UI labels scope |
+| GitHub inline findings | Existing GitHub module, opt-in max five unique validated AI findings, current-head/full-PR-diff recheck, COMMENT only; rules/unmappable/stale evidence omitted |
+| PR commands + pause | New small `review.controls.js`, existing signed webhook/queue. Exact help/review/full review/pause/resume/summary; fresh write permission. Persistent Mongo control scoped per PR, monotonic comment IDs; queued work rechecks pause |
+| Advisory GitHub status | Existing GitHub module, opt-in commit status with separate write-token permissions. Completed AI can succeed; partial/unavailable remains error, never merge approval |
+
+Command identity is independent of changing head SHAs, so redelivering a comment after another push does not create another paid run. Existing completed report IDs are reused before inference/status changes. Reviews, annotations, RAG, MCP, summaries/walkthroughs, email and queue all reuse the existing pipeline. Pause does not cancel already-running inference. Cross-process ambiguous notification delivery is not exactly-once; no distributed outbound lock was added for this small demo.
+
+Verification: full offline backend suite **165 passed, 1 opt-in integration skipped**, frontend **41 passed**, production build passed. Separately enabled real MongoDB/Azurite test **1 passed**, including atomic pause ordering, paused queued work and pause/checkpoint recovery in another Node process. GitHub/model calls in new feature tests are mocked. RED/GREEN regressions caught command replay, completed-report replay/status, inline lock ownership, duplicate inline findings and optional write-permission leakage. No new live provider, GitHub write, email, hosted CI or deployment verification is claimed. Final recheck passed. Commits: `907a9e0` reliability, `ebe174b` policy, `87ec343` incremental, `61236ba` inline/status, `3a093b9` commands, `cb94864` replay/permission hardening. Seven existing Python evaluation tests also passed.
+
+Owner setup remains: enable the desired default-off flags and **Issue comment** subscription, grant optional Commit statuses write only if enabling status. Follow [README setup](../README.md#core-pr-review-controls--17-november), then test one real authorized PR command/inline review. Existing Gemini intermittent upstream failures and human quality evaluation remain unresolved.
+
+Intentionally outside this core slice: unrestricted conversational agents, sandboxed contributor-code execution, auto-fix/auto-merge, IDE extensions, complete static-analysis toolchains and enterprise dashboards. Existing deterministic risk signals are not full SAST; no complete dependency graph or commercial parity claim.
+
+## CodeRabbit comparison — 16 November (historical baseline)
 
 Sources: [public architecture](https://docs.coderabbit.ai/overview/architecture), [context engineering](https://www.coderabbit.ai/blog/the-art-and-science-of-context-engineering), [review lifecycle](https://docs.coderabbit.ai/guides/code-review-overview). This compares documented capabilities; exact internal prompts, retry/fallback policies and infrastructure are not established by these sources.
 
@@ -12,7 +32,7 @@ Sources: [public architecture](https://docs.coderabbit.ai/overview/architecture)
 | --- | --- | --- |
 | Context | Repository exploration, code graph, intent and guidelines | PR metadata, pinned windows/direct imports, optional docs/Chroma. Bounded retrieval is not a complete dependency graph |
 | Verification | Specialized verification agents | Exact evidence/schema checks. A matching line does not prove a finding's reasoning; human-labelled cases remain necessary |
-| Incremental reviews | Changes since the previous review | Revision deduplication, then the current base-to-head PR diff. Deduplication is not incremental review |
+| Incremental reviews | Changes since the previous review | Previously revision deduplication only; 17 November adds compatible previous-head comparison with full fallback and explicit scope |
 | Static analysis | Sandboxed repository analysis with linters/SAST | Keyword/path heuristics only; keep their signals distinct from confirmed bugs. No untrusted repository execution |
 | Review generation | Specialized agents and context-dependent prompts/models | One bounded call generates findings and narrative together. Splitting work may isolate failures but costs more calls; not proven to fix our 5-line fixture |
 | Reliability | Public pages do not establish an exact retry policy | Keep timeouts, transport errors, provider JSON rejection and local evidence rejection separate. Do not copy an assumed fallback design |
@@ -25,7 +45,7 @@ Sources: [public architecture](https://docs.coderabbit.ai/overview/architecture)
 
 **Verification after the slice:** 149 backend checks passed, one opt-in external integration skipped; 41 frontend checks and production build passed. New real PR #3 service report `781c14a3-fdc3-4da1-a32e-e867036642b2` completed with Groq in one attempt (model: 3.6 seconds) and was read back from MongoDB. A signed event replay through the real HTTP handler, GitHub App credentials, live Groq and an isolated MongoDB database completed in 8.7 seconds; duplicate replay retained one report/run. The temporary database was removed. These were signed local replays, not a fresh GitHub commit delivery. Retry recovery was exercised offline; no live retry recovery or sustained availability is claimed.
 
-**Next slices:** measure supported/duplicate/incorrect findings on labelled cases; add incremental diff review if repeated full-PR cost warrants it. No agent swarm, full clone/sandbox or extra hosted infrastructure is needed for this demo. CodeRabbit-style context work does not itself resolve Gemini's upstream 503/504 responses.
+**Next acceptance:** measure supported/duplicate/incorrect findings on labelled cases and validate the newly implemented core loop live after App setup. No agent swarm, full clone/sandbox or extra hosted infrastructure is needed for this demo. CodeRabbit-style context work does not itself resolve Gemini's upstream 503/504 responses.
 
 ## Implemented today
 
