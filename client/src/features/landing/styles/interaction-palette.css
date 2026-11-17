@@ -1,30 +1,32 @@
 /* One coordinated palette, shared by cards, steps and educational diagrams. */
 .landing {
-  --accent-coral: #ed967d;
-  --soft-coral: #f6e0d6;
-  --ink-coral: #633425;
-  --accent-green: #7bce9d;
-  --soft-green: #e0eee2;
-  --ink-green: #225039;
+  --accent-coral: #e4633d;
+  --soft-coral: #e5a78b;
+  --ink-coral: #381e15;
+  --accent-green: #4bbc79;
+  --soft-green: #a4cdaa;
+  --ink-green: #1b402e;
   --accent-yellow: #e2c33d;
   --soft-yellow: #f4edce;
   --ink-yellow: #615015;
-  --accent-blue: #76bde5;
-  --soft-blue: #dfeef4;
-  --ink-blue: #1d455b;
-  --accent-orange: #f3a45b;
-  --soft-orange: #f5e4d0;
-  --ink-orange: #593515;
-  --accent-lilac: #b2a1d5;
-  --soft-lilac: #ece6f3;
-  --ink-lilac: #44335d;
+  --accent-blue: #3ca1da;
+  --soft-blue: #99c9dc;
+  --ink-blue: #163445;
+  --accent-orange: #ee811d;
+  --soft-orange: #e5b985;
+  --ink-orange: #472a11;
+  --accent-lilac: #886dbe;
+  --soft-lilac: #bba6d4;
+  --ink-lilac: #130e1a;
 }
 .landing [data-color='coral'] {
+  --subtle: var(--ink-coral);
   --step-color: var(--accent-coral);
   --step-soft: var(--soft-coral);
   --step-ink: var(--ink-coral);
 }
 .landing [data-color='green'] {
+  --subtle: var(--ink-green);
   --step-color: var(--accent-green);
   --step-soft: var(--soft-green);
   --step-ink: var(--ink-green);
@@ -35,19 +37,25 @@
   --step-ink: var(--ink-yellow);
 }
 .landing [data-color='blue'] {
+  --subtle: var(--ink-blue);
   --step-color: var(--accent-blue);
   --step-soft: var(--soft-blue);
   --step-ink: var(--ink-blue);
 }
 .landing [data-color='orange'] {
+  --subtle: var(--ink-orange);
   --step-color: var(--accent-orange);
   --step-soft: var(--soft-orange);
   --step-ink: var(--ink-orange);
 }
 .landing [data-color='lilac'] {
+  --subtle: var(--ink-lilac);
   --step-color: var(--accent-lilac);
   --step-soft: var(--soft-lilac);
   --step-ink: var(--ink-lilac);
+}
+.landing .closing-content .landing-eyebrow {
+  color: var(--step-ink);
 }
 .landing .color-card {
   transition:
