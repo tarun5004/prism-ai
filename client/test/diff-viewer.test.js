@@ -482,3 +482,18 @@ test('homepage accent ink remains readable on both active and soft palette surfa
     }
   }
 });
+
+test('the homepage owns one cursor trail independently of the mascot section', async () => {
+  const scene = await vite.ssrLoadModule('/src/features/landing/PrismScene.jsx');
+  const home = renderToStaticMarkup(createElement(app.LandingPage));
+  const mascot = renderToStaticMarkup(createElement(scene.default));
+  assert.equal((home.match(/class="cursor-cubes"/g) || []).length, 1);
+  assert.ok(!mascot.includes('class="cursor-cubes"'), 'The trail must follow the full homepage, not the mascot section');
+});
+
+test('the shared logo remains a valid UTF-8 SVG asset', () => {
+  const bytes = readFileSync(new URL('../public/prism-mark.svg', import.meta.url));
+  const svg = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  assert.match(svg, /<svg\b[^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  assert.match(svg, /<\/svg>\s*$/);
+});

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import PipMascot from './PipMascot.jsx';
-import CursorCubes from './CursorCubes.jsx';
 import './styles/thought-scene.css';
 
 const thoughts = [
@@ -70,7 +69,6 @@ export default function PrismScene() {
       onPointerLeave={resetTilt}
     >
       <div className="scene-grid" aria-hidden="true" />
-      <CursorCubes />
       <div className="scene-meta">
         <span>FIG. 01 / PIP THINKS IN CODE</span>
         <span>FOLLOW A THOUGHT. CHANGE YOUR PERSPECTIVE. ↗</span>

@@ -11,6 +11,7 @@ import HomeConnection from './HomeConnection.jsx';
 import ContextPipeline from './ContextPipeline.jsx';
 import DeliveryPipeline from './DeliveryPipeline.jsx';
 import MotionLabel from './MotionLabel.jsx';
+import CursorCubes from './CursorCubes.jsx';
 import LandingFooter, { ClosingPerspective } from './LandingFooter.jsx';
 import './landing.css';
 
@@ -27,6 +28,7 @@ export default function LandingPage({ onNavigate, ...connection }) {
   );
   return (
     <div className="landing">
+      <CursorCubes />
       <a className="skip-link" href="#landing-main">
         Skip to content
       </a>

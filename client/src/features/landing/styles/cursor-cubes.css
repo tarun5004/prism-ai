@@ -1,0 +1,14 @@
+.landing > .cursor-cubes {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 30;
+  contain: strict;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing > .cursor-cubes {
+    display: none;
+  }
+}
