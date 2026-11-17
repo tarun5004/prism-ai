@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import { rankGuidance } from '../ai/ai.context.js';
+import { parseReviewPolicy } from './review.policy.js';
 
 const githubApiBaseUrl = 'https://api.github.com';
 
@@ -19,9 +20,10 @@ function parsePullRequestUrl(value) {
   return { owner: match[1], repository: match[2], number: match[3] };
 }
 
-async function requestGitHub(address, options, maxBytes) {
+async function requestGitHub(address, options, maxBytes, allowMissing = false) {
   try {
     const response = await fetch(address, options);
+    if (allowMissing && response.status === 404) return null;
     if (!response.ok) {
       let message = `GitHub request failed (HTTP ${response.status}).`;
       if (response.status === 401) message = 'GitHub authentication failed. Check the server GitHub token.';
@@ -56,6 +58,21 @@ async function requestGitHub(address, options, maxBytes) {
     }
     throw new PullRequestError('Could not connect to GitHub or read its response. Try again later.');
   }
+}
+
+async function fetchRepositoryPolicy(pullRequest, { token = process.env.GITHUB_TOKEN } = {}) {
+  try {
+    if (!pullRequest.baseSha) throw Error('Missing trusted revision');
+    const { owner, repository } = parsePullRequestUrl(pullRequest.url);
+    const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'prism-ai', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    const data = await requestGitHub(`${githubApiBaseUrl}/repos/${owner}/${repository}/contents/.prism.json?ref=${encodeURIComponent(pullRequest.baseSha)}`,
+      { headers, signal: AbortSignal.timeout(10000) }, 16000, true);
+    if (!data) return parseReviewPolicy();
+    if (data.encoding !== 'base64' || typeof data.content !== 'string' || data.size > 8000) throw Error('Policy size');
+    const text = Buffer.from(data.content, 'base64').toString('utf8');
+    if (Buffer.byteLength(text) > 8000) throw Error('Policy size');
+    return parseReviewPolicy(JSON.parse(text));
+  } catch { throw new PullRequestError('Repository policy could not be read or is invalid. Check .prism.json on the base revision.', 502, 'REVIEW_POLICY_INVALID'); }
 }
 
 async function fetchPullRequest(pullRequestUrl, { token = process.env.GITHUB_TOKEN } = {}) {
@@ -214,4 +231,4 @@ async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_G
   return result;
 }
 
-export { fetchPullRequest, fetchReviewContext, PullRequestError };
+export { fetchPullRequest, fetchReviewContext, fetchRepositoryPolicy, PullRequestError };

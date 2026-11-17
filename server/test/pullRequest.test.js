@@ -1,6 +1,32 @@
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
 import { fetchPullRequest, fetchReviewContext } from '../src/features/pullRequest/pullRequest.service.js';
+import { parseReviewPolicy, applyReviewPolicy } from '../src/features/pullRequest/review.policy.js';
+
+test('repository policy is bounded, explicit and applies literal path prefixes', () => {
+  const policy = parseReviewPolicy({ autoReview: false, ignorePaths: ['vendor/', 'generated.js'], pathInstructions: [{ path: 'src/', instructions: 'Check ownership before deleting records.' }] });
+  const selected = applyReviewPolicy({ changedFiles: [{ path: 'vendor/x.js' }, { path: 'src/a.js' }, { path: 'generated.json' }] }, policy);
+  assert.deepEqual(selected.changedFiles.map(file => file.path), ['src/a.js', 'generated.json']);
+  assert.deepEqual(selected.reviewScope.excludedPaths, ['vendor/x.js']);
+  assert.deepEqual(selected.reviewGuidelines, [{ path: 'src/', instructions: 'Check ownership before deleting records.' }]);
+  assert.equal(policy.autoReview, false);
+  for (const invalid of [{ autoReview: 'false' }, { ignorePaths: ['../'] }, { ignorePaths: ['*'] }, { pathInstructions: [{ path: 'src/', instructions: 'api_key="secret-value"' }] }, { unexpected: true }]) assert.throws(() => parseReviewPolicy(invalid));
+  assert.throws(() => parseReviewPolicy({ ignorePaths: Array(21).fill('src/') }));
+});
+
+test('repository settings use trusted base SHA; missing is default and malformed/unavailable fails closed', async () => {
+  const { fetchRepositoryPolicy } = await import('../src/features/pullRequest/pullRequest.service.js');
+  let status = 200; let content = JSON.stringify({ autoReview: false });
+  mock.method(globalThis, 'fetch', async address => {
+    assert.ok(String(address).endsWith('/contents/.prism.json?ref=trusted-base'));
+    return Response.json(status === 200 ? { encoding: 'base64', content: Buffer.from(content).toString('base64'), size: content.length } : {}, { status });
+  });
+  const pr = { url, baseSha: 'trusted-base', headSha: 'untrusted-head' };
+  assert.equal((await fetchRepositoryPolicy(pr)).autoReview, false);
+  status = 404; assert.equal((await fetchRepositoryPolicy(pr)).autoReview, true);
+  status = 503; await assert.rejects(fetchRepositoryPolicy(pr), /policy/i);
+  status = 200; content = '{bad'; await assert.rejects(fetchRepositoryPolicy(pr), /policy/i);
+});
 
 afterEach(() => mock.restoreAll());
 const url = 'https://github.com/demo/project/pull/12';

@@ -85,6 +85,10 @@ function prepareAiInput(pullRequest) {
     const value = pullRequest?.[key];
     if (typeof value === 'string' && !credentialText.test(value) && !shellCredential.test(value)) intent[key] = value.slice(0, key === 'title' ? 200 : 2000);
   }
+  const guidelines = (pullRequest.reviewGuidelines || []).filter(item => typeof item.path === 'string' && typeof item.instructions === 'string'
+    && !credentialText.test(item.instructions) && !shellCredential.test(item.instructions)).slice(0, 10)
+    .map(item => ({ path: item.path.slice(0, 200), instructions: item.instructions.slice(0, 500) }));
+  if (guidelines.length) intent.repositoryGuidelines = guidelines;
   const snippets = [];
   const contextOmissions = [...(pullRequest?.reviewContext?.omitted || [])];
   let contextCharacters = 0;

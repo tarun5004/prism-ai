@@ -2,7 +2,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { getAiConfiguration, runAiAnalysis, exportReviewTrace, validateFindings, validateReview } from '../ai/ai.service.js';
 import { prepareAiInput, buildReviewMemory } from '../ai/ai.context.js';
-import { fetchPullRequest, fetchReviewContext, PullRequestError } from '../pullRequest/pullRequest.service.js';
+import { fetchPullRequest, fetchReviewContext, fetchRepositoryPolicy, PullRequestError } from '../pullRequest/pullRequest.service.js';
+import { applyReviewPolicy } from '../pullRequest/review.policy.js';
 import { saveAnalysis, saveGitHubFeedback, findPreviousAnalysis, findAnalysis } from './analysis.repository.js';
 import { postReviewSummary } from '../pullRequest/github.app.js';
 import { runRules } from './analysis.rules.js';
@@ -26,11 +27,16 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
   }
   try {
     progress('fetching');
-    const pullRequest = await measure('github', () => fetchPullRequest(pullRequestUrl, { token: githubToken }));
+    let pullRequest = await measure('github', () => fetchPullRequest(pullRequestUrl, { token: githubToken }));
     if (installationId && typeof pullRequest.repository === 'string') pullRequest.repository = pullRequest.repository.toLowerCase();
     if (typeof pullRequest.key === 'string') pullRequest.key = pullRequest.key.toLowerCase();
     if (expectedRevision && (pullRequest.baseSha !== expectedRevision.baseSha || pullRequest.headSha !== expectedRevision.headSha)) {
       throw new PullRequestError('PR revision changed before webhook review. Use the latest event or analyze the PR manually.', 409);
+    }
+    if (process.env.REVIEW_REPOSITORY_CONFIG === 'true') {
+      const policy = await measure('policy', () => fetchRepositoryPolicy(pullRequest, { token: githubToken }));
+      if (trigger?.type === 'github_webhook' && !trigger.command && !policy.autoReview) return { status: 200, body: { status: 'skipped', reason: 'auto-review-disabled' } };
+      pullRequest = applyReviewPolicy(pullRequest, policy);
     }
     const ruleFindings = runRules(pullRequest);
     const aiEnabled = Boolean(getAiConfiguration().apiKey) && prepareAiInput(pullRequest).files.length > 0;
