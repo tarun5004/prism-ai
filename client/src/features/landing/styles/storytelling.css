@@ -1,0 +1,300 @@
+.landing .capability-grid .color-card {
+  position: relative;
+  overflow: hidden;
+}
+.landing .capability-grid .color-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    circle at var(--pointer-x, 50%) var(--pointer-y, 50%),
+    var(--step-color),
+    transparent 65%
+  );
+  transition: opacity 200ms;
+}
+.landing .capability-grid .color-card > * {
+  position: relative;
+}
+.landing .capability-grid .color-card:is(:hover, :focus-within) {
+  background: var(--step-soft);
+  box-shadow: inset 0 4px 0 var(--step-color);
+  transform: translateY(-2px);
+}
+.landing .capability-grid .color-card:hover::before {
+  opacity: 0.2;
+}
+.capability-meta > svg {
+  color: var(--step-ink);
+}
+.landing .capability-grid .capability-example {
+  margin-top: 22px;
+  padding: 14px;
+  background: var(--step-soft);
+  border-left: 3px solid var(--step-color);
+  color: #3b503f;
+  font-size: 11px;
+  line-height: 1.9;
+}
+.capability-example > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--step-ink);
+  font:
+    8px 'JetBrains Mono',
+    monospace;
+}
+.optional-integrations-visible {
+  margin-top: 30px;
+  padding: 28px;
+  border: 1px solid #b6c9b0;
+  background: #e4ecdb;
+  border-top: 5px solid #5d9d76;
+}
+.optional-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 25px;
+  margin-bottom: 26px;
+}
+.optional-heading h3 {
+  font-size: 29px;
+  margin: 0;
+}
+.optional-heading > p {
+  font-size: 12px;
+  color: #465b47;
+  line-height: 1.8;
+}
+.optional-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.optional-grid article {
+  border: 1px solid #b6c9b0;
+  border-top: 4px solid var(--step-color);
+  padding: 22px;
+  background: #f6f7ee;
+}
+.optional-grid article > span {
+  display: inline-block;
+  padding: 5px 7px;
+  background: var(--step-soft);
+  color: var(--step-ink);
+  font:
+    8px/1.7 'JetBrains Mono',
+    monospace;
+}
+.optional-grid h4 {
+  font-size: 17px;
+  margin: 18px 0 10px;
+}
+.optional-grid p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.9;
+  color: #4b604d;
+}
+.landing .onboarding-steps button {
+  border-left: 5px solid var(--step-color);
+  transition:
+    background 200ms,
+    padding-left 200ms;
+}
+.landing .onboarding-steps button[aria-pressed='true'],
+.landing .onboarding-steps button:hover:not(:disabled) {
+  background: var(--step-color);
+  color: #203727;
+  padding-left: 26px;
+}
+.onboarding-detail[data-color] {
+  background: var(--step-soft);
+  transition: background 250ms;
+}
+.onboarding-detail .step-watermark {
+  color: var(--step-color);
+  opacity: 0.35;
+}
+.onboarding-mini-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 22px;
+  gap: 6px;
+}
+.onboarding-mini-flow > span {
+  padding: 12px 9px;
+  border: 1px solid #9eafa0;
+  background: #f8f8eea8;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.onboarding-mini-flow i {
+  display: block;
+  color: var(--step-ink);
+  font:
+    normal 8px 'JetBrains Mono',
+    monospace;
+  margin-bottom: 12px;
+}
+.context-illustration {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  position: relative;
+  padding: 24px 20px 35px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  background: #e3ecdf;
+  overflow: hidden;
+  perspective: 900px;
+}
+.landing .context-station {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  background: transparent;
+  color: #304b37;
+  border: 0;
+  border-radius: 0;
+  padding: 14px 5px 0;
+  z-index: 1;
+}
+.landing .context-station:hover:not(:disabled) {
+  background: transparent;
+}
+.context-station-icon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 49px;
+  border: 1px solid #657c5a;
+  background: #f1f4e7;
+  border-radius: 6px;
+  box-shadow: 0 7px 0 #9caf93;
+  transition:
+    transform 220ms,
+    background 220ms;
+}
+.context-station[data-reached='true'] .context-station-icon {
+  background: #c2d8af;
+}
+.context-station[aria-pressed='true'] .context-station-icon {
+  background: var(--step-color);
+  transform: translateY(-8px) rotate(-4deg);
+  box-shadow: 0 10px 0 var(--step-ink);
+}
+.context-station strong {
+  font-size: 11px;
+  margin-top: 7px;
+}
+.context-station small {
+  font:
+    8px 'JetBrains Mono',
+    monospace;
+  color: #506948;
+}
+.context-rail {
+  position: absolute;
+  top: 72px;
+  left: 10%;
+  right: 10%;
+  height: 3px;
+  background: #acbea0;
+}
+.context-rail > span {
+  display: block;
+  height: 100%;
+  background: #397455;
+  transition: width 300ms;
+}
+.context-packet {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #d15c36;
+  border: 1px solid #83472a;
+  top: 70px;
+  transform: rotate(30deg);
+  transition: left 350ms;
+  z-index: 2;
+  pointer-events: none;
+}
+.pipeline-detail {
+  transition: background 220ms;
+}
+@media (max-width: 700px) {
+  .optional-integrations-visible {
+    padding: 20px;
+  }
+  .optional-heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .optional-heading h3 {
+    font-size: 27px;
+  }
+  .optional-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .optional-grid article {
+    padding: 20px;
+  }
+  .onboarding-mini-flow {
+    gap: 5px;
+  }
+  .onboarding-mini-flow > span {
+    font-size: 9px;
+    padding: 10px 7px;
+  }
+  .context-illustration {
+    padding: 16px 6px 23px;
+  }
+  .context-station-icon {
+    width: 43px;
+    height: 40px;
+  }
+  .context-station-icon svg {
+    width: 20px;
+  }
+  .context-station strong {
+    font-size: 8px;
+    line-height: 1.5;
+  }
+  .context-station small {
+    display: none;
+  }
+  .context-rail {
+    top: 51px;
+  }
+  .context-packet {
+    top: 48px;
+    width: 8px;
+    height: 8px;
+  }
+  .landing .context-station {
+    gap: 8px;
+  }
+  .onboarding-detail {
+    min-height: 395px;
+  }
+  .landing .capability-grid .capability-example {
+    font-size: 11px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .context-station-icon,
+  .context-station[aria-pressed='true'] .context-station-icon,
+  .landing .capability-grid .color-card:is(:hover, :focus-within) {
+    transform: none;
+  }
+  .context-packet,
+  .context-rail > span {
+    transition: none;
+  }
+}

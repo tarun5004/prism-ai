@@ -1,0 +1,64 @@
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+.capability-grid article {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 26px;
+  transition: background 180ms;
+}
+.capability-grid article:hover {
+  background: #e1efd9;
+}
+.capability-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 48px;
+}
+.capability-meta span {
+  font:
+    8px 'JetBrains Mono',
+    monospace;
+  color: var(--subtle);
+}
+.capability-grid h3 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.capability-grid p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--subtle);
+  margin: 0;
+}
+.optional-integrations {
+  border: 1px solid var(--line);
+  border-top: 0;
+}
+.optional-integrations summary,
+.cold-start-note summary {
+  padding: 20px 24px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.optional-integrations summary > span {
+  margin-right: 13px;
+}
+.optional-integrations summary small {
+  margin-left: 15px;
+  font-size: 10px;
+  color: var(--subtle);
+}
+.optional-integrations > div {
+  padding: 0 24px 24px;
+  max-width: 800px;
+}
+.optional-integrations p {
+  color: var(--subtle);
+  font-size: 12px;
+}
