@@ -137,6 +137,44 @@ test('home offers GitHub connection in its main content and a review entry after
   assert.match(connected, /Saved analyses/);
 });
 
+test('home explains core review capabilities without advertising optional RAG as hosted', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  for (const feature of ['Bounded code context', 'Evidence at the line', 'Summary &amp; walkthrough', 'Incremental revisions', 'Feedback memory', 'Semantic retrieval']) {
+    assert.ok(html.includes(feature), `Missing capability: ${feature}`);
+  }
+  assert.match(html, /Optional integrations/);
+  assert.match(html, /not enabled on this hosted demo/);
+  assert.match(html, /persistent Chroma/);
+  assert.ok(!html.includes('understands your entire repository'));
+});
+
+test('home onboarding distinguishes app installation, authorization, submission and saved reports', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  for (const step of ['Install the GitHub App', 'Connect your account', 'Open or submit a PR', 'Inspect the saved report']) {
+    assert.ok(html.includes(step), `Missing usage step: ${step}`);
+  }
+  assert.match(html, /id="getting-started"/);
+});
+
+test('home cloud story keeps queue before worker and distinguishes external AI and storage', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /id="architecture"/);
+  assert.match(html, /Azure Storage Queue/);
+  assert.match(html, /Container Apps Job/);
+  assert.match(html, /MongoDB Atlas/);
+  assert.match(html, /External services/);
+  assert.match(html, /idle cooldown target/);
+  assert.ok(html.indexOf('Azure Storage Queue') < html.indexOf('Container Apps Job'));
+});
+
+test('home cold-start guidance offers recovery without promising automatic webhook retries', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /GitHub does not automatically retry failed webhook deliveries/);
+  assert.match(html, /redeliver/);
+  assert.match(html, /Analyze PR/);
+  assert.match(html, /not a billing cap/);
+});
+
 test('internal home navigation avoids reload and preserves modified-click behavior', () => {
   const destinations = [];
   const link = dashboard.RouteLink({ to: '/', onNavigate: path => destinations.push(path), children: 'Home' });
@@ -365,4 +403,82 @@ test('preserves whitespace, blank code lines and CRLF without inventing hunks', 
   assert.equal(result.incomplete, false);
   assert.equal(viewer.parseUnifiedDiff('raw patch content').hasHunks, false);
   assert.equal(viewer.parseUnifiedDiff('').lines.length, 0);
+});
+
+// The homepage preview must remain a safe, local interaction.
+test('home provides an illustrative keyboard-accessible evidence explorer', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /aria-label="Example review findings"/);
+  assert.match(html, /data-highlighted="true"/);
+  assert.match(html, /No API calls/);
+});
+
+test('home explains bounded context, optional semantic retrieval and evidence validation concretely', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /id="context-pipeline"/);
+  for (const phrase of ['Context engineering', '32-line', '16 chunks', '4 results', 'Evidence validation', 'LangGraph']) assert.ok(html.includes(phrase), phrase);
+});
+
+test('home distinguishes configured GitLab checks from gated GitHub deployment', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  for (const phrase of ['GitLab CI', 'GitHub Actions', 'Manual deployment gate', 'does not automatically sync', 'runner verification']) assert.ok(html.includes(phrase), phrase);
+  assert.ok(!html.includes('Every GitHub push automatically deploys'));
+});
+
+test('home mascot has an explicit keyboard and touch interaction', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /aria-label="Say hello to Pip"/);
+  assert.match(html, /robot-head/);
+  assert.match(html, /data-greeting="false"/);
+});
+
+test('home exposes integrations without a collapsed disclosure and removes the old mascot controls', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /id="optional-integrations"/);
+  assert.ok(!html.includes('details class="optional-integrations"'));
+  assert.ok(!html.includes('Pause motion'));
+  assert.ok(!html.includes('class="scene-controls"'));
+  assert.match(html, /aria-label="Pip thought experiments"/);
+});
+
+test('architecture is an explicitly illustrative request with persistence before enqueue', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /aria-label="Request checkpoints"/);
+  assert.match(html, /Illustrative request.*not live telemetry/);
+  assert.match(html, /Replay request/);
+  assert.ok(html.indexOf('Persist job') < html.indexOf('Azure Storage Queue'));
+  assert.match(html, /Gemini inference/);
+});
+
+test('delivery stages expose an accessible local explorer with artifact and gate details', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /aria-label="Explore workflow stages"/);
+  assert.match(html, /aria-controls="delivery-stage-detail"/);
+  assert.match(html, /Illustrative workflow.*does not run CI/);
+  assert.match(html, /WHAT THIS STAGE PRODUCES/);
+  assert.match(html, /WHAT CAN STOP IT/);
+});
+
+test('footer offers product perspectives without changing the review entry destination', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage));
+  assert.match(html, /aria-label="Choose a closing perspective"/);
+  assert.match(html, /aria-controls="closing-perspective"/);
+  assert.match(html, /id="closing-perspective"/);
+  assert.equal((html.match(/Try it for free/g) || []).length, 3);
+  assert.match(html, /Recorded review/);
+});
+
+test('homepage accent ink remains readable on both active and soft palette surfaces', () => {
+  const css = readFileSync(new URL('../src/features/landing/styles/interaction-palette.css', import.meta.url), 'utf8');
+  const colors = Object.fromEntries([...css.matchAll(/--([a-z-]+):\s*(#[a-f\d]{6})/gi)].map(match => [match[1], match[2]]));
+  const luminance = hex => {
+    const channels = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  };
+  for (const hue of ['coral', 'green', 'yellow', 'blue', 'orange', 'lilac']) {
+    for (const surface of ['accent', 'soft']) {
+      const values = [luminance(colors[`ink-${hue}`]), luminance(colors[`${surface}-${hue}`])].sort((a, b) => b - a);
+      assert.ok((values[0] + 0.05) / (values[1] + 0.05) >= 4.5, `${hue} ink on ${surface} needs readable contrast`);
+    }
+  }
 });
