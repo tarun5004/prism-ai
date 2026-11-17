@@ -50,7 +50,7 @@ test('a concurrent inline duplicate cannot release the first publisher lock', as
   const old = process.env.GITHUB_POST_INLINE; process.env.GITHUB_POST_INLINE = 'true';
   let release; let calls = 0;
   const blocked = new Promise(resolve => { release = resolve; });
-  const report = { id: 'inline-concurrent', installationId: 7, pullRequest: { url: 'https://github.com/demo/repo/pull/9', headSha: 'd'.repeat(40) } };
+  const report = { id: 'inline-concurrent', installationId: 7, aiStatus: 'completed', pullRequest: { url: 'https://github.com/demo/repo/pull/9', headSha: 'd'.repeat(40) } };
   mock.method(globalThis, 'fetch', async () => Response.json({ state: 'closed' }));
   const getToken = async () => { calls++; await blocked; return 'token'; };
   const first = github.postInlineReview(report, { getToken });
@@ -60,6 +60,23 @@ test('a concurrent inline duplicate cannot release the first publisher lock', as
     assert.equal(calls, 1);
     release(); await third; await first;
   } finally { release(); if (old === undefined) delete process.env.GITHUB_POST_INLINE; else process.env.GITHUB_POST_INLINE = old; }
+});
+
+test('inline feedback bounds unique findings and omits malformed or unmappable evidence', async () => {
+  const old = process.env.GITHUB_POST_INLINE; process.env.GITHUB_POST_INLINE = 'true';
+  const headSha = 'e'.repeat(40); let posted;
+  const lines = Array.from({ length: 6 }, (_, index) => `const result${index} = ${index};`);
+  const pullRequest = { url: 'https://github.com/demo/repo/pull/7', headSha, changedFiles: [{ path: 'math.js', additions: 6, deletions: 0, patch: '@@ -0,0 +1,6 @@\n' + lines.map(line => '+' + line).join('\n') }] };
+  const findings = lines.map((evidence, index) => ({ source: 'ai', title: 'Potential calculation issue', severity: 'medium', filePath: 'math.js', lineNumber: index + 1, evidence, explanation: 'Check the calculation.', suggestedFix: 'Confirm expected result.' }));
+  mock.method(globalThis, 'fetch', async (url, options) => {
+    if (options.method === 'POST') { posted = JSON.parse(options.body); return Response.json({}); }
+    return Response.json(String(url).includes('/reviews?') ? [] : { state: 'open', head: { sha: headSha } });
+  });
+  try {
+    const result = await github.postInlineReview({ id: 'inline-bounded', installationId: 7, aiStatus: 'completed', pullRequest, findings: [findings[0], findings[0], { ...findings[1], lineNumber: 100 }, ...findings.slice(1)] }, { getToken: async () => 'token', getPullRequest: async () => pullRequest });
+    assert.equal(result.status, 'posted'); assert.equal(posted.comments.length, 5);
+    assert.equal(new Set(posted.comments.map(comment => comment.line)).size, 5);
+  } finally { if (old === undefined) delete process.env.GITHUB_POST_INLINE; else process.env.GITHUB_POST_INLINE = old; }
 });
 
 test('persistent authentication encrypts payloads and consumes browser state once', async () => {
@@ -127,7 +144,7 @@ test('installation access is checked against both installation and repository', 
 });
 
 test('installation token uses a signed short-lived App JWT and one repository with read permissions', async () => {
-  const keys = ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_POST_REVIEW'];
+  const keys = ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_POST_REVIEW', 'GITHUB_POST_STATUS'];
   const old = keys.map(key => process.env[key]);
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   process.env.GITHUB_APP_ID = '7';
@@ -143,7 +160,11 @@ test('installation token uses a signed short-lived App JWT and one repository wi
     assert.deepEqual(JSON.parse(options.body), { repositories: ['repo'], permissions: { contents: 'read', pull_requests: 'read' } });
     return Response.json({ token: 'installation-only-test-token' });
   });
-  try { assert.equal(await github.installationToken(9, 'owner/repo'), 'installation-only-test-token'); }
+  try {
+    assert.equal(await github.installationToken(9, 'owner/repo'), 'installation-only-test-token');
+    process.env.GITHUB_POST_STATUS = 'true';
+    assert.equal(await github.installationToken(9, 'owner/repo'), 'installation-only-test-token', 'Optional status settings must not expand core retrieval permissions');
+  }
   finally { keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; }); }
 });
 

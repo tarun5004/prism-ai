@@ -124,6 +124,8 @@ function AnalysisReport({ analysis, userId = 'local' }) {
                 </div>
                 <div className="revision-meta">
                     {analysis.githubFeedback && <span>GitHub summary: {({ posted: 'posted', existing: 'already posted for this revision', unavailable: 'not delivered; saved review remains available', skipped: 'disabled' })[analysis.githubFeedback.status] || 'status unknown'}</span>}
+                    {analysis.githubInline && <span>Inline findings: {analysis.githubInline.status}{analysis.githubInline.errorCode && ` (${analysis.githubInline.errorCode})`}</span>}
+                    {analysis.githubStatus && <span>GitHub advisory status: {analysis.githubStatus.status}</span>}
                     <span>{formatDate(analysis.createdAt)}</span>
                     {pr.headSha ? <code title={pr.headSha}>{pr.headBranch} @ {pr.headSha.slice(0, 8)}</code> : <span>{analysis.sample ? 'Owned fixture snapshot; no GitHub commit' : 'Revision not recorded in this older report'}</span>}
                     {pr.baseSha && <code title={pr.baseSha}>base {pr.baseBranch} @ {pr.baseSha.slice(0, 8)}</code>}

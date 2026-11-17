@@ -78,6 +78,54 @@ test('Groq attribution is accepted by the persisted report schema', () => {
 });
 import { analyzePullRequest } from '../src/features/analysis/analysis.service.js';
 
+test('trusted policy disables automatic review before model calls and manual exclusions remain visible', async () => {
+  const previous = process.env.REVIEW_REPOSITORY_CONFIG; process.env.REVIEW_REPOSITORY_CONFIG = 'true';
+  const metadata = { title: 'Fixture', html_url: 'https://github.com/audit/repo/pull/1', changed_files: 1, base: { sha: 'a'.repeat(40) }, head: { sha: 'b'.repeat(40) } };
+  mock.method(globalThis, 'fetch', async url => {
+    assert.ok(String(url).startsWith('https://api.github.com/'), 'No model request allowed');
+    if (String(url).includes('/contents/.prism.json')) {
+      assert.ok(String(url).endsWith('ref=' + metadata.base.sha));
+      const text = JSON.stringify({ autoReview: false, ignorePaths: ['src/'] });
+      return Response.json({ encoding: 'base64', content: Buffer.from(text).toString('base64'), size: text.length });
+    }
+    return Response.json(String(url).includes('/files?') ? [file] : metadata);
+  });
+  try {
+    const skipped = await analyzePullRequest(metadata.html_url, { id: 'policy-auto-skip', trigger: { type: 'github_webhook' } });
+    assert.equal(skipped.body.status, 'skipped'); assert.equal(await findAnalysis('policy-auto-skip'), undefined);
+    const manual = await analyzePullRequest(metadata.html_url, { id: 'policy-manual-excluded' });
+    assert.equal(manual.body.aiStatus, 'skipped'); assert.deepEqual(manual.body.pullRequest.reviewScope.excludedPaths, [file.filename]);
+  } finally { if (previous === undefined) delete process.env.REVIEW_REPOSITORY_CONFIG; else process.env.REVIEW_REPOSITORY_CONFIG = previous; }
+});
+
+test('incremental pipeline saves its actual compare snapshot and replay does not reset completed status to pending', async () => {
+  const { generateKeyPairSync } = await import('node:crypto');
+  const keys = ['GITHUB_POST_STATUS', 'GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'APP_ORIGIN']; const old = keys.map(key => process.env[key]);
+  process.env.GITHUB_POST_STATUS = 'true'; process.env.GITHUB_APP_ID = '123'; process.env.APP_ORIGIN = 'https://demo.example';
+  process.env.GITHUB_APP_PRIVATE_KEY = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ format: 'pem', type: 'pkcs8' }).toString();
+  const baseSha = 'a'.repeat(40), previousHead = 'b'.repeat(40), headSha = 'c'.repeat(40);
+  await saveAnalysis({ id: 'incremental-baseline', installationId: 29, status: 'completed', aiStatus: 'completed', createdAt: new Date().toISOString(), findings: [],
+    pullRequest: { key: 'audit/repo#1', baseSha, headSha: previousHead } });
+  const states = []; let modelCalls = 0;
+  mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    const path = String(url);
+    if (!path.startsWith('https://api.github.com/')) { modelCalls++; return Response.json({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ findings: [finding], review }) }] }, finishReason: 'STOP' }] }); }
+    if (path.endsWith('/access_tokens')) return Response.json({ token: 'test-installation-token' });
+    if (path.includes('/statuses/')) { states.push(JSON.parse(options.body).state); return Response.json({}); }
+    if (path.includes('/compare/')) return Response.json({ status: 'ahead', base_commit: { sha: previousHead }, merge_base_commit: { sha: previousHead }, files: [file] });
+    if (path.includes('/contents/')) return Response.json({ encoding: 'base64', content: Buffer.from(finding.evidence).toString('base64'), size: finding.evidence.length });
+    return Response.json(path.includes('/files?') ? [file] : { title: 'Fixture', html_url: 'https://github.com/audit/repo/pull/1', changed_files: 1, base: { sha: baseSha }, head: { sha: headSha } });
+  });
+  const options = { id: 'incremental-status-replay', installationId: 29, githubToken: 'test-token', trigger: { type: 'github_webhook', action: 'synchronize' } };
+  try {
+    const result = await analyzePullRequest('https://github.com/audit/repo/pull/1', options);
+    assert.equal(result.body.pullRequest.reviewScope.mode, 'incremental'); assert.equal(result.body.pullRequest.diffBaseSha, previousHead);
+    assert.equal(result.body.aiStatus, 'completed');
+    await analyzePullRequest('https://github.com/audit/repo/pull/1', options);
+    assert.equal(modelCalls, 1); assert.deepEqual(states, ['pending', 'success']);
+  } finally { keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; }); }
+});
+
 let originalKey;
 let originalModel;
 const file = { filename: 'src/math.service.js', status: 'modified', additions: 1, deletions: 1, changes: 2, patch: '@@ -1 +1 @@\n-return value * 2;\n+return value / 2;' };

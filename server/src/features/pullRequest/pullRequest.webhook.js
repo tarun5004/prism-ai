@@ -42,66 +42,68 @@ function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysi
     return acceptReview(payload);
 
     function acceptReview(payload, commandResult) {
-    const pr = payload.pull_request;
-    const deliveryId = request.headers['x-github-delivery'];
-    if (!pr || !Number.isSafeInteger(payload.number) || payload.number < 1 || pr.number !== payload.number
-      || !['open', 'closed'].includes(pr.state) || typeof pr.draft !== 'boolean'
-      || typeof pr.base?.sha !== 'string' || typeof pr.head?.sha !== 'string'
-      || !shaPattern.test(pr.base.sha) || !shaPattern.test(pr.head.sha)
-      || typeof payload.repository?.full_name !== 'string'
-      || typeof deliveryId !== 'string' || !/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(deliveryId)) {
-      return response.status(400).json({ message: 'Invalid Pull Request event.' });
-    }
-    const eventRepository = payload.repository.full_name.toLowerCase();
-    if (!repositoryPattern.test(eventRepository) || (!appMode() && eventRepository !== repository)) return response.status(403).json({ message: 'Repository is not enabled for this webhook.' });
-    const installationId = appMode() ? payload.installation?.id : undefined;
-    if (appMode() && (!Number.isSafeInteger(installationId) || installationId < 1)) return response.status(400).json({ message: 'Missing installation.' });
-    if (pr.draft || pr.state !== 'open') return response.status(200).json({ status: 'ignored' });
-
-    const baseSha = pr.base.sha.toLowerCase();
-    const headSha = pr.head.sha.toLowerCase();
-    const id = 'webhook-' + createHash('sha256').update(`${installationId ? installationId + ':' : ''}${eventRepository}#${payload.number}:${baseSha}:${headSha}${commandResult ? ':' + commandResult.command + ':' + commandResult.commentId : ''}`).digest('hex');
-    const url = `https://github.com/${eventRepository}/pull/${payload.number}`;
-    const options = { id, installationId, expectedRevision: { baseSha, headSha },
-      trigger: { type: 'github_webhook', deliveryId, action: payload.action, repository: eventRepository, baseSha, headSha,
-        ...(Number.isSafeInteger(pr.user?.id) && pr.user.id > 0 ? { actorId: String(pr.user.id) } : {}),
-        ...(commandResult ? { command: commandResult.command, actorId: commandResult.actorId } : {}) } };
-    if (process.env.REVIEW_EXECUTION === 'queue') {
-      return Promise.resolve().then(() => enqueue({ id, payload: { url, options } }))
-        .then(() => response.status(202).json({ status: 'accepted', analysisId: id }))
-        .catch(() => response.status(503).json({ message: 'Review could not be queued. Redeliver this event later.' }));
-    }
-    if (process.env.NODE_ENV === 'production') return response.status(503).json({ message: 'Configure durable review execution.' });
-    if (active.has(id)) return response.status(202).json({ status: 'duplicate', analysisId: id });
-    if (active.size >= 2) return response.status(503).json({ message: 'Webhook reviewer is busy. Redeliver this event later.' });
-    active.add(id);
-    response.status(202).json({ status: 'accepted', analysisId: id });
-
-    // No durable queue: interrupted jobs require GitHub redelivery after a restart.
-    setImmediate(async () => {
-      const details = { event: 'github_webhook', deliveryId, analysisId: id };
-      try {
-        if (installationId && !commandResult && (await control({ installationId, repository: eventRepository, number: payload.number })).paused) {
-          log({ ...details, status: 'paused' }); return;
-        }
-        if (await find(id)) {
-          log({ ...details, status: 'duplicate' });
-          return;
-        }
-        if (installationId && !await consumeReviewBudget('installation:' + installationId)) {
-          log({ ...details, status: 'failed', errorCode: 'REVIEW_LIMIT' });
-          return;
-        }
-        const githubToken = installationId ? await getToken(installationId, eventRepository) : undefined;
-        const result = await analyze(url, { ...options, githubToken });
-        log({ ...details, status: ['completed', 'skipped'].includes(result.body.status) ? result.body.status : 'failed', httpStatus: result.status, aiStatus: result.body.aiStatus });
-      } catch {
-        log({ ...details, status: 'failed', errorCode: 'WEBHOOK_PROCESSING_FAILED' });
-      } finally {
-        active.delete(id);
+      const pr = payload.pull_request;
+      const deliveryId = request.headers['x-github-delivery'];
+      if (!pr || !Number.isSafeInteger(payload.number) || payload.number < 1 || pr.number !== payload.number
+        || !['open', 'closed'].includes(pr.state) || typeof pr.draft !== 'boolean'
+        || typeof pr.base?.sha !== 'string' || typeof pr.head?.sha !== 'string'
+        || !shaPattern.test(pr.base.sha) || !shaPattern.test(pr.head.sha)
+        || typeof payload.repository?.full_name !== 'string'
+        || typeof deliveryId !== 'string' || !/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(deliveryId)) {
+        return response.status(400).json({ message: 'Invalid Pull Request event.' });
       }
-    });
-    return response;
+      const eventRepository = payload.repository.full_name.toLowerCase();
+      if (!repositoryPattern.test(eventRepository) || (!appMode() && eventRepository !== repository)) return response.status(403).json({ message: 'Repository is not enabled for this webhook.' });
+      const installationId = appMode() ? payload.installation?.id : undefined;
+      if (appMode() && (!Number.isSafeInteger(installationId) || installationId < 1)) return response.status(400).json({ message: 'Missing installation.' });
+      if (pr.draft || pr.state !== 'open') return response.status(200).json({ status: 'ignored' });
+
+      const baseSha = pr.base.sha.toLowerCase();
+      const headSha = pr.head.sha.toLowerCase();
+      // A command belongs to its comment, even if GitHub redelivers after a push.
+      const revisionKey = commandResult ? `command:${commandResult.commentId}` : `${baseSha}:${headSha}`;
+      const id = 'webhook-' + createHash('sha256').update(`${installationId ? installationId + ':' : ''}${eventRepository}#${payload.number}:${revisionKey}`).digest('hex');
+      const url = `https://github.com/${eventRepository}/pull/${payload.number}`;
+      const options = { id, installationId, expectedRevision: { baseSha, headSha },
+        trigger: { type: 'github_webhook', deliveryId, action: payload.action, repository: eventRepository, baseSha, headSha,
+          ...(Number.isSafeInteger(pr.user?.id) && pr.user.id > 0 ? { actorId: String(pr.user.id) } : {}),
+          ...(commandResult ? { command: commandResult.command, actorId: commandResult.actorId } : {}) } };
+      if (process.env.REVIEW_EXECUTION === 'queue') {
+        return Promise.resolve().then(() => enqueue({ id, payload: { url, options } }))
+          .then(() => response.status(202).json({ status: 'accepted', analysisId: id }))
+          .catch(() => response.status(503).json({ message: 'Review could not be queued. Redeliver this event later.' }));
+      }
+      if (process.env.NODE_ENV === 'production') return response.status(503).json({ message: 'Configure durable review execution.' });
+      if (active.has(id)) return response.status(202).json({ status: 'duplicate', analysisId: id });
+      if (active.size >= 2) return response.status(503).json({ message: 'Webhook reviewer is busy. Redeliver this event later.' });
+      active.add(id);
+      response.status(202).json({ status: 'accepted', analysisId: id });
+
+      // No durable queue: interrupted jobs require GitHub redelivery after a restart.
+      setImmediate(async () => {
+        const details = { event: 'github_webhook', deliveryId, analysisId: id };
+        try {
+          if (installationId && !commandResult && (await control({ installationId, repository: eventRepository, number: payload.number })).paused) {
+            log({ ...details, status: 'paused' }); return;
+          }
+          if (await find(id)) {
+            log({ ...details, status: 'duplicate' });
+            return;
+          }
+          if (installationId && !await consumeReviewBudget('installation:' + installationId)) {
+            log({ ...details, status: 'failed', errorCode: 'REVIEW_LIMIT' });
+            return;
+          }
+          const githubToken = installationId ? await getToken(installationId, eventRepository) : undefined;
+          const result = await analyze(url, { ...options, githubToken });
+          log({ ...details, status: ['completed', 'skipped'].includes(result.body.status) ? result.body.status : 'failed', httpStatus: result.status, aiStatus: result.body.aiStatus });
+        } catch {
+          log({ ...details, status: 'failed', errorCode: 'WEBHOOK_PROCESSING_FAILED' });
+        } finally {
+          active.delete(id);
+        }
+      });
+      return response;
     }
   };
 }

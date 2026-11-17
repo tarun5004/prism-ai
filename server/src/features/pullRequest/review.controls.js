@@ -29,6 +29,8 @@ async function setReviewPaused(scope, paused, commentId) {
   const key = controlKey(scope);
   if (typeof paused !== 'boolean' || !Number.isSafeInteger(commentId) || commentId < 1) throw Error('Invalid review control.');
   if (persistent()) {
+    // Wait for the unique scope index before concurrent first-time upserts.
+    await ReviewControl.init();
     try { await ReviewControl.updateOne({ key }, { $setOnInsert: { paused: false, commentId: 0 } }, { upsert: true }); }
     catch (error) { if (error.code !== 11000) throw error; }
     // Older/redelivered comments cannot reverse a newer pause/resume decision.
@@ -65,7 +67,7 @@ async function handleReviewCommand(payload, { request = githubRequest, getToken 
   controlKey(scope);
   const user = payload.comment.user;
   if (!/^[a-z\d-]+$/i.test(user.login || '') || !Number.isSafeInteger(payload.comment.id) || payload.comment.id < 1) throw Error('Invalid command actor.');
-  const token = await getToken(scope.installationId, scope.repository);
+  const token = await getToken(scope.installationId, scope.repository, { writeReviews: true });
   const access = await request(`/repos/${scope.repository}/collaborators/${encodeURIComponent(user.login)}/permission`, token);
   if (!['write', 'maintain', 'admin'].includes(access.permission)) throw Object.assign(Error('Write permission required for review commands.'), { statusCode: 403 });
   if (command === 'review' || command === 'full review') {

@@ -27,6 +27,12 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     finally { stage.durationMs = Math.round(performance.now() - started); }
   }
   try {
+    const prior = await findAnalysis(id);
+    if (prior) {
+      if (prior.status !== 'completed' || prior.installationId !== installationId
+        || prior.pullRequest?.url?.toLowerCase().replace(/\/$/, '') !== pullRequestUrl.toLowerCase().replace(/\/$/, '')) throw Error('A fresh review ID is required.');
+      return { status: 201, body: prior };
+    }
     progress('fetching');
     let pullRequest = await measure('github', () => fetchPullRequest(pullRequestUrl, { token: githubToken }));
     if (installationId && typeof pullRequest.repository === 'string') pullRequest.repository = pullRequest.repository.toLowerCase();
@@ -47,7 +53,6 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     }
     const ruleFindings = runRules(pullRequest);
     statusReport = { id, installationId, pullRequest };
-    await postReviewStatus(statusReport, { pending: true });
     const aiEnabled = Boolean(getAiConfiguration().apiKey) && prepareAiInput(pullRequest).files.length > 0;
     let reviewInput = pullRequest;
     const { runReviewWorkflow } = await import('./analysis.workflow.js');
@@ -66,7 +71,10 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
           catch { reviewInput.reviewMemory = null; } // Optional memory cannot discard a current review.
         }
       },
-      review: () => measure('model', () => runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') })),
+      review: async () => {
+        await postReviewStatus(statusReport, { pending: true });
+        return measure('model', () => runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') }));
+      },
       save: async aiResult => {
         // The report may already exist if the process stopped after its insert.
         const existing = await findAnalysis(id);

@@ -53,6 +53,16 @@ test('signed command webhook reuses review dispatch and carries explicit command
   assert.match(reviewed.id, /^webhook-[a-f\d]{64}$/);
 });
 
+test('redelivery of one command after another push reuses its original job identity', async () => {
+  let head = 'b'.repeat(40); let calls = 0; const reports = new Map();
+  const handler = createWebhookHandler({ command: async () => ({ command: 'review', commentId: 88, actorId: '42', payload: { ...payload, pull_request: { ...payload.pull_request, head: { sha: head } } } }),
+    find: async id => reports.get(id), analyze: async (_url, options) => { calls++; const body = { id: options.id, status: 'completed' }; reports.set(options.id, body); return { status: 201, body }; }, log() {} });
+  const first = response(); await handler(delivery({}, 'issue_comment'), first); await tick();
+  head = 'c'.repeat(40);
+  const second = response(); await handler(delivery({}, 'issue_comment'), second); await tick();
+  assert.equal(second.body.analysisId, first.body.analysisId); assert.equal(calls, 1);
+});
+
 test('paused automatic webhook skips work but an explicit command bypasses the pause once', async () => {
   const old = process.env.GITHUB_APP_ID; process.env.GITHUB_APP_ID = '7';
   let calls = 0; const logs = [];
@@ -132,10 +142,20 @@ test('durable queue integration: real Mongo, Azurite duplicates and process rest
     assert.equal(calls, 1);
     assert.equal((await findReviewJob(id)).status, 'completed');
 
+    const { getReviewControl, setReviewPaused } = await import('../src/features/pullRequest/review.controls.js');
+    const pausedScope = { installationId: 42, repository: 'owned/fixture', number: 3 };
+    await Promise.all([setReviewPaused(pausedScope, true, 102), setReviewPaused(pausedScope, false, 101)]);
+    assert.equal((await getReviewControl(pausedScope)).paused, true);
+    const pausedId = 'webhook-' + 'f'.repeat(64);
+    await enqueueWebhookReview({ id: pausedId, payload: { url: 'https://github.com/owned/fixture/pull/3', options: { installationId: 42, trigger: { repository: 'owned/fixture' } } } }, queue);
+    assert.equal((await processNextReview({ queue, analyze() { assert.fail('Paused persisted job must not call GitHub/model'); } })).status, 'skipped');
+
     const scope = { id: 'restart-fixture', repository: 'owned/fixture', baseSha: 'a', headSha: 'b' };
     await assert.rejects(runReviewWorkflow({ ...scope, prepare: async () => {}, review: async () => ({ status: 'completed', findings: [] }), save: async () => { throw Error('simulated disk failure'); } }), /simulated disk failure/);
     const script = `import mongoose from 'mongoose'; import {runReviewWorkflow} from ${JSON.stringify(new URL('../src/features/analysis/analysis.workflow.js', import.meta.url).href)};
       try { await mongoose.connect(process.env.MONGODB_URI); const fail=async()=>{throw Error('unexpected repeated work')};
+      const {getReviewControl}=await import(${JSON.stringify(new URL('../src/features/pullRequest/review.controls.js', import.meta.url).href)});
+      if(!(await getReviewControl(${JSON.stringify(pausedScope)})).paused)throw Error('pause did not survive restart');
       const result=await runReviewWorkflow({...${JSON.stringify(scope)},resume:true,prepare:fail,review:fail,save:async r=>({resumed:r.status})});
       if(result.resumed!=='completed')throw Error('resume failed'); process.stdout.write('resumed-once'); } finally {await mongoose.disconnect();}`;
     const child = await execute(process.execPath, ['--input-type=module', '-e', script], { cwd: new URL('..', import.meta.url), env: { ...process.env, MONGODB_URI: uri }, timeout: 10000 });

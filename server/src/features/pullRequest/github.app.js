@@ -99,7 +99,7 @@ async function requireSession(request, response, next) {
   } catch (error) { response.status(error.statusCode || 502).json({ message: error.message }); }
 }
 
-async function installationToken(installationId, repository) {
+async function installationToken(installationId, repository, { writeReviews = false, writeStatus = false } = {}) {
   if (!Number.isSafeInteger(installationId) || installationId < 1 || !/^[a-z\d-]+\/[\w.-]+$/i.test(repository)) throw failure(400, 'Invalid installation.');
   const now = Math.floor(Date.now() / 1000);
   const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -108,8 +108,8 @@ async function installationToken(installationId, repository) {
   try { jwt = unsigned + '.' + sign('RSA-SHA256', Buffer.from(unsigned), process.env.GITHUB_APP_PRIVATE_KEY?.replaceAll('\\n', '\n')).toString('base64url'); }
   catch { throw failure(503, 'GitHub App signing is not configured.'); }
   const result = await githubRequest(`/app/installations/${installationId}/access_tokens`, jwt, { repositories: [repository.split('/')[1]], permissions: {
-    contents: 'read', pull_requests: process.env.GITHUB_POST_REVIEW === 'true' || process.env.GITHUB_POST_INLINE === 'true' || process.env.GITHUB_REVIEW_COMMANDS === 'true' ? 'write' : 'read',
-    ...(process.env.GITHUB_POST_STATUS === 'true' ? { statuses: 'write' } : {}) } });
+    contents: 'read', pull_requests: writeReviews ? 'write' : 'read',
+    ...(writeStatus ? { statuses: 'write' } : {}) } });
   if (typeof result.token !== 'string' || !result.token) throw failure(502, 'Installation access unavailable.');
   return result.token;
 }
@@ -125,6 +125,7 @@ const advisoryText = text => text.replaceAll('@', '@\u200b').replaceAll('<', '&l
 
 async function postInlineReview(report, { getToken = installationToken, getPullRequest = fetchPullRequest } = {}) {
   if (process.env.GITHUB_POST_INLINE !== 'true' || !report.installationId) return { status: 'skipped' };
+  if (!['completed', 'partial'].includes(report.aiStatus)) return { status: 'skipped' };
   let key; let acquired = false;
   try {
     const { repository, number, headSha } = reportScope(report);
@@ -132,7 +133,7 @@ async function postInlineReview(report, { getToken = installationToken, getPullR
     if (posting.has(key)) return { status: 'unavailable', errorCode: 'POST_IN_PROGRESS' };
     posting.add(key);
     acquired = true;
-    const token = await getToken(report.installationId, repository);
+    const token = await getToken(report.installationId, repository, { writeReviews: true });
     const path = `/repos/${repository}/pulls/${number}`;
     const latest = await githubRequest(path, token);
     if (latest.state !== 'open' || latest.head?.sha !== headSha) return { status: 'unavailable', errorCode: 'STALE_REVISION' };
@@ -149,8 +150,14 @@ async function postInlineReview(report, { getToken = installationToken, getPullR
     const current = await getPullRequest(report.pullRequest.url, { token });
     if (current.headSha !== headSha) return { status: 'unavailable', errorCode: 'STALE_REVISION' };
     const candidates = report.findings.filter(item => item.source === 'ai');
+    const seen = new Set();
     const findings = validateFindings(candidates, prepareAiInput(current).files)
-      .filter(item => !containsSensitiveText([item.title, item.explanation, item.suggestedFix].join('\n'))).slice(0, 5);
+      .filter(item => !containsSensitiveText([item.title, item.explanation, item.suggestedFix].join('\n')))
+      .filter(item => {
+        const key = JSON.stringify([item.filePath, item.lineSide || 'new', item.lineNumber, item.title]);
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      }).slice(0, 5);
     if (!findings.length) return { status: 'skipped' };
     const comments = findings.map(item => ({ path: item.filePath, line: item.lineNumber, side: item.lineSide === 'old' ? 'LEFT' : 'RIGHT',
       body: advisoryText(`**${item.severity}: ${item.title}**\n\n${item.explanation}\n\nSuggested action: ${item.suggestedFix}\n\nAdvisory AI finding; verify before changing code.`) }));
@@ -166,7 +173,7 @@ async function postReviewStatus(report, { getToken = installationToken, pending 
     const { repository, headSha } = reportScope(report);
     const origin = new URL(process.env.APP_ORIGIN);
     if (origin.origin !== process.env.APP_ORIGIN || !['http:', 'https:'].includes(origin.protocol)) throw Error('Invalid origin');
-    const token = await getToken(report.installationId, repository);
+    const token = await getToken(report.installationId, repository, { writeStatus: true });
     const state = pending ? 'pending' : report.aiStatus === 'completed' ? 'success' : 'error';
     await githubRequest(`/repos/${repository}/statuses/${headSha}`, token, { state, context: 'prism-ai/review',
       description: pending ? 'Review in progress (advisory)' : state === 'success' ? 'AI review completed; advisory, not merge approval' : 'AI review incomplete or unavailable; inspect report',
@@ -187,7 +194,7 @@ async function postReviewSummary(report, { getToken = installationToken } = {}) 
     const origin = new URL(process.env.APP_ORIGIN);
     if (origin.origin !== process.env.APP_ORIGIN || !['https:', 'http:'].includes(origin.protocol)) throw Error('origin');
     // Manual reviews carry a human token; comments must always use the App bot identity.
-    const token = await getToken(report.installationId, `${match[1]}/${match[2]}`);
+    const token = await getToken(report.installationId, `${match[1]}/${match[2]}`, { writeReviews: true });
     const path = `/repos/${match[1]}/${match[2]}/issues/${match[3]}/comments`;
     for (let page = 1; page <= 3; page++) {
       const comments = await githubRequest(`${path}?per_page=100&page=${page}`, token);
