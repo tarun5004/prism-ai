@@ -8,3 +8,4 @@ export function shouldAutoReview({ isDraft, reviewsPaused }) {
 }
 
 // Hosted review smoke test: Gemini Flash-Lite deployment.
+// Hosted review smoke test: Malaysia West worker.
