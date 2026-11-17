@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowUpRight, GitPullRequest, LoaderCircle, Sparkles } from 'lucide-react';
 import RouteLink from '../../../shared/RouteLink.jsx';
 import AnalysisProgress from '../components/AnalysisProgress.jsx';
+import WorkspaceCapabilities from '../components/WorkspaceCapabilities.jsx';
 
 export default function OverviewPage({
   pullRequestUrl = '',
@@ -57,6 +58,7 @@ export default function OverviewPage({
           />
         )}
       </section>
+      <WorkspaceCapabilities />
       <section className="welcome-section">
         <div className="welcome-icon">
           <Sparkles size={24} />
