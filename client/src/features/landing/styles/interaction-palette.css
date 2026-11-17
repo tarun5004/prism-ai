@@ -1,0 +1,79 @@
+/* One coordinated palette, shared by cards, steps and educational diagrams. */
+.landing {
+  --accent-coral: #e4876b;
+  --soft-coral: #f0d2c5;
+  --ink-coral: #542b1f;
+  --accent-green: #68bd89;
+  --soft-green: #d1e3d4;
+  --ink-green: #1c422f;
+  --accent-yellow: #d1b02d;
+  --soft-yellow: #eadfb2;
+  --ink-yellow: #4f400f;
+  --accent-blue: #62afd8;
+  --soft-blue: #cfe3ed;
+  --ink-blue: #173b50;
+  --accent-orange: #e79549;
+  --soft-orange: #ecd7bd;
+  --ink-orange: #4c2d11;
+  --accent-lilac: #a18cc9;
+  --soft-lilac: #e0d6ec;
+  --ink-lilac: #312244;
+}
+.landing [data-color='coral'] {
+  --step-color: var(--accent-coral);
+  --step-soft: var(--soft-coral);
+  --step-ink: var(--ink-coral);
+}
+.landing [data-color='green'] {
+  --step-color: var(--accent-green);
+  --step-soft: var(--soft-green);
+  --step-ink: var(--ink-green);
+}
+.landing [data-color='yellow'] {
+  --step-color: var(--accent-yellow);
+  --step-soft: var(--soft-yellow);
+  --step-ink: var(--ink-yellow);
+}
+.landing [data-color='blue'] {
+  --step-color: var(--accent-blue);
+  --step-soft: var(--soft-blue);
+  --step-ink: var(--ink-blue);
+}
+.landing [data-color='orange'] {
+  --step-color: var(--accent-orange);
+  --step-soft: var(--soft-orange);
+  --step-ink: var(--ink-orange);
+}
+.landing [data-color='lilac'] {
+  --step-color: var(--accent-lilac);
+  --step-soft: var(--soft-lilac);
+  --step-ink: var(--ink-lilac);
+}
+.landing .color-card {
+  transition:
+    background 220ms ease,
+    transform 220ms ease,
+    box-shadow 220ms ease;
+}
+.landing .color-card:is(:hover, :focus-within) {
+  background: var(--step-soft);
+  box-shadow: inset 0 4px 0 var(--step-color);
+}
+.landing .step-enter {
+  animation: step-arrive 350ms ease both;
+}
+@keyframes step-arrive {
+  from {
+    opacity: 0.2;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing .step-enter {
+    animation: none;
+  }
+}

@@ -1,0 +1,240 @@
+.prism-scene {
+  position: relative;
+  isolation: isolate;
+  background: #f4d962;
+  color: #222a23;
+  overflow: hidden;
+  border-block: 1px solid var(--text);
+  --scene-accent: #ba4b20;
+}
+.prism-scene[data-perspective='sky'] {
+  --scene-accent: #78c9ee;
+}
+.prism-scene[data-perspective='lime'] {
+  --scene-accent: #2b6d48;
+}
+.scene-grid {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(#78c9ee15 1px, transparent 1px), linear-gradient(90deg, #78c9ee15 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(90deg, transparent, black 25%, black 75%, transparent);
+}
+.scene-meta {
+  display: flex;
+  justify-content: space-between;
+  padding: 22px 28px;
+  color: #4f5437;
+  font:
+    9px 'JetBrains Mono',
+    monospace;
+  letter-spacing: 0.04em;
+}
+.scene-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 340px;
+  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform 250ms ease-out;
+}
+.scene-art img {
+  width: 240px;
+  height: 240px;
+  transform: rotate(-12deg);
+  filter: drop-shadow(20px 24px 0 #09060c70);
+  transition: transform 500ms ease;
+  z-index: 1;
+}
+[data-perspective='sky'] .scene-art img {
+  transform: rotate(4deg) translateY(-7px);
+}
+[data-perspective='lime'] .scene-art img {
+  transform: rotate(14deg);
+}
+.orbit {
+  position: absolute;
+  width: 530px;
+  height: 195px;
+  border: 1px solid var(--scene-accent);
+  border-radius: 50%;
+  transform: rotate(-19deg);
+  opacity: 0.7;
+  transition: border-color 250ms;
+}
+.orbit-two {
+  width: 460px;
+  height: 260px;
+  transform: rotate(36deg);
+  border-color: #78c9ee;
+  opacity: 0.35;
+}
+.scene-bracket {
+  position: absolute;
+  font:
+    210px Georgia,
+    serif;
+  line-height: 1;
+  color: var(--scene-accent);
+  transition: color 250ms;
+}
+.bracket-left {
+  left: 16%;
+  transform: rotate(-16deg);
+}
+.bracket-right {
+  right: 16%;
+  transform: rotate(16deg);
+}
+.scene-spark {
+  position: absolute;
+  font-size: 70px;
+  color: #2b6d48;
+}
+.spark-one {
+  left: 30%;
+  top: 12px;
+}
+.spark-two {
+  right: 28%;
+  bottom: 10px;
+  color: #78c9ee;
+}
+.floating-label {
+  position: absolute;
+  padding: 7px 10px;
+  border: 1px solid #8a804e;
+  background: #f4d962;
+  font:
+    9px 'JetBrains Mono',
+    monospace;
+  color: #3e4f40;
+}
+.label-diff {
+  top: 48px;
+  left: 10%;
+  transform: rotate(-6deg);
+}
+.label-insight {
+  bottom: 50px;
+  right: 8%;
+  transform: rotate(5deg);
+}
+.scene-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  border-top: 1px solid #827946;
+  margin-top: 12px;
+}
+.scene-switch {
+  display: flex;
+  padding: 18px 28px;
+  gap: 8px;
+  align-items: center;
+}
+.scene-switch button {
+  min-height: 42px;
+  flex: 1;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid #756c3f;
+  border-radius: 2px;
+  color: #2b392e;
+  background: transparent;
+  font-size: 12px;
+}
+.scene-switch button[aria-pressed='true'] {
+  background: var(--scene-accent);
+  color: #fff7dc;
+  border-color: var(--scene-accent);
+}
+.prism-scene[data-perspective='sky'] .scene-switch button[aria-pressed='true'] {
+  color: #173c30;
+}
+.scene-switch button span {
+  font-size: 9px;
+  opacity: 0.8;
+}
+.scene-caption {
+  padding: 15px 28px;
+  border-left: 1px solid #827946;
+}
+.scene-caption p {
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+.scene-caption code {
+  font:
+    10px 'JetBrains Mono',
+    monospace;
+  color: #3e4f40;
+  overflow-wrap: anywhere;
+}
+
+/* Mascot controls are outside the decorative scene so keyboard users can operate them. */
+.mascot-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 5px 24px 22px;
+}
+.mascot-controls button {
+  background: #fdf8e1;
+  border: 1px solid #5f5b3d;
+  border-radius: 3px;
+  color: #293d2b;
+  min-height: 40px;
+  padding: 9px 14px;
+  font-size: 11px;
+}
+.mascot-controls button[aria-pressed='true'] {
+  background: #2c6447;
+  color: #fff;
+}
+.mascot-controls > span {
+  font-size: 10px;
+  color: #455039;
+}
+@media (max-width: 700px) {
+  .mascot-controls {
+    gap: 12px;
+    padding-inline: 16px;
+  }
+  .mascot-controls > span {
+    flex-basis: 100%;
+    order: 3;
+    text-align: center;
+    font-size: 10px;
+  }
+  .scene-art {
+    height: 300px;
+  }
+}
+
+.landing .mascot-controls button:hover:not(:disabled) {
+  background: #d5edc5;
+  color: #203e2c;
+}
+.landing .mascot-controls button[aria-pressed='true']:hover:not(:disabled) {
+  background: #2c6447;
+  color: #fff;
+}
+.landing .scene-switch button[aria-pressed='true'] {
+  background: var(--scene-accent);
+  color: #fff7dc;
+}
+.landing .prism-scene[data-perspective='sky'] .scene-switch button[aria-pressed='true'] {
+  color: #173c30;
+}
+.landing .scene-switch button[aria-pressed='false']:hover:not(:disabled) {
+  background: #fff5c9;
+  color: #293d2b;
+}

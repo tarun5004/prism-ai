@@ -1,0 +1,297 @@
+.cursor-cubes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+}
+.thought-scene {
+  background: var(--soft-yellow);
+  transition: background 300ms ease;
+}
+.thought-scene[data-color='blue'] {
+  background: var(--soft-blue);
+}
+.thought-scene[data-color='green'] {
+  background: var(--soft-green);
+}
+.thought-stage {
+  position: relative;
+  min-height: 425px;
+  perspective: 1000px;
+}
+.thought-stage .scene-art {
+  width: 60%;
+  height: 400px;
+}
+.thought-stage .scene-bracket {
+  font-size: 155px;
+  opacity: 0.6;
+}
+.thought-stage .bracket-left {
+  left: 6%;
+}
+.thought-stage .bracket-right {
+  right: 6%;
+}
+.thought-stage .orbit {
+  width: 420px;
+  height: 170px;
+  border-color: #b67b36;
+}
+.thought-stage .orbit-two {
+  width: 350px;
+  height: 245px;
+  border-color: #619e8e;
+}
+.thought-options {
+  position: absolute;
+  left: 24px;
+  top: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 3;
+}
+.landing .thought-option {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 11px 14px;
+  min-height: 44px;
+  border: 1px solid #53634b;
+  border-radius: 3px;
+  background: #f8f4df;
+  color: #273d2f;
+  font-size: 11px;
+  box-shadow: 3px 4px 0 #243b2525;
+  transform: rotate(-3deg);
+  transition:
+    background 180ms,
+    transform 180ms;
+}
+.landing .thought-option:nth-child(2) {
+  margin-left: 12px;
+  transform: rotate(2deg);
+}
+.landing .thought-option:nth-child(3) {
+  transform: rotate(-1deg);
+}
+.landing .thought-option[aria-pressed='true'],
+.landing .thought-option:hover:not(:disabled) {
+  background: var(--step-color);
+  transform: translateY(-3px) rotate(0);
+  color: #1c3529;
+}
+.thought-option > span:first-child {
+  font:
+    9px 'JetBrains Mono',
+    monospace;
+}
+.thought-option > span:last-child {
+  margin-left: auto;
+}
+.thought-bubble {
+  position: absolute;
+  right: 4%;
+  top: 48px;
+  width: 35%;
+  padding: 25px;
+  background: #faf8ec;
+  border: 1px solid #64755d;
+  border-top: 5px solid var(--step-color);
+  border-radius: 16px 16px 16px 3px;
+  box-shadow: 9px 11px 0 #243b251b;
+  transform: perspective(1000px) rotateY(-5deg);
+  z-index: 2;
+}
+.thought-content {
+  animation: thought-pop 400ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.thought-bubble h3 {
+  font-size: 25px;
+  line-height: 1.15;
+  margin: 0 0 15px;
+}
+.thought-bubble p {
+  color: #4c594c;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.thought-bubble code {
+  display: block;
+  padding: 12px;
+  background: var(--step-soft);
+  border-left: 3px solid var(--step-color);
+  color: #21372b;
+  font:
+    10px/1.8 'JetBrains Mono',
+    monospace;
+  overflow-wrap: anywhere;
+}
+.thought-bubble small {
+  display: block;
+  margin-top: 13px;
+  font-size: 9px;
+  color: #50634f;
+}
+.thought-bubble > i,
+.thought-bubble > b {
+  position: absolute;
+  display: block;
+  background: #faf8ec;
+  border: 1px solid #64755d;
+  border-radius: 50%;
+}
+.thought-bubble > i {
+  width: 20px;
+  height: 20px;
+  left: -33px;
+  bottom: 27px;
+}
+.thought-bubble > b {
+  width: 10px;
+  height: 10px;
+  left: -53px;
+  bottom: 13px;
+}
+.thought-scene .mascot-controls {
+  position: relative;
+  z-index: 5;
+  border-top: 1px solid #687c4a45;
+  padding-top: 17px;
+}
+.thought-scene .mascot-controls > span {
+  max-width: 350px;
+}
+@keyframes thought-pop {
+  from {
+    opacity: 0;
+    transform: translate3d(-20px, 15px, -50px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+@media (max-width: 1000px) {
+  .thought-stage .scene-art {
+    width: 56%;
+  }
+  .thought-options {
+    left: 18px;
+    top: 5px;
+    gap: 7px;
+  }
+  .landing .thought-option {
+    font-size: 10px;
+    padding: 9px 11px;
+  }
+  .thought-bubble {
+    right: 3%;
+    width: 39%;
+    top: 55px;
+    padding: 20px;
+  }
+  .thought-bubble h3 {
+    font-size: 22px;
+  }
+  .thought-stage .bracket-left {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .thought-stage {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .thought-stage .scene-art {
+    width: 100%;
+    height: 310px;
+    order: 1;
+  }
+  .thought-options {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 7px;
+    padding: 8px 16px;
+    order: 0;
+  }
+  .landing .thought-option {
+    flex: 1 1 90px;
+    justify-content: space-between;
+    font-size: 9px;
+    min-height: 46px;
+    padding: 9px;
+    gap: 7px;
+    transform: none;
+  }
+  .landing .thought-option:nth-child(2),
+  .landing .thought-option:nth-child(3) {
+    transform: none;
+    margin: 0;
+  }
+  .thought-option > span:first-child {
+    display: none;
+  }
+  .thought-bubble {
+    position: relative;
+    inset: auto;
+    transform: none;
+    width: auto;
+    margin: 0 18px 20px;
+    order: 2;
+    min-height: 238px;
+  }
+  .thought-bubble > i {
+    left: 42%;
+    top: -30px;
+    bottom: auto;
+  }
+  .thought-bubble > b {
+    left: 39%;
+    top: -47px;
+    bottom: auto;
+  }
+  .thought-bubble h3 {
+    font-size: 24px;
+  }
+  .thought-bubble p {
+    font-size: 12px;
+  }
+  .thought-stage .orbit {
+    width: 300px;
+  }
+  .thought-stage .orbit-two {
+    width: 270px;
+  }
+  .thought-stage .bracket-right {
+    right: 1%;
+  }
+  .thought-scene .mascot-controls {
+    gap: 12px;
+  }
+  .thought-scene .mascot-controls > span {
+    flex-basis: auto;
+    font-size: 10px;
+    max-width: 170px;
+    text-align: left;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cursor-cubes {
+    display: none;
+  }
+  .thought-content {
+    animation: none;
+  }
+  .thought-scene,
+  .thought-bubble,
+  .thought-option {
+    transition: none;
+    transform: none;
+  }
+}

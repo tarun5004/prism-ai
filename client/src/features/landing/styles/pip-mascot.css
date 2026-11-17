@@ -1,0 +1,340 @@
+.pip-stage {
+  position: relative;
+  width: 260px;
+  height: 310px;
+  perspective: 900px;
+  z-index: 2;
+}
+.pip-float {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: rotateY(-12deg) rotateX(3deg);
+  animation: pip-float 4s ease-in-out 1;
+}
+.pip-shadow {
+  position: absolute;
+  left: 45px;
+  bottom: 0;
+  width: 180px;
+  height: 24px;
+  background: #32241535;
+  border-radius: 50%;
+  filter: blur(5px);
+  animation: pip-shadow 4s ease-in-out 1;
+}
+.robot-head {
+  position: absolute;
+  left: 35px;
+  top: 30px;
+  width: 190px;
+  height: 146px;
+  border: 2px solid #3d2c1d;
+  border-radius: 47px 47px 38px 38px;
+  background: linear-gradient(145deg, #fff1ba 0%, #ffd14d 40%, #f29d20 100%);
+  box-shadow:
+    inset 5px 5px 0 #fff6d2,
+    inset -10px -8px 0 #d9861d,
+    10px 9px 0 #b96114;
+  transform: translateZ(28px);
+  z-index: 4;
+}
+.robot-visor {
+  position: absolute;
+  left: 17px;
+  right: 17px;
+  top: 21px;
+  height: 91px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #26342e, #10251e);
+  border-radius: 30px 30px 27px 27px;
+  border: 3px solid #443520;
+  box-shadow:
+    inset 0 5px 9px #0009,
+    0 3px 0 #ffe9a2;
+}
+.robot-eyes {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  padding-top: 19px;
+}
+.robot-eye {
+  position: relative;
+  display: block;
+  width: 29px;
+  height: 33px;
+  border-radius: 45%;
+  background: #effbe8;
+  box-shadow: 0 0 14px #a4e5b52e;
+  transform-origin: center;
+  animation: pip-blink 4.5s 1;
+}
+.robot-eye > i {
+  position: absolute;
+  width: 14px;
+  height: 20px;
+  top: 7px;
+  left: 8px;
+  background: #104b3b;
+  border-radius: 50%;
+  transform: translate(var(--look-x, 0px), var(--look-y, 0px));
+  transition: transform 160ms ease-out;
+}
+.robot-eye > i::after {
+  content: '';
+  width: 4px;
+  height: 5px;
+  background: #fff;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  border-radius: 50%;
+}
+.robot-cheeks {
+  display: flex;
+  justify-content: space-between;
+  margin: 2px 15px;
+}
+.robot-cheeks i {
+  width: 17px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f4825d;
+  opacity: 0.8;
+}
+.robot-mouth {
+  position: absolute;
+  width: 22px;
+  height: 12px;
+  border-bottom: 3px solid #b5f779;
+  border-radius: 0 0 50% 50%;
+  left: calc(50% - 11px);
+  bottom: 15px;
+}
+.visor-glint {
+  position: absolute;
+  width: 25px;
+  height: 120px;
+  background: #ffffff08;
+  transform: rotate(30deg);
+  left: 15px;
+  top: -25px;
+}
+.robot-serial {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font:
+    7px 'JetBrains Mono',
+    monospace;
+  letter-spacing: 0.15em;
+  color: #754110;
+}
+.robot-ear {
+  position: absolute;
+  top: 50px;
+  width: 16px;
+  height: 45px;
+  background: #d66b23;
+  border: 2px solid #54301b;
+  border-radius: 8px;
+  z-index: -1;
+}
+.ear-left {
+  left: -12px;
+}
+.ear-right {
+  right: -17px;
+  background: #e78629;
+}
+.robot-antenna {
+  position: absolute;
+  width: 6px;
+  height: 30px;
+  background: #2f6a57;
+  left: 129px;
+  top: 7px;
+  transform: translateZ(25px);
+  border-radius: 3px;
+}
+.robot-antenna i {
+  position: absolute;
+  width: 21px;
+  height: 21px;
+  background: #83e2aa;
+  border: 2px solid #274d38;
+  border-radius: 50%;
+  left: -8px;
+  top: -10px;
+  box-shadow: inset 4px 3px 0 #c9ffdb;
+}
+.robot-body {
+  position: absolute;
+  top: 170px;
+  left: 69px;
+  width: 120px;
+  height: 92px;
+  border: 2px solid #315643;
+  border-radius: 24px 24px 30px 30px;
+  background: linear-gradient(135deg, #d2f7dc, #80d4a5);
+  box-shadow:
+    inset 4px 4px 0 #edfff0,
+    inset -8px -6px 0 #65ae89,
+    8px 8px 0 #366f55;
+  transform: translateZ(14px);
+  z-index: 3;
+}
+.robot-badge {
+  position: absolute;
+  left: 21px;
+  top: 15px;
+  background: #eff0e9;
+  border: 1px solid #37654a;
+  width: 45px;
+  height: 45px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  box-shadow: 2px 2px 0 #599571;
+}
+.scene-art .robot-badge img {
+  width: 29px;
+  height: 29px;
+  transform: none;
+  filter: none;
+}
+.robot-light {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  right: 20px;
+  top: 26px;
+  border: 1px solid #3c583e;
+  border-radius: 50%;
+  background: #ff7547;
+}
+.robot-vent {
+  position: absolute;
+  right: 17px;
+  bottom: 14px;
+  font-size: 24px;
+  line-height: 1;
+  color: #37604c;
+}
+.robot-arm {
+  position: absolute;
+  width: 28px;
+  height: 75px;
+  background: linear-gradient(90deg, #e6782d, #ffba57);
+  border: 2px solid #663918;
+  border-radius: 16px;
+  top: 176px;
+  transform-origin: 50% 14px;
+  z-index: 2;
+  box-shadow: 4px 4px 0 #c77d2b;
+}
+.arm-left {
+  left: 40px;
+  transform: rotate(20deg);
+}
+.arm-right {
+  right: 35px;
+  transform: rotate(-22deg);
+}
+.robot-arm span {
+  position: absolute;
+  left: -3px;
+  bottom: -5px;
+  width: 31px;
+  height: 31px;
+  border: 2px solid #663918;
+  border-radius: 11px;
+  background: #f7d171;
+}
+.robot-leg {
+  position: absolute;
+  top: 250px;
+  width: 40px;
+  height: 37px;
+  background: #2d6950;
+  border: 2px solid #254533;
+  border-radius: 8px 8px 14px 14px;
+  box-shadow:
+    inset 4px 0 0 #559e78,
+    5px 5px 0 #213e30;
+}
+.leg-left {
+  left: 79px;
+  transform: rotate(6deg);
+}
+.leg-right {
+  right: 68px;
+  transform: rotate(-6deg);
+}
+[data-greeting='true'] .arm-right {
+  animation: pip-wave 650ms ease-in-out 2 alternate;
+}
+[data-greeting='true'] .robot-mouth {
+  height: 15px;
+  background: #b5f779;
+  border-radius: 4px 4px 50% 50%;
+}
+@keyframes pip-float {
+  0%,
+  100% {
+    transform: translateY(0) rotateY(-12deg) rotateX(3deg);
+  }
+  50% {
+    transform: translateY(-12px) rotateY(8deg) rotateX(-2deg);
+  }
+}
+@keyframes pip-shadow {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(0.85);
+    opacity: 0.35;
+  }
+}
+@keyframes pip-blink {
+  0%,
+  43%,
+  47%,
+  100% {
+    scale: 1 1;
+  }
+  45% {
+    scale: 1 0.12;
+  }
+}
+@keyframes pip-wave {
+  from {
+    transform: rotate(-120deg);
+  }
+  to {
+    transform: rotate(-155deg);
+  }
+}
+@media (max-width: 700px) {
+  .pip-stage {
+    transform: scale(0.82);
+    width: 260px;
+    flex-shrink: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pip-stage *,
+  .pip-shadow {
+    animation: none !important;
+    transition: none !important;
+  }
+  .pip-float {
+    transform: rotateY(-10deg);
+  }
+}
