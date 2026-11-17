@@ -1,0 +1,22 @@
+/* One coordinated palette, shared by cards, steps and educational diagrams. */
+.landing,
+.workspace-theme {
+  --accent-coral: #e4633d;
+  --soft-coral: #e5a78b;
+  --ink-coral: #381e15;
+  --accent-green: #4bbc79;
+  --soft-green: #a4cdaa;
+  --ink-green: #1b402e;
+  --accent-yellow: #e2c33d;
+  --soft-yellow: #f4edce;
+  --ink-yellow: #615015;
+  --accent-blue: #3ca1da;
+  --soft-blue: #99c9dc;
+  --ink-blue: #163445;
+  --accent-orange: #ee811d;
+  --soft-orange: #e5b985;
+  --ink-orange: #472a11;
+  --accent-lilac: #886dbe;
+  --soft-lilac: #bba6d4;
+  --ink-lilac: #130e1a;
+}

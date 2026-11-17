@@ -1,0 +1,20 @@
+@media (max-width: 1050px) {
+  .workspace-theme .sidebar-note { display: none; }
+}
+
+@media (max-width: 720px) {
+  .workspace-theme .connection-bar {
+    justify-content: flex-start;
+    gap: 0.65rem;
+  }
+  .workspace-theme .connection-bar > span:first-child { width: 100%; }
+  .workspace-theme .sidebar { gap: 0.75rem; padding-block: 0.8rem; }
+  .workspace-theme .sidebar-nav { gap: 0.1rem; }
+  .workspace-theme .nav-item { padding: 0.6rem; font-size: 0.72rem; }
+  .workspace-theme :is(.dashboard-shell, .public-demo) { padding-top: 1.75rem; }
+  .workspace-theme .beta-badge { display: none; }
+  .workspace-theme .workspace-capabilities { grid-template-columns: 1fr; }
+  .workspace-capabilities li + li { border-left: 0; }
+  .workspace-theme .risk-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0; }
+  .workspace-theme .risk-summary > div { padding-inline: 0.75rem; }
+}

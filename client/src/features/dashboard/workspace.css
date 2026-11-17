@@ -1,0 +1,5 @@
+@import './styles/workspace-foundation.css';
+@import './styles/workspace-navigation.css';
+@import './styles/workspace-reports.css';
+@import './styles/workspace-code.css';
+@import './styles/workspace-responsive.css';

@@ -1,0 +1,63 @@
+/* GitHub Dark diff tokens: line fills, text, gutters and hunk backgrounds. */
+.workspace-theme :is(.diff-file-panel, .finding-evidence) {
+  color-scheme: dark;
+  --page-bg: #0d1117;
+  --surface-subtle: #151b23;
+  --ink: #f0f6fc;
+  --muted: #9198a1;
+  --border: #3d444d;
+  --accent: #4493f8;
+  --success: #3fb950;
+  --success-soft: #2ea04326;
+  --danger: #f85149;
+  --danger-soft: #f851491a;
+  --warning: #d29922;
+  --warning-soft: #bb800926;
+  --info: #9198a1;
+  --info-soft: #388bfd1a;
+  color: var(--ink);
+  background: var(--page-bg);
+}
+
+.workspace-theme .diff-workspace {
+  border-radius: 4px;
+}
+
+.workspace-theme .diff-file-list {
+  background: var(--page-bg);
+}
+
+.workspace-theme .diff-file-button {
+  padding: 1rem 0.85rem;
+  font-size: 0.75rem;
+}
+
+.workspace-theme .diff-file-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--surface-hover);
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.workspace-theme .diff-selected-path {
+  color: var(--ink);
+  background: var(--surface-subtle);
+  border-color: var(--border);
+  font-size: 0.72rem;
+}
+
+.workspace-theme .finding-evidence {
+  border-radius: 3px;
+  border-color: var(--border);
+}
+
+.workspace-theme .diff-scroll {
+  scrollbar-color: #656c76 #0d1117;
+}
+
+.workspace-theme :is(.diff-line-added, .diff-line-deleted) {
+  color: var(--ink);
+}
+.workspace-theme .diff-line-added .diff-line-number { background: #3fb9504d; color: var(--ink); }
+.workspace-theme .diff-line-deleted .diff-line-number { background: #f851494d; color: var(--ink); }
+.workspace-theme .diff-line-added .diff-marker { color: var(--success); }
+.workspace-theme .diff-line-deleted .diff-marker { color: var(--danger); }

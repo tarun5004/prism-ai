@@ -54,7 +54,7 @@ function App() {
   }, [pathname]);
 
   return (
-    <>
+    <div className={route.page === 'landing' ? 'app-root' : 'app-root workspace-theme'}>
       {route.page !== 'landing' && (session?.enabled || connectionError) && (
         <div className="connection-bar">
           <span>
@@ -123,7 +123,7 @@ function App() {
             </main>
           )
         ))}
-    </>
+    </div>
   );
 }
 

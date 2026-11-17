@@ -469,7 +469,7 @@ test('footer offers product perspectives without changing the review entry desti
 });
 
 test('homepage accent ink remains readable on both active and soft palette surfaces', () => {
-  const css = readFileSync(new URL('../src/features/landing/styles/interaction-palette.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/shared/palette.css', import.meta.url), 'utf8');
   const colors = Object.fromEntries([...css.matchAll(/--([a-z-]+):\s*(#[a-f\d]{6})/gi)].map(match => [match[1], match[2]]));
   const luminance = hex => {
     const channels = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);

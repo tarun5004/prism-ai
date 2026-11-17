@@ -1,0 +1,176 @@
+/* GitHub.com Dark default: official Primer tokens, verified 2026-11-18.
+   Source: github.githubassets.com/assets/dark-534def0b30583f22.css */
+.workspace-theme {
+  color-scheme: dark;
+  --page-bg: #0d1117;
+  --surface: #151b23;
+  --surface-subtle: #212830;
+  --surface-hover: #262c36;
+  --ink: #f0f6fc;
+  --muted: #9198a1;
+  --border: #3d444d;
+  --border-strong: #656c76;
+  --accent: #4493f8;
+  --accent-hover: #4493f8;
+  --accent-soft: #388bfd1a;
+  --primary-bg: #238636;
+  --primary-hover: #29903b;
+  --primary-ink: #ffffff;
+  --nav-indicator: #f78166;
+  --success: #3fb950;
+  --success-soft: #2ea04326;
+  --success-border: #238636;
+  --danger: #f85149;
+  --danger-soft: #f851491a;
+  --warning: #d29922;
+  --warning-soft: #bb800926;
+  --warning-border: #9e6a03;
+  --info: #4493f8;
+  --info-soft: #388bfd1a;
+  min-height: 100vh;
+  background: var(--page-bg);
+  color: var(--ink);
+}
+
+.workspace-theme :is(.dashboard-shell, .public-demo) {
+  width: min(100%, 1440px);
+  padding: 2.75rem clamp(1rem, 4vw, 3.5rem) 4rem;
+}
+
+.workspace-theme :is(.overview-content, .page-overview .topbar) {
+  max-width: 64rem;
+}
+
+.workspace-theme .topbar {
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-theme h1 {
+  max-width: 55rem;
+  font-size: clamp(2rem, 4vw, 3.75rem);
+  font-weight: 550;
+  letter-spacing: -0.065em;
+  line-height: 1.08;
+}
+
+.workspace-theme :is(.eyebrow, .section-label) {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  font-weight: 400;
+  letter-spacing: 0.09em;
+}
+
+.workspace-theme :is(.submit-panel, .welcome-section, .report-section, .history-section, .diff-section, .review-sidebar) {
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.workspace-theme .submit-panel {
+  position: relative;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.workspace-theme .submit-panel h2 {
+  font-size: clamp(1.3rem, 2vw, 1.75rem);
+  font-weight: 550;
+  letter-spacing: -0.04em;
+}
+
+.workspace-theme :is(.heading-icon, .welcome-icon) {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+}
+
+.workspace-theme :is(input, textarea, select) {
+  border-radius: 4px;
+}
+
+.workspace-theme :is(input, textarea)::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.workspace-theme .input-row input {
+  min-height: 3.4rem;
+  background: var(--page-bg);
+  border-color: var(--border-strong);
+  font-size: 0.9rem;
+}
+
+.workspace-theme .input-row button {
+  border-radius: 4px;
+  min-height: 3.4rem;
+  padding-inline: 1.35rem;
+  border: 1px solid #ffffff1a;
+  color: var(--primary-ink);
+  background: var(--primary-bg);
+}
+
+.workspace-theme :is(input, textarea):focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.workspace-theme .welcome-section {
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.workspace-theme .welcome-icon {
+  color: var(--info);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.workspace-theme .workspace-capabilities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+  margin: 1.5rem 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.workspace-capabilities li {
+  min-width: 0;
+  padding: 1.1rem;
+  border-top: 0;
+}
+
+.workspace-capabilities li + li {
+  border-left: 1px solid var(--border);
+}
+
+.workspace-capabilities strong {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.workspace-capabilities p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.65;
+}
+
+.workspace-theme .connection-welcome {
+  margin-block: 0;
+  padding-top: 5rem;
+}
+
+.workspace-theme .input-row button:hover:not(:disabled) {
+  background: var(--primary-hover);
+}

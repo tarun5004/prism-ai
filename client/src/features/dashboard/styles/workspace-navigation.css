@@ -1,0 +1,82 @@
+.workspace-theme .connection-bar {
+  justify-content: flex-end;
+  padding: 0.65rem clamp(1rem, 4vw, 3.5rem);
+  background: var(--surface-subtle);
+  font-size: 0.75rem;
+}
+
+.workspace-theme .connection-bar > span:first-child {
+  margin-right: auto;
+}
+
+.workspace-theme .connection-bar :is(a, button) {
+  font-size: 0.75rem;
+}
+
+.workspace-theme .sidebar {
+  gap: 2.5rem;
+  background: var(--page-bg);
+  padding: 1rem clamp(1rem, 4vw, 3.5rem);
+}
+
+.workspace-theme .brand-lockup {
+  gap: 0.55rem;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+}
+
+.workspace-theme .nav-item {
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.workspace-theme .nav-item.active {
+  color: var(--ink);
+  background: var(--surface-subtle);
+  border-color: transparent;
+  box-shadow: inset 0 -2px var(--nav-indicator);
+}
+
+.workspace-theme .sidebar-note {
+  max-width: 16rem;
+  font-size: 0.7rem;
+}
+
+.workspace-theme .beta-badge {
+  color: var(--muted);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.workspace-theme .status-dot {
+  background: var(--success);
+  box-shadow: none;
+}
+
+.workspace-theme .history-item {
+  border-radius: 4px;
+  background: var(--page-bg);
+  padding: 1.15rem;
+}
+
+.workspace-theme .history-item:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+}
+
+.workspace-theme .history-item strong {
+  font-weight: 550;
+  line-height: 1.5;
+}
+
+.workspace-theme .history-item small {
+  overflow-wrap: anywhere;
+}
+
+.workspace-theme .history-status {
+  border: 1px solid currentColor;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.56rem;
+  font-weight: 400;
+}

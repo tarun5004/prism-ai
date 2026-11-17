@@ -1,0 +1,110 @@
+.workspace-theme .analysis-workspace > .report-section {
+  border-top: 1px solid var(--border);
+}
+
+.workspace-theme .report-section h2 {
+  font-size: clamp(1.2rem, 2vw, 1.65rem);
+  font-weight: 550;
+  line-height: 1.4;
+}
+
+.workspace-theme .risk-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+}
+
+.workspace-theme .risk-summary > div {
+  padding: 0.35rem 1.25rem;
+  border-left: 1px solid var(--border);
+}
+
+
+.workspace-theme .summary-number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 550;
+}
+
+.workspace-theme .summary-label {
+  font-size: 0.7rem;
+}
+
+.workspace-theme .review-panel-heading {
+  background: var(--surface);
+}
+
+.workspace-theme .review-views {
+  padding-top: 0.25rem;
+}
+
+.workspace-theme .review-views button[aria-pressed='true'] {
+  color: var(--ink);
+  border-bottom: 2px solid var(--nav-indicator);
+}
+
+.workspace-theme .ai-status-panel {
+  border-radius: 4px;
+}
+
+.workspace-theme .ai-status-panel.success { background: var(--success-soft); }
+.workspace-theme .ai-status-panel.warning { background: var(--warning-soft); }
+
+.workspace-theme .ai-status-panel a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+.workspace-theme .review-recommendation {
+  border-color: var(--border);
+  color: var(--ink);
+  background: var(--surface-subtle);
+}
+
+.workspace-theme .finding-card {
+  background: var(--surface);
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.workspace-theme .finding-icon {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.workspace-theme .finding-icon.high {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.workspace-theme .finding-category {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+}
+
+.workspace-theme .finding-card h3 {
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.workspace-theme .action-line {
+  background: var(--surface-subtle);
+  border-left: 2px solid var(--border-strong);
+  padding: 0.7rem;
+}
+
+.workspace-theme .review-limitations {
+  padding: 0.8rem;
+  border: 1px solid var(--warning-border);
+  background: var(--warning-soft);
+}
+
+.workspace-theme .sample-notice {
+  border-radius: 4px;
+  border-left-color: var(--accent);
+  background: var(--surface);
+}
+
+.workspace-theme .public-demo > h1 {
+  margin-block: 1.25rem 2rem;
+}
