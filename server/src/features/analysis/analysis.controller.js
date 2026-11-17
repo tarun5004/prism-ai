@@ -1,46 +1,57 @@
 import { analyzePullRequest, loadDemoReport } from './analysis.service.js';
 import { findAnalysis, listAnalyses, saveFindingFeedback, findReviewJob } from './analysis.repository.js';
 import { canReadReport, consumeReviewBudget } from '../pullRequest/github.app.js';
+import { enqueueManualReview } from './analysis.jobs.js';
 
 // Create a report from one Pull Request URL and save the normalized beta result.
-async function createAnalysis(request, response) {
-  const pullRequestUrl = typeof request.body?.pullRequestUrl === 'string' ? request.body.pullRequestUrl.trim() : '';
+function createAnalysisHandler({ enqueue = enqueueManualReview, analyze = analyzePullRequest } = {}) {
+  return async function createAnalysis(request, response) {
+    const pullRequestUrl = typeof request.body?.pullRequestUrl === 'string' ? request.body.pullRequestUrl.trim() : '';
 
-  if (!pullRequestUrl) {
-    return response.status(400).json({ message: 'Pull Request URL is required.' });
-  }
-  let installationId;
-  if (request.auth) {
-    const match = pullRequestUrl.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/[1-9]\d*\/?$/i);
-    const access = request.auth.repositories.find(item => item.repository === match?.[1]?.toLowerCase());
-    if (!access) return response.status(403).json({ message: 'Install PRism on this repository and verify your access.' });
-    installationId = access.installationId;
-  }
-  if (request.auth && !await consumeReviewBudget('user:' + request.auth.userId)) return response.status(429).json({ message: 'Demo review limit reached. Try again after the allowance resets.' });
+    if (!pullRequestUrl) {
+      return response.status(400).json({ message: 'Pull Request URL is required.' });
+    }
+    let installationId;
+    if (request.auth) {
+      const match = pullRequestUrl.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/[1-9]\d*\/?$/i);
+      const access = request.auth.repositories.find(item => item.repository === match?.[1]?.toLowerCase());
+      if (!access) return response.status(403).json({ message: 'Install PRism on this repository and verify your access.' });
+      installationId = access.installationId;
+    }
+    if (process.env.REVIEW_EXECUTION === 'queue') {
+      if (!request.auth) return response.status(401).json({ message: 'Connect GitHub before requesting a queued review.' });
+      try { return response.status(202).json(await enqueue(pullRequestUrl, request.auth)); }
+      catch (error) { return response.status([400, 403].includes(error.statusCode) ? error.statusCode : 503).json({ message: error.statusCode === 400 ? 'Enter a valid GitHub Pull Request URL.' : error.statusCode === 403 ? 'Verify your repository access first.' : 'Review could not be queued. Try again later.' }); }
+    }
+    if (process.env.NODE_ENV === 'production') return response.status(503).json({ message: 'Durable review queue is required.' });
+    // Queued reviews consume the inference allowance once, in the worker after claiming.
+    if (request.auth && !await consumeReviewBudget('user:' + request.auth.userId)) return response.status(429).json({ message: 'Demo review limit reached. Try again after the allowance resets.' });
 
-  const streaming = typeof request.headers?.accept === 'string' && request.headers.accept.includes('application/x-ndjson');
-  const connected = () => !response.destroyed && !response.writableEnded;
-  const sendFrame = frame => {
-    if (streaming && connected()) response.write(`${JSON.stringify(frame)}\n`);
+    const streaming = typeof request.headers?.accept === 'string' && request.headers.accept.includes('application/x-ndjson');
+    const connected = () => !response.destroyed && !response.writableEnded;
+    const sendFrame = frame => {
+      if (streaming && connected()) response.write(`${JSON.stringify(frame)}\n`);
+    };
+    const progress = stage => sendFrame({ type: 'progress', stage });
+    const reply = (status, value) => {
+      if (!streaming) return response.status(status).json(value);
+      sendFrame(status === 201 ? { type: 'result', report: value }
+        : { type: 'error', message: value.message || value.error || 'Analysis could not be completed.' });
+      if (connected()) response.end();
+    };
+    if (streaming && connected()) {
+      response.status(200);
+      response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('X-Accel-Buffering', 'no');
+      response.flushHeaders();
+    }
+
+    const result = await analyze(pullRequestUrl, { progress, installationId, githubToken: request.auth?.token, notificationUserId: request.auth?.userId });
+    return reply(result.status, result.body);
   };
-  const progress = stage => sendFrame({ type: 'progress', stage });
-  const reply = (status, value) => {
-    if (!streaming) return response.status(status).json(value);
-    sendFrame(status === 201 ? { type: 'result', report: value }
-      : { type: 'error', message: value.message || value.error || 'Analysis could not be completed.' });
-    if (connected()) response.end();
-  };
-  if (streaming && connected()) {
-    response.status(200);
-    response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
-    response.setHeader('Cache-Control', 'no-store');
-    response.setHeader('X-Accel-Buffering', 'no');
-    response.flushHeaders();
-  }
-
-  const result = await analyzePullRequest(pullRequestUrl, { progress, installationId, githubToken: request.auth?.token, notificationUserId: request.auth?.userId });
-  return reply(result.status, result.body);
 }
+const createAnalysis = createAnalysisHandler();
 
 // Return recent beta analyses for the dashboard history list.
 async function getAnalyses(request, response) {
@@ -85,5 +96,5 @@ async function getJobStatus(request, response) {
   response.json({ id: job.id, status: job.status, ...(job.errorCode ? { errorCode: job.errorCode } : {}) });
 }
 
-export { createAnalysis, getAnalyses, getAnalysis, setFindingFeedback, getDemoReport };
+export { createAnalysis, createAnalysisHandler, getAnalyses, getAnalysis, setFindingFeedback, getDemoReport };
 export { getJobStatus };

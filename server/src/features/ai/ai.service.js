@@ -1,6 +1,3 @@
-import { ChatGoogle } from '@langchain/google/node';
-import { RunTree } from 'langsmith/run_trees';
-import { withRunTree } from 'langsmith/traceable';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { prepareAiInput, containsSensitiveText } from './ai.context.js';
 
@@ -22,6 +19,9 @@ async function invokeReviewModel(options) {
   if (options.provider === 'gemini') return invokeGemini(options);
   const { provider, apiKey, model, contents, systemInstruction, schema, timeoutMs, signal, onRequest, onUsage } = options;
   if (process.env.LANGCHAIN_VERBOSE === 'true') throw Object.assign(new Error('Private logging disabled.'), { code: 'UNSAFE_LOGGING' });
+  const [{ RunTree }, { withRunTree }] = await Promise.all([
+    import('langsmith/run_trees'), import('langsmith/traceable')
+  ]);
   let finishReason;
   // Both APIs use OpenAI-style wire fields. Capture original counts, not normalized zeroes.
   const transport = async (input, init = {}) => {
@@ -58,6 +58,10 @@ async function invokeReviewModel(options) {
 async function invokeGemini({ apiKey, model, contents, systemInstruction, schema, maxOutputTokens, timeoutMs, signal, onRequest = () => {}, onUsage = () => {} }) {
   // LangChain's environment-level console logger overrides per-call callbacks.
   if (process.env.LANGCHAIN_VERBOSE === 'true') throw Object.assign(new Error('Private review logging is disabled.'), { code: 'UNSAFE_LOGGING' });
+  // The queued HTTP API only uses validators; load inference SDKs inside the worker call.
+  const [{ ChatGoogle }, { RunTree }, { withRunTree }] = await Promise.all([
+    import('@langchain/google/node'), import('langsmith/run_trees'), import('langsmith/traceable')
+  ]);
   const chat = new ChatGoogle({
     model, apiKey, platformType: 'gai', streaming: false, maxRetries: 0,
     maxOutputTokens, thinkingLevel: 'low', responseSchema: schema,
@@ -71,6 +75,11 @@ async function invokeGemini({ apiKey, model, contents, systemInstruction, schema
         const response = await fetch(request.url, { method: 'POST', headers: request.headers, body, signal: request.signal });
         // LangChain fills absent usage with zero and folds thinking into output. Keep provider counts instead.
         const data = await response.clone().json().catch(() => null);
+        // Preserve only this known actionable condition, never the private response body.
+        if (response.status === 400 && data?.error?.status === 'FAILED_PRECONDITION'
+          && /user location is not supported/i.test(data.error.message || '')) {
+          throw Object.assign(new Error('Provider unavailable in this deployment region.'), { statusCode: 400, code: 'PROVIDER_REGION_UNAVAILABLE' });
+        }
         if (response.ok && data?.usageMetadata) {
           const count = field => Number.isSafeInteger(data.usageMetadata[field]) && data.usageMetadata[field] >= 0 ? data.usageMetadata[field] : null;
           onUsage({ inputTokens: count('promptTokenCount'), outputTokens: count('candidatesTokenCount'), thinkingTokens: count('thoughtsTokenCount'), totalTokens: count('totalTokenCount') });
@@ -143,7 +152,7 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
   const validTimeout = Number.isInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 120000;
   const diagnostics = { attempts: 0, runId: randomUUID(), promptVersion: 'pr-review-v2', schemaVersion: 'review-v1', usage: null, ...(validTimeout ? { timeoutMs } : {}) };
   const result = (status, findings = [], error, review) => {
-    const failureCategory = error === 'API_ERROR'
+    const failureCategory = ['PROVIDER_ACCESS_DENIED', 'PROVIDER_REGION_UNAVAILABLE'].includes(error) ? 'provider' : error === 'API_ERROR'
       ? (diagnostics.networkCode ? 'network' : diagnostics.httpStatus ? 'provider' : 'request')
       : { MISSING_API_KEY: 'configuration', NO_REVIEWABLE_DIFF: 'input', INVALID_TIMEOUT: 'configuration', INVALID_RETRY_LIMIT: 'configuration', INVALID_PROVIDER: 'configuration', MISSING_MODEL: 'configuration', UNSAFE_LOGGING: 'configuration', TIMEOUT: 'timeout', INVALID_RESPONSE: 'response', INVALID_FINDINGS: 'validation', INVALID_REVIEW: 'validation' }[error];
     return {
@@ -185,6 +194,8 @@ async function runAiAnalysis(pullRequest, { timeoutMs = Number(process.env.GEMIN
     // Allowlisted codes explain failures without saving SDK messages, URLs or headers.
     const httpStatus = error?.statusCode ?? error?.status;
     if (Number.isInteger(httpStatus) && httpStatus >= 400 && httpStatus <= 599) diagnostics.httpStatus = httpStatus;
+    if (error?.code === 'PROVIDER_REGION_UNAVAILABLE') return result('unavailable', [], 'PROVIDER_REGION_UNAVAILABLE');
+    if (httpStatus === 403) return result('unavailable', [], 'PROVIDER_ACCESS_DENIED');
     const networkErrors = [error, error?.cause, ...(Array.isArray(error?.cause?.errors) ? error.cause.errors : [])];
     const networkCode = networkErrors.map(item => item?.code).find(code => safeNetworkCodes.has(code));
     if (networkCode) diagnostics.networkCode = networkCode;

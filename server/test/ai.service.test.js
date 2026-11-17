@@ -16,6 +16,29 @@ import { Client } from 'langsmith';
 
 const expected = { status: 'ok', provider: 'gemini', message: 'Connection successful' };
 
+test('provider HTTP 403 is an explicit access denial and never leaks its response', async () => {
+  process.env.GROQ_API_KEY = 'offline-groq';
+  globalThis.fetch.mock.mockImplementation(async () => Response.json({ error: { message: 'private provider response' } }, { status: 403 }));
+  const result = await aiService.runAiAnalysis(reviewPr, { provider: 'groq' });
+  assert.equal(result.error, 'PROVIDER_ACCESS_DENIED');
+  assert.equal(result.diagnostics.httpStatus, 403);
+  assert.equal(result.diagnostics.failureCategory, 'provider');
+  assert.equal(result.diagnostics.attempts, 1);
+  assert.ok(!JSON.stringify(result).includes('private provider response'));
+});
+
+test('Gemini regional denial is actionable without retaining its upstream message', async () => {
+  globalThis.fetch.mock.mockImplementation(async () => Response.json({ error: {
+    code: 400, status: 'FAILED_PRECONDITION', message: 'User location is not supported for the API use. private-details'
+  } }, { status: 400 }));
+  const result = await aiService.runAiAnalysis(reviewPr, { provider: 'gemini', maxRetries: 1 });
+  assert.equal(result.error, 'PROVIDER_REGION_UNAVAILABLE');
+  assert.equal(result.diagnostics.failureCategory, 'provider');
+  assert.equal(result.diagnostics.httpStatus, 400);
+  assert.equal(result.diagnostics.attempts, 1);
+  assert.ok(!JSON.stringify(result).includes('private-details'));
+});
+
 test('Mistral, Grok and Groq use the same validated report contract and record their actual provider', async () => {
   for (const provider of ['mistral', 'xai', 'groq']) {
     process.env.AI_PROVIDER = provider;

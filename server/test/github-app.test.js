@@ -7,6 +7,71 @@ import app from '../src/app.js';
 
 afterEach(() => mock.restoreAll());
 
+test('private API routes isolate repositories, derive feedback identity and recheck revoked access', async () => {
+  const { writeAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
+  const { saveAnalysis, findAnalysis, enqueueReviewJob } = await import('../src/features/analysis/analysis.repository.js');
+  const keys = ['GITHUB_APP_ID', 'APP_ORIGIN'];
+  const old = keys.map(key => process.env[key]);
+  process.env.GITHUB_APP_ID = '7';
+  process.env.APP_ORIGIN = 'http://localhost:5173';
+  let revoked = false;
+  const realFetch = globalThis.fetch;
+  mock.method(globalThis, 'fetch', async (url, options) => {
+    if (String(url).startsWith('http://127.0.0.1')) return realFetch(url, options);
+    const alice = options.headers.Authorization === 'Bearer alice-token';
+    const installationId = alice ? 91 : 92;
+    if (String(url).includes('/repositories?')) return Response.json({ repositories: [{ full_name: alice ? 'owner/private-a' : 'owner/private-b' }] });
+    if (String(url).includes('/user/installations?')) return Response.json({ installations: alice && revoked ? [] : [{ id: installationId, app_id: 7 }] });
+    throw Error('Unexpected external request in access test.');
+  });
+  for (const [userId, name] of [['901', 'alice'], ['902', 'bob']]) {
+    await writeAuthRecord('session', `access-${name}`, { userId, token: `${name}-token` }, Date.now() + 60000);
+    const id = `private-access-${name}`;
+    const repository = name === 'alice' ? 'owner/private-a' : 'owner/private-b';
+    const installationId = name === 'alice' ? 91 : 92;
+    await saveAnalysis({ id, installationId, createdAt: new Date().toISOString(), pullRequest: { repository }, findings: [{ title: 'Fixture finding' }] });
+    await enqueueReviewJob({ id, payload: { githubToken: 'must-not-leak', options: { installationId, trigger: { repository } } } });
+  }
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const base = `http://127.0.0.1:${server.address().port}/api/analyses`;
+  const request = (path = '', name = 'alice', options = {}) => fetch(base + path, {
+    ...options,
+    headers: { Cookie: `prism_session=access-${name}`, Origin: process.env.APP_ORIGIN, 'Content-Type': 'application/json' }
+  });
+  try {
+    assert.equal((await fetch(base)).status, 401);
+    for (const name of ['alice', 'bob']) {
+      const history = await request('', name);
+      assert.equal(history.status, 200);
+      assert.equal(history.headers.get('cache-control'), 'no-store');
+      assert.deepEqual((await history.json()).map(report => report.id), [`private-access-${name}`]);
+      assert.equal((await request(`/private-access-${name}`, name)).status, 200);
+    }
+    assert.equal((await request('/private-access-bob')).status, 404);
+    assert.equal((await request('/private-access-bob/job')).status, 404);
+    const feedback = { method: 'PUT', body: JSON.stringify({ verdict: 'useful', userId: '902' }) };
+    assert.equal((await request('/private-access-bob/findings/0/feedback', 'alice', feedback)).status, 404);
+    assert.equal((await findAnalysis('private-access-bob')).feedback, undefined);
+    assert.equal((await request('/private-access-alice/findings/0/feedback', 'alice', feedback)).status, 200);
+    const saved = await findAnalysis('private-access-alice');
+    assert.equal(saved.feedback['0_901'].userId, '901');
+    assert.equal(saved.feedback['0_902'], undefined);
+    const job = await request('/private-access-alice/job');
+    assert.equal(job.status, 200);
+    assert.deepEqual(await job.json(), { id: 'private-access-alice', status: 'queued' });
+    revoked = true;
+    assert.deepEqual(await (await request()).json(), []);
+    assert.equal((await request('/private-access-alice')).status, 404);
+    assert.equal((await request('/private-access-alice/job')).status, 404);
+    assert.equal((await request('/private-access-alice/findings/0/feedback', 'alice', feedback)).status, 404);
+    assert.equal((await request('/private-access-bob', 'bob')).status, 200);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; });
+  }
+});
+
 test('inline advisory reviews map validated AI findings to latest PR diff and deduplicate', async () => {
   const keys = ['GITHUB_POST_INLINE', 'GITHUB_APP_SLUG']; const old = keys.map(key => process.env[key]);
   process.env.GITHUB_POST_INLINE = 'true'; process.env.GITHUB_APP_SLUG = 'prism';
@@ -251,6 +316,10 @@ test('demo-only deployment serves one captured fixture while private report and 
 });
 
 test('OAuth binds state to a browser, sends PKCE, hides tokens and blocks cross-origin writes', async () => {
+  const { writeAuthRecord, readAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
+  await writeAuthRecord('session', 'previous-browser-session', { userId: '85', token: 'old-token' }, Date.now() + 60000);
+  await writeAuthRecord('mail-token', '85', { token: 'old-token' }, Date.now() + 60000);
+  await writeAuthRecord('email-preference', '85', { enabled: true }, Date.now() + 60000);
   const keys = ['GITHUB_APP_ID', 'GITHUB_APP_CLIENT_ID', 'GITHUB_APP_CLIENT_SECRET', 'APP_ORIGIN'];
   const old = keys.map(key => process.env[key]);
   keys.forEach((key, index) => { process.env[key] = ['7', 'client', 'secret', 'http://localhost:5173'][index]; });
@@ -276,8 +345,13 @@ test('OAuth binds state to a browser, sends PKCE, hides tokens and blocks cross-
     const state = destination.searchParams.get('state');
     const callbackUrl = base + '/github/callback?state=' + state + '&code=test';
     assert.equal((await fetch(callbackUrl)).status, 400);
-    const callback = await fetch(callbackUrl, { redirect: 'manual', headers: { Cookie: 'prism_state=' + state } });
+    const callback = await fetch(callbackUrl, { redirect: 'manual', headers: { Cookie: 'prism_state=' + state + '; prism_session=previous-browser-session' } });
     assert.equal(callback.status, 302);
+    assert.equal(callback.headers.get('location'), process.env.APP_ORIGIN + '/');
+    assert.equal(await readAuthRecord('session', 'previous-browser-session'), null);
+    assert.equal(await readAuthRecord('mail-token', '85'), null, 'replacing a browser session revokes its derived email authorization');
+    assert.equal((await readAuthRecord('email-preference', '85')).enabled, true, 're-login preserves the saved opt-in preference');
+    assert.equal(await readAuthRecord('mail-token', '12'), null, 'a different account must opt in independently');
     assert.ok(JSON.parse(outbound[0][1].body).code_verifier);
     const sessionCookie = callback.headers.getSetCookie().find(value => value.startsWith('prism_session='));
     assert.ok(sessionCookie.includes('HttpOnly'));

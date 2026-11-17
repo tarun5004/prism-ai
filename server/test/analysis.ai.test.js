@@ -1,4 +1,19 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+
+test('queued API startup does not load inference SDKs', () => {
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import { registerHooks } from 'node:module';
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      if (specifier.startsWith('@langchain/') || specifier === 'langsmith' || specifier.startsWith('langsmith/')) {
+        throw Error('Inference SDK loaded during API startup: ' + specifier);
+      }
+      return nextResolve(specifier, context);
+    } });
+    await import('./src/app.js');
+  `], { cwd: new URL('..', import.meta.url), env: { ...process.env, NODE_ENV: 'test', REVIEW_EXECUTION: 'queue' }, encoding: 'utf8', timeout: 15000 });
+  assert.equal(child.status, 0, child.stderr || child.error?.message);
+});
 
 test('resume prerequisite failure never saves a failed report over the recoverable ID', async () => {
   mock.method(globalThis, 'fetch', async () => Response.json({ message: 'rate limited' }, { status: 429 }));
@@ -77,6 +92,81 @@ test('Groq attribution is accepted by the persisted report schema', () => {
   assert.equal(report.toObject().aiProvider, 'groq');
 });
 import { analyzePullRequest } from '../src/features/analysis/analysis.service.js';
+
+test('manual queue submission pins a revision, reuses its webhook identity and never persists a user token', async () => {
+  const jobs = await import('../src/features/analysis/analysis.jobs.js');
+  let queued;
+  const auth = { userId: '91', token: 'private-browser-token', repositories: [{ installationId: 7, repository: 'audit/repo' }] };
+  const metadata = { base: { sha: 'a'.repeat(40) }, head: { sha: 'b'.repeat(40) } };
+  const dependencies = { request: async (path, token) => {
+    assert.equal(path, '/repos/audit/repo/pulls/1');
+    assert.equal(token, auth.token);
+    return metadata;
+  }, enqueue: async job => { queued = job; return { ...job, status: 'queued' }; } };
+  const accepted = await jobs.enqueueManualReview('https://github.com/Audit/Repo/pull/1/', auth, dependencies);
+  assert.match(accepted.id, /^webhook-[a-f\d]{64}$/);
+  assert.equal(accepted.status, 'queued');
+  assert.deepEqual(queued.payload.options.expectedRevision, { baseSha: metadata.base.sha, headSha: metadata.head.sha });
+  assert.equal(queued.payload.options.notificationUserId, '91');
+  assert.equal(queued.payload.options.trigger.repository, 'audit/repo');
+  const report = new Analysis({ id: accepted.id, status: 'completed', createdAt: new Date().toISOString(), pullRequest: {}, trigger: queued.payload.options.trigger });
+  assert.equal(report.validateSync(), undefined, 'Manual provenance must persist through the real Mongo schema');
+  assert.ok(!JSON.stringify(queued).includes(auth.token));
+  assert.equal((await jobs.enqueueManualReview('https://github.com/audit/repo/pull/1', auth, dependencies)).id, accepted.id);
+  metadata.head.sha = 'c'.repeat(40);
+  assert.notEqual((await jobs.enqueueManualReview('https://github.com/audit/repo/pull/1', auth, dependencies)).id, accepted.id);
+  for (const url of ['https://github.com/other/repo/pull/1', 'https://evil.test/audit/repo/pull/1']) {
+    await assert.rejects(jobs.enqueueManualReview(url, auth, { request() { assert.fail('Unauthorized PR must not be fetched'); } }), /access|URL/i);
+  }
+  await assert.rejects(jobs.enqueueManualReview('https://github.com/audit/repo/pull/1', auth, { ...dependencies, enqueue() { throw Error('queue down'); } }), /queue down/);
+});
+
+test('queued manual controller returns accepted only after enqueue and never starts inline analysis', async () => {
+  const { createAnalysisHandler } = await import('../src/features/analysis/analysis.controller.js');
+  const previous = process.env.REVIEW_EXECUTION;
+  const oldApp = process.env.GITHUB_APP_ID;
+  const oldLimit = process.env.REVIEW_MONTHLY_LIMIT;
+  process.env.GITHUB_APP_ID = '7';
+  process.env.REVIEW_MONTHLY_LIMIT = '1';
+  process.env.REVIEW_EXECUTION = 'queue';
+  let status; let body; let accepted = false;
+  const response = { status(value) { status = value; return this; }, json(value) { body = value; return this; } };
+  const request = { headers: { accept: 'application/x-ndjson' }, body: { pullRequestUrl: 'https://github.com/audit/repo/pull/1' }, auth: { userId: 'queue-controller-91', repositories: [{ repository: 'audit/repo', installationId: 7 }] } };
+  try {
+    await createAnalysisHandler({ enqueue: async () => { accepted = true; return { id: 'job-one', status: 'queued' }; }, analyze() { assert.fail('Queue mode must not call AI in the API'); } })(request, response);
+    assert.equal(accepted, true);
+    assert.equal(status, 202);
+    assert.deepEqual(body, { id: 'job-one', status: 'queued' });
+    await createAnalysisHandler({ enqueue() { throw Error('sensitive queue connection'); } })(request, response);
+    assert.equal(status, 503);
+    assert.ok(!JSON.stringify(body).includes('sensitive'));
+  } finally {
+    if (previous === undefined) delete process.env.REVIEW_EXECUTION; else process.env.REVIEW_EXECUTION = previous;
+    if (oldApp === undefined) delete process.env.GITHUB_APP_ID; else process.env.GITHUB_APP_ID = oldApp;
+    if (oldLimit === undefined) delete process.env.REVIEW_MONTHLY_LIMIT; else process.env.REVIEW_MONTHLY_LIMIT = oldLimit;
+  }
+});
+
+test('an explicit manual review can claim a revision previously skipped before inference', async () => {
+  const { enqueueReviewJob, claimReviewJob, finishReviewJob, findReviewJob } = await import('../src/features/analysis/analysis.repository.js');
+  const id = 'webhook-' + 'abcd'.repeat(16);
+  await enqueueReviewJob({ id, payload: { options: { trigger: { type: 'github_webhook' } } } });
+  await claimReviewJob(id, 'skipper');
+  await finishReviewJob(id, 'skipper', 'skipped', 'REVIEW_PAUSED');
+  const manual = { id, payload: { options: { trigger: { type: 'manual', repository: 'owned/fixture' } } } };
+  const saved = await enqueueReviewJob(manual);
+  assert.equal(saved.status, 'queued');
+  assert.equal(saved.payload.options.trigger.type, 'manual');
+  assert.equal(saved.errorCode, undefined);
+  await claimReviewJob(id, 'reviewer');
+  await finishReviewJob(id, 'reviewer', 'completed');
+  await enqueueReviewJob(manual);
+  assert.equal((await findReviewJob(id)).status, 'completed', 'Completed work must never be reset');
+  const queuedId = 'webhook-' + 'bcde'.repeat(16);
+  await enqueueReviewJob({ id: queuedId, payload: { options: { trigger: { type: 'github_webhook' } } } });
+  await enqueueReviewJob({ ...manual, id: queuedId });
+  assert.equal((await findReviewJob(queuedId)).payload.options.trigger.type, 'manual', 'Explicit intent replaces a queued automatic payload before the worker claim');
+});
 
 test('trusted policy disables automatic review before model calls and manual exclusions remain visible', async () => {
   const previous = process.env.REVIEW_REPOSITORY_CONFIG; process.env.REVIEW_REPOSITORY_CONFIG = 'true';

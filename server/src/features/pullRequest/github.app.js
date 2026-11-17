@@ -245,6 +245,9 @@ function createGitHubRoutes() {
       if (typeof data.access_token !== 'string' || data.error) throw Error('exchange');
       const user = await githubRequest('/user', data.access_token);
       if (!Number.isSafeInteger(user.id) || typeof user.login !== 'string') throw Error('user');
+      // Replacing a session revokes its email authorization, just like logout.
+      const previousSession = await readAuthRecord('session', cookie(request, 'prism_session'));
+      if (previousSession) await deleteAuthRecord('mail-token', previousSession.userId);
       await deleteAuthRecord('session', cookie(request, 'prism_session'));
       const id = randomBytes(32).toString('hex');
       const seconds = Math.min(Number.isFinite(data.expires_in) && data.expires_in > 0 ? data.expires_in : 3600, 28800);
@@ -252,7 +255,7 @@ function createGitHubRoutes() {
       const preference = await readAuthRecord('email-preference', String(user.id));
       if (preference?.enabled) await writeAuthRecord('mail-token', String(user.id), { token: data.access_token }, Date.now() + seconds * 1000);
       setCookie(response, 'prism_session', id, seconds);
-      response.redirect(process.env.APP_ORIGIN + '/app');
+      response.redirect(process.env.APP_ORIGIN + '/');
     } catch { response.status(502).json({ message: 'GitHub login failed. Start again.' }); }
   });
   router.post('/logout', async (request, response) => {

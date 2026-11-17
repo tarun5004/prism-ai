@@ -14,7 +14,7 @@ const analysisSchema = new mongoose.Schema(
     findings: { type: [mongoose.Schema.Types.Mixed], default: [] },
     feedback: { type: mongoose.Schema.Types.Mixed, default: {} },
     trigger: {
-      type: { type: String, enum: ['github_webhook'] },
+      type: { type: String, enum: ['github_webhook', 'manual'] },
       deliveryId: String,
       action: String,
       repository: String,

@@ -6,11 +6,24 @@ const localJobs = new Map();
 
 async function enqueueReviewJob(job) {
   if (mongoose.connection.readyState === 1) {
-    try { return await ReviewJob.findOneAndUpdate({ id: job.id }, { $setOnInsert: { ...job, status: 'queued' } }, { upsert: true, new: true }).lean(); }
-    catch (error) { if (error.code === 11000) return ReviewJob.findOne({ id: job.id }).lean(); throw error; }
+    let saved;
+    try { saved = await ReviewJob.findOneAndUpdate({ id: job.id }, { $setOnInsert: { ...job, status: 'queued' } }, { upsert: true, new: true }).lean(); }
+    catch (error) { if (error.code !== 11000) throw error; saved = await ReviewJob.findOne({ id: job.id }).lean(); }
+    // Queued/skipped jobs never crossed the model boundary. Preserve explicit manual intent.
+    if (['queued', 'skipped'].includes(saved.status) && job.payload.options?.trigger?.type === 'manual') {
+      return await ReviewJob.findOneAndUpdate({ id: job.id, status: { $in: ['queued', 'skipped'] } }, {
+        $set: { status: 'queued', payload: job.payload }, $unset: { errorCode: '', owner: '', leaseUntil: '' }
+      }, { new: true }).lean() || ReviewJob.findOne({ id: job.id }).lean();
+    }
+    return saved;
   }
   if (process.env.NODE_ENV === 'production') throw Error('Job storage unavailable.');
   if (!localJobs.has(job.id)) localJobs.set(job.id, { ...job, status: 'queued', createdAt: new Date() });
+  const saved = localJobs.get(job.id);
+  if (['queued', 'skipped'].includes(saved.status) && job.payload.options?.trigger?.type === 'manual') {
+    Object.assign(saved, { status: 'queued', payload: job.payload });
+    delete saved.errorCode; delete saved.owner; delete saved.leaseUntil;
+  }
   return localJobs.get(job.id);
 }
 

@@ -161,6 +161,31 @@ test('durable queue integration: real Mongo, Azurite duplicates and process rest
       if(result.resumed!=='completed')throw Error('resume failed'); process.stdout.write('resumed-once'); } finally {await mongoose.disconnect();}`;
     const child = await execute(process.execPath, ['--input-type=module', '-e', script], { cwd: new URL('..', import.meta.url), env: { ...process.env, MONGODB_URI: uri }, timeout: 10000 });
     assert.equal(child.stdout, 'resumed-once');
+
+    const { enqueueManualReview } = await import('../src/features/analysis/analysis.jobs.js');
+    const { enqueueReviewJob, claimReviewJob, finishReviewJob } = await import('../src/features/analysis/analysis.repository.js');
+    const auth = { userId: '91', token: 'not-persisted', repositories: [{ installationId: 44, repository: 'owned/fixture' }] };
+    const manualDependencies = { request: async () => ({ base: { sha: 'a'.repeat(40) }, head: { sha: 'd'.repeat(40) } }), enqueue: job => enqueueWebhookReview(job, queue) };
+    const manual = await enqueueManualReview('https://github.com/owned/fixture/pull/5', auth, manualDependencies);
+    assert.equal(manual.status, 'queued');
+    assert.equal(await findAnalysis(manual.id), null, 'Acceptance must not fabricate a completed report');
+    assert.ok(!JSON.stringify(await findReviewJob(manual.id)).includes(auth.token));
+    await enqueueManualReview('https://github.com/owned/fixture/pull/5', auth, manualDependencies);
+    let manualCalls = 0;
+    const manualWorker = { queue, getToken: async () => 'mock-installation-token', analyze: async (_url, options) => {
+      manualCalls++;
+      const report = { id: options.id, status: 'completed', installationId: options.installationId, createdAt: new Date().toISOString(), pullRequest: { repository: 'owned/fixture' }, trigger: options.trigger, findings: [] };
+      await saveAnalysis(report); return { body: report };
+    } };
+    assert.equal((await processNextReview(manualWorker)).status, 'completed');
+    await processNextReview(manualWorker);
+    assert.equal(manualCalls, 1);
+    assert.equal((await findAnalysis(manual.id)).trigger.type, 'manual');
+    const skippedId = 'webhook-' + 'e'.repeat(64);
+    await enqueueReviewJob({ id: skippedId, payload: { options: { trigger: { type: 'github_webhook' } } } });
+    await claimReviewJob(skippedId, 'skipper'); await finishReviewJob(skippedId, 'skipper', 'skipped');
+    await enqueueReviewJob({ id: skippedId, payload: { options: { trigger: { type: 'manual' } } } });
+    assert.equal((await findReviewJob(skippedId)).status, 'queued', 'Mongo atomically promotes only a pre-model skipped job');
   } finally {
     await queue.deleteIfExists();
     // This database name is generated above; never clean up a configured user database.
