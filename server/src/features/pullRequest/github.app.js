@@ -108,7 +108,7 @@ async function installationToken(installationId, repository) {
   try { jwt = unsigned + '.' + sign('RSA-SHA256', Buffer.from(unsigned), process.env.GITHUB_APP_PRIVATE_KEY?.replaceAll('\\n', '\n')).toString('base64url'); }
   catch { throw failure(503, 'GitHub App signing is not configured.'); }
   const result = await githubRequest(`/app/installations/${installationId}/access_tokens`, jwt, { repositories: [repository.split('/')[1]], permissions: {
-    contents: 'read', pull_requests: process.env.GITHUB_POST_REVIEW === 'true' || process.env.GITHUB_POST_INLINE === 'true' ? 'write' : 'read',
+    contents: 'read', pull_requests: process.env.GITHUB_POST_REVIEW === 'true' || process.env.GITHUB_POST_INLINE === 'true' || process.env.GITHUB_REVIEW_COMMANDS === 'true' ? 'write' : 'read',
     ...(process.env.GITHUB_POST_STATUS === 'true' ? { statuses: 'write' } : {}) } });
   if (typeof result.token !== 'string' || !result.token) throw failure(502, 'Installation access unavailable.');
   return result.token;
@@ -275,3 +275,4 @@ function createGitHubRoutes() {
 
 export { appMode, requireSession, canReadReport, userRepositories, installationToken, createGitHubRoutes, consumeReviewBudget, postReviewSummary, notificationRecipient };
 export { postInlineReview, postReviewStatus };
+export { githubRequest };

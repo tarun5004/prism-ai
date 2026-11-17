@@ -4,6 +4,82 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { createWebhookHandler } from '../src/features/pullRequest/pullRequest.webhook.js';
 import { findAnalysis } from '../src/features/analysis/analysis.repository.js';
 
+test('PR commands are exact and exclude bot, edited, non-PR and unrecognized comments', async () => {
+  const { parseReviewCommand } = await import('../src/features/pullRequest/review.controls.js');
+  const event = { action: 'created', issue: { pull_request: {}, number: 2 }, comment: { id: 9, body: '@prism-ai full review', user: { type: 'User', login: 'owner' } } };
+  assert.equal(parseReviewCommand(event), 'full review');
+  for (const variant of [{ ...event, action: 'edited' }, { ...event, issue: {} }, { ...event, comment: { ...event.comment, body: '@prism-ai review then run bash' } }, { ...event, comment: { ...event.comment, user: { type: 'Bot' } } }]) assert.equal(parseReviewCommand(variant), null);
+});
+
+test('pause controls persist per PR and stale commands cannot undo a newer setting', async () => {
+  const { getReviewControl, setReviewPaused } = await import('../src/features/pullRequest/review.controls.js');
+  const scope = { installationId: 15, repository: 'owner/repo', number: 2 };
+  await setReviewPaused(scope, true, 100);
+  assert.equal((await getReviewControl(scope)).paused, true);
+  await setReviewPaused(scope, false, 99);
+  assert.equal((await getReviewControl(scope)).paused, true);
+  assert.equal((await getReviewControl({ ...scope, installationId: 16 })).paused, false);
+  await setReviewPaused(scope, false, 101);
+  assert.equal((await getReviewControl(scope)).paused, false);
+});
+
+test('command execution verifies fresh write permission and creates a pinned deliberate review', async () => {
+  const { handleReviewCommand } = await import('../src/features/pullRequest/review.controls.js');
+  const old = process.env.GITHUB_REVIEW_COMMANDS; process.env.GITHUB_REVIEW_COMMANDS = 'true';
+  const event = { action: 'created', installation: { id: 16 }, repository: { full_name: 'owner/repo' }, issue: { number: 2, pull_request: {} },
+    comment: { id: 22, body: '@prism-ai review', user: { login: 'owner', type: 'User', id: 10 } } };
+  let permission = 'read'; let prReads = 0;
+  const request = async path => {
+    if (path.includes('/permission')) return { permission };
+    prReads++; return { number: 2, state: 'open', draft: false, base: { sha: 'a'.repeat(40) }, head: { sha: 'b'.repeat(40) } };
+  };
+  try {
+    await assert.rejects(handleReviewCommand(event, { request, getToken: async () => 'bot' }), /permission/i);
+    assert.equal(prReads, 0);
+    permission = 'write';
+    const result = await handleReviewCommand(event, { request, getToken: async () => 'bot' });
+    assert.equal(result.command, 'review'); assert.equal(result.payload.pull_request.head.sha, 'b'.repeat(40));
+  } finally { if (old === undefined) delete process.env.GITHUB_REVIEW_COMMANDS; else process.env.GITHUB_REVIEW_COMMANDS = old; }
+});
+
+test('signed command webhook reuses review dispatch and carries explicit command identity', async () => {
+  let reviewed;
+  const handler = createWebhookHandler({ command: async () => ({ command: 'full review', commentId: 77, actorId: '42', payload }), find: async () => null,
+    analyze: async (_url, options) => { reviewed = options; return { status: 201, body: { status: 'completed' } }; }, log() {} });
+  const res = response();
+  await handler(delivery({ action: 'created' }, 'issue_comment'), res); await tick();
+  assert.equal(res.code, 202);
+  assert.equal(reviewed.trigger.command, 'full review'); assert.equal(reviewed.trigger.actorId, '42');
+  assert.match(reviewed.id, /^webhook-[a-f\d]{64}$/);
+});
+
+test('paused automatic webhook skips work but an explicit command bypasses the pause once', async () => {
+  const old = process.env.GITHUB_APP_ID; process.env.GITHUB_APP_ID = '7';
+  let calls = 0; const logs = [];
+  const options = { control: async () => ({ paused: true }), find: async () => null, analyze: async () => { calls++; return { status: 201, body: { status: 'completed' } }; }, log: entry => logs.push(entry) };
+  try {
+    const handler = createWebhookHandler(options);
+    handler(delivery({ ...payload, installation: { id: 7 } }), response()); await tick();
+    assert.equal(calls, 0); assert.equal(logs[0].status, 'paused');
+    const manual = createWebhookHandler({ ...options, getToken: async () => 'bot', command: async () => ({ command: 'review', commentId: 79, actorId: '42', payload: { ...payload, installation: { id: 7 } } }) });
+    await manual(delivery({}, 'issue_comment'), response()); await tick();
+    assert.equal(calls, 1);
+  } finally { if (old === undefined) delete process.env.GITHUB_APP_ID; else process.env.GITHUB_APP_ID = old; }
+});
+
+test('queued work rechecks pause before minting credentials or calling AI', async () => {
+  const { setReviewPaused } = await import('../src/features/pullRequest/review.controls.js');
+  const { enqueueReviewJob, findReviewJob } = await import('../src/features/analysis/analysis.repository.js');
+  const { processNextReview } = await import('../src/features/analysis/analysis.jobs.js');
+  const id = 'webhook-' + 'e'.repeat(64);
+  await setReviewPaused({ installationId: 19, repository: 'owner/repo', number: 3 }, true, 123);
+  await enqueueReviewJob({ id, payload: { url: 'https://github.com/owner/repo/pull/3', options: { installationId: 19, trigger: { repository: 'owner/repo' } } } });
+  let removed = 0;
+  const queue = { receiveMessages: async () => ({ receivedMessageItems: [{ messageId: 'x', popReceipt: 'y', messageText: Buffer.from(id).toString('base64') }] }), deleteMessage: async () => { removed++; } };
+  const result = await processNextReview({ queue, analyze() { assert.fail('Paused job must not analyze'); } });
+  assert.equal(result.status, 'skipped'); assert.equal((await findReviewJob(id)).errorCode, 'REVIEW_PAUSED'); assert.equal(removed, 1);
+});
+
 const secret = 'offline-webhook-secret';
 const payload = { action: 'opened', number: 1, repository: { full_name: 'audit/repo' }, pull_request: { number: 1, state: 'open', draft: false, base: { sha: 'a'.repeat(40) }, head: { sha: 'b'.repeat(40) } } };
 let previous;

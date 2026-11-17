@@ -36,7 +36,7 @@ async function claimReviewJob(id, owner, leaseUntil = new Date(Date.now() + 9000
 }
 
 async function finishReviewJob(id, owner, status, errorCode) {
-  if (!['completed', 'failed'].includes(status)) throw Error('Invalid job result.');
+  if (!['completed', 'failed', 'skipped'].includes(status)) throw Error('Invalid job result.');
   if (mongoose.connection.readyState === 1) return ReviewJob.findOneAndUpdate({ id, owner, status: 'running' }, { $set: { status, ...(errorCode ? { errorCode } : {}) } }, { new: true }).lean();
   if (process.env.NODE_ENV === 'production') throw Error('Job storage unavailable.');
   const job = localJobs.get(id);
@@ -144,3 +144,11 @@ export { findAnalysis, listAnalyses, saveAnalysis, saveFindingFeedback, saveGitH
 export { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob };
 export { claimEmailNotification, saveEmailNotification };
 export { saveReviewDelivery };
+
+async function findLatestAnalysis(key, installationId) {
+  if (mongoose.connection.readyState === 1) return Analysis.findOne({ installationId, 'pullRequest.key': key.toLowerCase(), status: 'completed' }).sort({ createdAt: -1 }).lean();
+  if (process.env.NODE_ENV === 'production') throw Error('Persistent report storage unavailable.');
+  return Array.from(analyses.values()).filter(report => report.installationId === installationId && report.pullRequest?.key?.toLowerCase() === key.toLowerCase() && report.status === 'completed')
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+}
+export { findLatestAnalysis };

@@ -5,6 +5,7 @@ import { DefaultAzureCredential } from '@azure/identity';
 import { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob, findAnalysis } from './analysis.repository.js';
 import { analyzePullRequest } from './analysis.service.js';
 import { installationToken, consumeReviewBudget } from '../pullRequest/github.app.js';
+import { getReviewControl } from '../pullRequest/review.controls.js';
 
 function getReviewQueue() {
   const options = { retryOptions: { maxTries: 1, tryTimeoutInMs: 5000 } };
@@ -46,11 +47,16 @@ async function processNextReview({ queue, analyze = analyzePullRequest, resumeId
     if (existing && existing.status !== 'completed') throw Error('A failed saved report requires a fresh review.');
     if (!existing) {
       const { url, options } = job.payload;
+      const number = Number(url.match(/\/pull\/(\d+)$/)?.[1]);
+      if (options.installationId && !options.trigger?.command && (await getReviewControl({ installationId: options.installationId, repository: options.trigger.repository, number })).paused) {
+        await finishReviewJob(id, owner, 'skipped', 'REVIEW_PAUSED'); await remove(); return { status: 'skipped', id };
+      }
       if (!resumeId && options.installationId && !await consumeReviewBudget('installation:' + options.installationId)) {
         await finishReviewJob(id, owner, 'failed', 'REVIEW_LIMIT'); await remove(); return { status: 'failed', id };
       }
       const githubToken = options.installationId ? await installationToken(options.installationId, options.trigger.repository) : undefined;
       const result = await analyze(url, { ...options, id, githubToken, resume: Boolean(resumeId) });
+      if (result.body?.status === 'skipped') { await finishReviewJob(id, owner, 'skipped'); await remove(); return { status: 'skipped', id }; }
       if (result.body?.status !== 'completed') throw Error('Review did not complete.');
     }
     await finishReviewJob(id, owner, 'completed');

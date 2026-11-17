@@ -20,7 +20,8 @@ const analysisSchema = new mongoose.Schema(
       repository: String,
       baseSha: String,
       headSha: String,
-      actorId: String
+      actorId: String,
+      command: String
     },
     aiStatus: { type: String, enum: ['skipped', 'completed', 'partial', 'unavailable'] },
     aiModel: { type: String },
@@ -58,7 +59,7 @@ const Analysis = mongoose.models.Analysis || mongoose.model('Analysis', analysis
 
 const jobSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
-  status: { type: String, enum: ['queued', 'running', 'completed', 'failed', 'unknown'], default: 'queued' },
+  status: { type: String, enum: ['queued', 'running', 'completed', 'failed', 'unknown', 'skipped'], default: 'queued' },
   payload: mongoose.Schema.Types.Mixed,
   owner: String, leaseUntil: Date, errorCode: String,
   createdAt: { type: Date, default: Date.now }
@@ -66,5 +67,9 @@ const jobSchema = new mongoose.Schema({
 jobSchema.index({ status: 1, leaseUntil: 1 });
 const ReviewJob = mongoose.models.ReviewJob || mongoose.model('ReviewJob', jobSchema);
 export { ReviewJob };
+
+const controlSchema = new mongoose.Schema({ key: { type: String, unique: true }, paused: Boolean, commentId: Number }, { versionKey: false });
+const ReviewControl = mongoose.models.ReviewControl || mongoose.model('ReviewControl', controlSchema);
+export { ReviewControl };
 
 export default Analysis;
