@@ -4,6 +4,9 @@
 **/node_modules
 **/.env*
 **/*.log
+infra/*.parameters.local.json
+.playwright-cli
+output/playwright
 client/dist
 server/test
 client/test

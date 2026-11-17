@@ -244,7 +244,7 @@ Track acceptance criteria and completed work in [FEATURE_ROADMAP.md](docs/FEATUR
 Code is implemented; no real GitHub App was registered or installed by this development run.
 
 1. Register an App in GitHub developer settings. Use **Contents: read**, **Pull requests: read**, metadata read and the **Pull request** event. Optional emails also require the account permission **Email addresses: read**. For optional summary comments only, choose Pull requests: write.
-2. Set the authorization callback and post-install setup URL to `https://YOUR-HOST/api/github/callback` and `https://YOUR-HOST/app` respectively. Set the webhook URL to `https://YOUR-HOST/api/webhooks/github`, enable SSL verification and use a new shared secret. Enable user authorization during installation if offered.
+2. Set the authorization callback and post-install setup URL to `https://YOUR-HOST/api/github/callback` and `https://YOUR-HOST/` respectively. Set the webhook URL to `https://YOUR-HOST/api/webhooks/github`, enable SSL verification and use a new shared secret. Enable user authorization during installation if offered.
 3. Create the client secret and App private key. Add these server-only values to the host's protected environment; never paste a real key into documentation:
 
 ```dotenv
@@ -469,18 +469,53 @@ Inside Docker, `localhost` means the container. For host MongoDB use `host.docke
 
 ### 5. Azure and CI/CD: owner setup after local acceptance
 
-No cloud resources or public image were created. Proposed shape: Container Apps Consumption web service with minimum replicas zero, Storage Queue, and an event-triggered Container Apps Job running the worker. Persist reports/auth/jobs in MongoDB. Use the same encryption key and necessary server secrets for both commands. Deployed queue access uses managed identity and `AZURE_REVIEW_QUEUE_URL`; remove the local connection string. Configure queue data permissions for API sending and worker receiving/deleting, plus the scaler's queue access.
+#### Low-traffic serverless configuration — 17 November
 
-Start with one concurrent worker execution, no platform execution retries and an execution timeout shorter than the 900-second visibility/ownership lease. Account for worst-case GitHub/context/model work when choosing that timeout. Configure queue scaling explicitly; the one-shot script does not schedule itself. Keep logs bounded and avoid always-on VMs, Redis and a paid registry. Set INR50/100/150/200 budget alerts; alerts notify and do not stop spending. Verify regional costs/allowances before provisioning; student credits do not guarantee INR200/month.
+The deployment template is [infra/main.bicep](infra/main.bicep). It provisions a standard Container Apps environment with only the Consumption workload profile, one HTTP app, a Storage Queue, separate API/worker managed identities with queue-scoped roles, and an event-driven one-shot job. **Manually deployed to Azure for Students in East Asia on 17 November.** The environment mode is explicitly `WorkloadProfiles`: Express does not support this worker Job. No account billing/CI verification was bypassed.
+
+Deployment: [PRism workspace](https://prism-demo-standard-web.icypebble-5f4a6cbb.malaysiawest.azurecontainerapps.io/app). Live health/frontend/session checks returned HTTP 200; unauthenticated reports returned 401. Azure-to-Atlas ping and an unmodified empty-queue worker passed after adding the environment's current outbound IPs to Atlas. This does not prove a real PR/model review or reliable cold delivery. [Current evidence and remaining owner setup](docs/FEATURE_ROADMAP.md#azure-deployment-execution--17-november).
+
+**Known live limitation:** real GitHub `ping` delivery passed when warm (200 in 0.55 seconds), but two cold attempts exceeded GitHub's 10-second deadline. Automatic scale-to-zero was observed; reliable cold webhook ingestion is **not** established. Open the workspace before a controlled PR demo and inspect/redeliver failed events. Unattended cold ingestion needs a fast durable ingress; no always-on workaround was introduced. See the evidence ledger for failed attempts, the tested startup improvement and the final deployment settings.
+
+- HTTP app: **0.5 CPU / 1 GiB**, `minReplicas=0`, `maxReplicas=1`, `cooldownPeriod=900` (15-minute idle target, not an exact shutdown timer). Platform startup/readiness/liveness probes use `/api/health`; they do not call AI. Inference SDKs load at model invocation, not queued API startup. This first release serves the built React frontend and API from the same Docker image/origin; opening the site can wake the app. It does not create a separate static-hosting service.
+- Worker: same image, command `node server/scripts/review-worker.js`, event-triggered with `minExecutions=0`, one message per process, 600-second timeout, no platform replica retry, 30-second scaler polling. `maxExecutions=1` limits starts per polling interval, **not global concurrent workers**. Mongo claims prevent duplicate inference for one revision, not concurrent inference for different PRs.
+- Manual reviews in `REVIEW_EXECUTION=queue` mode now return **202 only after the Mongo job is saved and Queue accepts its ID**. A metadata-only GitHub request pins the revision first. The user token is not stored in the job. The worker obtains a fresh installation token; manual/webhook submissions share the installation/repository/base/head identity. A pre-model skipped job can be explicitly submitted manually again; completed/failed/unknown outcomes are not blindly reset.
+- The UI navigates to the accepted report URL and polls every 5 seconds, at most 120 job reads. Closing the page stops polling, not accepted work. Reopening the URL reads the report or resumes status polling without another POST. Failed/interrupted/skipped jobs stay visible; retries do not silently start another model request.
+- Inference quota is consumed in the worker after claiming, not again when the API enqueues. The template sets the existing shared monthly allowance to 20. This bounds accepted review executions; it is not an Azure billing cap or a guarantee of 20 successful AI responses.
+- The baseline template passes an AI key only to the worker. SMTP, GitHub publishing flags and hosted Chroma are not enabled by this template. Existing capabilities remain in code; persistent hosted Chroma is a separate cost/auth/storage decision and must not use the worker's temporary filesystem. No paid registry, log workspace, NAT gateway, dedicated profile or Kubernetes cluster is provisioned. Log routing is omitted, so retained application logs are unavailable; report diagnostics remain in MongoDB. The live ARM API rejected the literal destination `'none'` even though the CLI accepts that option. Enable retained logging deliberately if needed.
+
+For repeat manual deployments:
+
+1. Build/test the Docker image locally, publish an immutable image to your chosen registry, and confirm Azure can pull it. Hosted CI is not needed for a manual release; local tests are not evidence that hosted CI passed.
+2. Install Azure CLI/Bicep, authenticate locally with `az login`, select the intended student subscription, and check Container Apps Consumption/event-job quota and availability in the target region. Check remaining credit and costs for storage, logs, networking and external services. Free grants do not guarantee the complete application costs zero.
+3. Prepare an **untracked** `infra/demo.parameters.local.json` ARM parameter file. Non-secret parameters: `name`, `location`, optional `statefulLocation`/`environmentName` for a compute-region migration, `image`, `githubAppId`, `githubClientId`, `githubAppSlug`, `aiProvider` (`gemini`, `groq`, `mistral`, `xai`) and `aiModel`, plus optional `aiMaxRetries` (0 or 1; default 1). The secure `credentials` object requires `mongoUri`, `sessionEncryptionKey` (32-byte base64), `githubPrivateKey` (PEM with real newlines), `githubClientSecret`, `webhookSecret` and `aiApiKey`. Preserve the existing session encryption key when reusing a database. Prefer Key Vault parameter references for shared automation. Never paste credentials into chat, command arguments or committed files.
+4. Review a deployment what-if before provisioning. The current manual release passed what-if and deployment using the compiled template and private parameters. Adapt these commands for a future release:
+
+   ```powershell
+   az bicep build --file infra/main.bicep --outfile "$env:TEMP/prism-arm.json"
+   az group create --name prism-demo --location <verified-region>
+   az deployment group what-if --resource-group prism-demo --template-file infra/main.bicep --parameters '@infra/demo.parameters.local.json'
+   # Run create only after reviewing resources, subscription and cost.
+   az deployment group create --resource-group prism-demo --template-file infra/main.bicep --parameters '@infra/demo.parameters.local.json'
+   ```
+
+5. Use the deployment's `appOrigin` output for GitHub callback (`/api/github/callback`) and webhook (`/api/webhooks/github`) URLs. Configure MongoDB network access for the app environment's actual outbound connectivity without adding an unplanned paid networking service. Allow Azure RBAC propagation before testing queue access.
+6. Verify one real accepted review, duplicate delivery, saved report after restart, worker exit, idle scale-down to zero and wake-up on the next request. Check actual Azure consumption after testing. GitHub expects a response within 10 seconds and does not automatically redeliver failed webhooks: cold-start delivery is a release acceptance gate, not an assumed success. If it fails, evaluate a small durable ingress separately.
+
+Official references: [scaling](https://learn.microsoft.com/en-us/azure/container-apps/scale-app), [event-driven jobs](https://learn.microsoft.com/en-us/azure/container-apps/tutorial-event-driven-jobs), [billing](https://learn.microsoft.com/en-us/azure/container-apps/billing), [GitHub delivery failures](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries). Startup and cooldown can consume compute; only zero replicas means no container resource consumption. Storage, external database/vector services and model usage have separate costs.
+
+The manual release uses a public GHCR image pinned by digest, Container Apps Consumption web service with minimum replicas zero, Storage Queue, and an event-triggered Container Apps Job running the worker. Reports/auth/jobs persist in MongoDB Atlas; the access list preserves the PC entry and includes the 81 Malaysia Azure outbound IPs reported at deployment (82 entries including the preserved PC rule), without `0.0.0.0/0`. These addresses can change and need refresh; no fixed-egress NAT was added. The same encryption key and necessary server secrets are supplied to both commands. Deployed queue access uses managed identity and `AZURE_REVIEW_QUEUE_URL`, with separate sending, processing and scaler-read permissions.
+
+The worker limits starts to one per polling interval, with no platform execution retries and a 600-second execution timeout shorter than the 900-second visibility/ownership lease. This is not a global concurrency cap. Account for worst-case GitHub/context/model work when choosing that timeout. Queue scaling is explicitly configured; the one-shot script does not schedule itself. No always-on VM, Redis or paid registry was added. Budget alerts are a separate owner configuration and do not stop spending. Student spending limit remains On, but it does not guarantee INR200/month.
 
 The existing [workflow](.github/workflows/checks.yml) runs tests, builds the image and checks its public sample. Only a manual run with `deploy=true` on `integration/v0-demo` publishes a SHA-tagged GHCR image and reaches the protected `production` environment. Configure required reviewers for that environment and Azure OIDC federation for this repository/environment. Set these repository/environment variables:
 
 - `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
 - `AZURE_RESOURCE_GROUP`, `AZURE_APP_NAME`, `AZURE_WORKER_JOB_NAME`
 
-Provision the web app, queue, identity/scaler and worker job separately first; CD only updates existing images. Make the GHCR image public if Azure pulls anonymously. Grant the deployment identity access only to the intended resources. Hosted Actions/OIDC and actual deployment remain untested; the workflow was parsed locally. Both image updates are sequential, not an atomic release, so inspect both resources after deploying.
+The manual release provisioned the web app, queue, identity/scaler and worker job; CD only updates existing images. GHCR is public for anonymous Azure pulls. Grant any future CI deployment identity access only to the intended resources. Hosted Actions/OIDC remain untested; manual Azure deployment evidence is separate from hosted CI. Both image updates are sequential, not an atomic release, so inspect both resources after deploying.
 
-**Next manual acceptance:** register/install/connect the GitHub App → opt in → open a PR → enqueue → run worker → inspect saved report/email status → replay → confirm no second review → remove repository access and confirm denial. Then test actual SMTP, a second account, browser layouts and hosted triggers before calling the live release complete.
+**Live acceptance:** a real signed PR #4 event enqueued work, automatically started the Malaysia worker, completed Gemini inference, caught the intended boolean bug and saved its validated report. **Remaining manual acceptance:** finish GitHub callback/setup form validation and connect the deployed app → open the saved AI report → replay and confirm no second review → remove repository access and confirm denial. SMTP is disabled in this deployment; enable and test it separately if needed. A second account, browser layouts, real signed delivery and model quality remain distinct acceptance checks.
 
 
 ### Next agreed AI learning features — 14 November
@@ -557,3 +592,10 @@ Remove-Item Env:INTEGRATION_TESTS
 ```
 
 The test generates/cleans its own database and queue; it makes no model calls. Hosted Actions/OIDC and Azure triggers still need acceptance. Provider, Chroma cache status and actual timings/tokens are visible in report details. See the roadmap for controlled live results and remaining manual work.
+
+
+### Azure AI/homepage follow-up - 17 November
+
+The current release serves the PRism homepage at the deployment root. Connect/install, start-review and saved-analysis controls live on that page; successful GitHub login returns there. Existing report URLs remain direct links.
+
+The Malaysia West worker explicitly uses `gemini-3.1-flash-lite` with at most one transient retry within the original deadline. A live local review of PR #4 caught its intentional boolean bug with validated line evidence. Groq returned HTTP 403 from the Azure environment while working locally; the exact provider-side access rule is unconfirmed. Mistral returned 429 in the bounded local probe. No provider fallback or paid plan was enabled. The Azure image/config rollout succeeded and public homepage/health/login were verified; a subsequent real PR #4 commit verified cloud inference in Malaysia West: one attempt, 4,752 ms, saved `aiStatus=completed`, and the expected `||` -> `&&` finding at line 7. Existing failed-AI reports are saved revision snapshots and do not automatically rerun after a configuration change. Cold webhook delivery remains a separate limitation described above.
