@@ -31,6 +31,7 @@ javascript_tests:
   stage: test
   script:
     - npm ci --prefix server
+    - npm ci --prefix client
     - mkdir -p reports
     - node --test --test-concurrency=2 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/backend.xml server/test/*.test.js
     - node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/frontend.xml client/test/*.test.js
