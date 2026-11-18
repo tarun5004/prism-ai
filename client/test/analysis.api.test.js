@@ -19,6 +19,25 @@ import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis, s
 
 afterEach(() => mock.restoreAll());
 
+test('publication sends only a human decision with credentials and does not retry writes', async () => {
+  const { decidePublication } = await import('../src/features/dashboard/analysis.api.js');
+  let calls = 0;
+  const request = mock.method(globalThis, 'fetch', async (url, options) => {
+    calls++; assert.equal(url, '/api/analyses/agent-1/publication');
+    assert.equal(options.credentials, 'include'); assert.equal(options.method, 'POST');
+    assert.deepEqual(JSON.parse(options.body), { decision: 'approve' });
+    return Response.json({ id: 'agent-1', status: 'completed', pullRequest: {}, findings: [], publication: { status: 'published' } });
+  });
+  assert.equal((await decidePublication('agent-1', 'approve')).publication.status, 'published');
+  request.mock.mockImplementation(async () => { throw Error('lost response'); });
+  await assert.rejects(decidePublication('agent-1', 'approve'));
+  assert.equal(calls, 1); // replaced transport did not call the first handler again
+  assert.equal(request.mock.calls.length, 2);
+  await assert.rejects(decidePublication('../wrong', 'approve'));
+  await assert.rejects(decidePublication('agent-1', 'post anything'));
+  assert.equal(request.mock.calls.length, 2);
+});
+
 test('accepted reviews poll saved job status without a second POST and can resume by report URL', async () => {
   const id = 'webhook-' + 'a'.repeat(64);
   const report = { id, status: 'completed', pullRequest: {}, findings: [] };

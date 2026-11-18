@@ -5,6 +5,8 @@ import { formatDate, getFailureMessage } from './report.helpers.js';
 import AiStatusPanel from './AiStatusPanel.jsx';
 import ReviewOverview from './ReviewOverview.jsx';
 import FindingsPanel from './FindingsPanel.jsx';
+import AgentActivity from './AgentActivity.jsx';
+import ReviewApproval from './ReviewApproval.jsx';
 
 export default function AnalysisReport({ analysis, userId = 'local' }) {
   const [activeView, setActiveView] = useState(analysis.sample ? 'findings' : 'overview');
@@ -156,6 +158,8 @@ export default function AnalysisReport({ analysis, userId = 'local' }) {
           </nav>
           <div className="review-panel" id="review-panel" role="region" aria-label="Review panel">
             <AiStatusPanel analysis={analysis} files={files} />
+            <AgentActivity agent={analysis.aiDiagnostics?.agent} files={files} onNavigate={setFocusLocation} />
+            <ReviewApproval key={analysis.id} analysis={analysis} />
 
             <ReviewOverview
               active={activeView === 'overview'}

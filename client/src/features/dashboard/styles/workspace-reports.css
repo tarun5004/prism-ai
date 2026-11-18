@@ -108,3 +108,22 @@
 .workspace-theme .public-demo > h1 {
   margin-block: 1.25rem 2rem;
 }
+.agent-activity, .review-approval {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 8px;
+  background: var(--surface-color, #161b22);
+  overflow-wrap: anywhere;
+}
+.agent-activity summary { cursor: pointer; font-weight: 600; }
+.agent-provenance { display: inline-block; font-size: .75rem; color: #8b949e; margin-left: .5rem; }
+.agent-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.agent-metrics dt { color: #8b949e; font-size: .75rem; }
+.agent-metrics dd { margin: .2rem 0; }
+.agent-events { padding-left: 1.2rem; }
+.agent-events li { margin-block: .8rem; }
+.agent-events li > span, .agent-events code { display: block; font-size: .8rem; margin-top: .3rem; }
+.agent-events li > span { color: #8b949e; }
+.review-approval pre { white-space: pre-wrap; font: inherit; padding: .75rem; background: #0d1117; border-radius: 6px; }
+.approval-actions { display: flex; flex-wrap: wrap; gap: .75rem; }

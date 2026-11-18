@@ -190,3 +190,11 @@ async function loadDemoAnalysis({ signal } = {}) {
 
 export { createAnalysis, loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, saveFindingFeedback, loadGitHubSession, logoutGitHub, githubLoginUrl, loadDemoAnalysis };
 export { setEmailNotifications };
+
+async function decidePublication(id, decision) {
+  if (!/^[a-z\d_-]{1,128}$/i.test(id || '') || !['approve', 'reject'].includes(decision)) throw Error('Invalid publication decision.');
+  const result = await request(`/${id}/publication`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }) }, 'Summary status could not be confirmed. Reload the report before retrying.');
+  if (!isReport(result) || !['pending', 'publishing', 'published', 'rejected', 'unknown'].includes(result.publication?.status)) throw Error('The server returned an invalid publication status. Reload the report.');
+  return result;
+}
+export { decidePublication };

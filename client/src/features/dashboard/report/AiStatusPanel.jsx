@@ -2,7 +2,9 @@ import { Sparkles } from 'lucide-react';
 import { getAiStatusDetails } from './report.helpers.js';
 
 export default function AiStatusPanel({ analysis, files }) {
-  const aiReview = getAiStatusDetails(analysis);
+  const aiReview = analysis.aiDiagnostics?.agent?.provenance === 'scripted-fixture'
+    ? { tone: 'warning', label: 'Scripted agent fixture', message: 'Real graph, tools and validation with authored provider output. No live model inference was performed.' }
+    : getAiStatusDetails(analysis);
   const diagnostics = analysis.aiDiagnostics;
   return (
     <section className={`ai-status-panel ${aiReview.tone}`} aria-label="AI analysis status">
