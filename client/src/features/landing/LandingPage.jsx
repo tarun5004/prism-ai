@@ -9,6 +9,7 @@ import GettingStarted from './GettingStarted.jsx';
 import AzureArchitecture from './AzureArchitecture.jsx';
 import HomeConnection from './HomeConnection.jsx';
 import ContextPipeline from './ContextPipeline.jsx';
+import AgentWorkflow from './AgentWorkflow.jsx';
 import DeliveryPipeline from './DeliveryPipeline.jsx';
 import MotionLabel from './MotionLabel.jsx';
 import CursorCubes from './CursorCubes.jsx';
@@ -117,6 +118,7 @@ export default function LandingPage({ onNavigate, ...connection }) {
         </div>
         <EvidencePreview />
         <ContextPipeline />
+        <AgentWorkflow />
         <FeatureCatalogue />
         <div className="showcase-section">
           <p className="landing-eyebrow">EXPLORE THE WORKSPACE / HOVER, FOCUS OR TAP</p>

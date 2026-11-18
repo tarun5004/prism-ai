@@ -19,11 +19,11 @@ const stages = [
     name: 'Build bounded context',
     color: 'green',
     title: 'Retrieve the nearby code. Keep its coordinates.',
-    text: 'Source windows around changes and selected direct imports supplement the patch. Optional lexical guidance can select relevant repository Markdown. Paths, line ranges and revisions travel with the context; unavailable sources are recorded as omissions.',
+    text: 'Node collects source windows, selected direct imports and bounded nearby tests. The Python agent can search those supplied windows with lexical ranking. Paths, line ranges and revisions travel with the context; unavailable sources are recorded as omissions.',
     example: [
       'review-policy.js:1–32 / head revision',
       'direct import → selected related source',
-      'repository guidance → bounded review criteria',
+      'related tests + lexical matches → approved context',
     ],
     result: 'Context engineering: useful source with visible limits.',
   },
@@ -43,7 +43,7 @@ const stages = [
     name: 'Generate & validate',
     color: 'blue',
     title: 'Evidence validation before a finding becomes a report.',
-    text: 'A LangChain provider adapter receives the bounded input. Schema checks validate the response, then file, side, line and whole-line evidence are checked against supplied code. LangGraph checkpoints the model/save boundary; an uncertain model outcome is not blindly replayed after a crash.',
+    text: 'A private FastAPI service runs a per-request LangGraph tool loop through a LangChain Gemini adapter. Python and Node validate the schema, file, side, line and exact evidence. Node owns the durable model/save checkpoint; an uncertain model outcome is not blindly replayed after a crash.',
     example: [
       'model response → schema validation',
       'finding → actual added/deleted diff line',
@@ -136,17 +136,18 @@ export default function ContextPipeline() {
         </div>
       </div>
       <p className="pipeline-stack-note">
-        <strong>LangChain</strong> connects the model adapter. <strong>LangGraph</strong> checkpoints the
-        model/save boundary. <strong>Evidence validation</strong> checks the returned references before the
-        report is saved.
+        <strong>LangChain</strong> connects Gemini. <strong>LangGraph</strong> coordinates the Python agent’s
+        per-request decisions and tools. <strong>Node</strong> owns durable job recovery and saving;
+        <strong>Evidence validation</strong> independently checks references at the report boundary.
       </p>
       <div className="semantic-branch">
         <div>
-          <span className="engineering-badge">OPTIONAL BRANCH / NOT ENABLED ON THIS HOSTED DEMO</span>
+          <span className="engineering-badge">OPTIONAL LEGACY BRANCH / SEPARATE FROM THE PYTHON AGENT</span>
           <h3>Where semantic RAG fits</h3>
           <p>
-            The hosted review uses bounded source context. The optional semantic path selects from that
-            already-collected context; it does not clone or search the whole repository.
+            The Python agent uses bounded snapshot context and lexical retrieval, with no embeddings or
+            vector database. The optional legacy semantic path selects from already-collected context;
+            it does not clone or search the whole repository.
           </p>
         </div>
         <ol>

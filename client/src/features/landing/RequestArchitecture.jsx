@@ -9,7 +9,12 @@ export default function RequestArchitecture() {
   const last = requestJourney.length - 1;
   const step = requestJourney[selected];
   const unavailable = scenario === 'unavailable';
-  const column = selected < 4 ? selected : 7 - selected;
+  const columns = Math.ceil(requestJourney.length / 2);
+  const column = selected < columns ? selected : 2 * columns - 1 - selected;
+  const inferenceIndex = requestJourney.findIndex((checkpoint) => checkpoint.id === 'inference');
+  const inferenceUnavailable = unavailable && inferenceIndex >= 0 && selected >= inferenceIndex;
+  const routeEnd = 100 + (2 * columns - requestJourney.length) * 600 / (columns - 1);
+  const route = `M100 90H700Q758 90 758 160V230Q758 290 700 290H${routeEnd}`;
 
   useEffect(() => {
     if (!playing) return;
@@ -46,18 +51,21 @@ export default function RequestArchitecture() {
       <div className="request-scene">
         <div className="request-floor" aria-hidden="true" />
         <svg className="request-route" viewBox="0 0 800 380" preserveAspectRatio="none" aria-hidden="true">
-          <path d="M100 90H700Q758 90 758 160V230Q758 290 700 290H100" />
+          <path d={route} />
           <path
             pathLength="1"
             className="route-trace"
-            d="M100 90H700Q758 90 758 160V230Q758 290 700 290H100"
-            style={{ '--route-progress': selected / 7 }}
+            d={route}
+            style={{ '--route-progress': selected / last }}
           />
-          <circle className="request-packet" cx={100 + column * 200} cy={selected < 4 ? 90 : 290} r="7" />
+          <circle className="request-packet" cx={100 + column * 600 / (columns - 1)} cy={selected < columns ? 90 : 290} r="7" />
         </svg>
-        <ol className="request-checkpoints" aria-label="Request checkpoints">
+        <ol className="request-checkpoints" aria-label="Request checkpoints" style={{ '--request-columns': columns }}>
           {requestJourney.map(({ label, icon: Icon, color, service }, index) => (
-            <li key={label} data-index={index}>
+            <li key={label} data-index={index} style={{
+              '--checkpoint-column': index < columns ? index + 1 : 2 * columns - index,
+              '--checkpoint-row': index < columns ? 1 : 2,
+            }}>
               <button
                 type="button"
                 className="request-platform"
@@ -92,7 +100,7 @@ export default function RequestArchitecture() {
         >
           ←
         </button>
-        <label htmlFor="request-progress">CHECKPOINT 0{selected + 1} / 08</label>
+        <label htmlFor="request-progress">CHECKPOINT {String(selected + 1).padStart(2, '0')} / {String(requestJourney.length).padStart(2, '0')}</label>
         <input
           id="request-progress"
           type="range"
@@ -124,7 +132,7 @@ export default function RequestArchitecture() {
           </span>
           <h3>{step.title}</h3>
           <p>{step.detail}</p>
-          {unavailable && selected >= 5 && (
+          {inferenceUnavailable && (
             <p className="request-fallback">
               Provider-unavailable example: the report records AI as unavailable. Available rule-based results
               and the saved diff remain inspectable; this is not a successful AI review.
@@ -136,7 +144,7 @@ export default function RequestArchitecture() {
           <code>{step.payload}</code>
           <span>OUTCOME</span>
           <p>
-            {unavailable && selected >= 5
+            {inferenceUnavailable
               ? 'AI unavailable · available rules and code preserved'
               : step.output}
           </p>

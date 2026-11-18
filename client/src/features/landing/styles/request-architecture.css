@@ -56,7 +56,7 @@
 }
 .request-checkpoints {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--request-columns, 4), minmax(0, 1fr));
   grid-template-rows: repeat(2, 165px);
   gap: 48px 24px;
   list-style: none;
@@ -67,22 +67,8 @@
 .request-checkpoints > li {
   min-width: 0;
   position: relative;
-}
-.request-checkpoints > li:nth-child(5) {
-  grid-column: 4;
-  grid-row: 2;
-}
-.request-checkpoints > li:nth-child(6) {
-  grid-column: 3;
-  grid-row: 2;
-}
-.request-checkpoints > li:nth-child(7) {
-  grid-column: 2;
-  grid-row: 2;
-}
-.request-checkpoints > li:nth-child(8) {
-  grid-column: 1;
-  grid-row: 2;
+  grid-column: var(--checkpoint-column);
+  grid-row: var(--checkpoint-row);
 }
 .landing .request-platform {
   position: relative;
