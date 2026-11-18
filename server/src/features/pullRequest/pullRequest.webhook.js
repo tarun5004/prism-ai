@@ -3,6 +3,7 @@ import { analyzePullRequest } from '../analysis/analysis.service.js';
 import { findAnalysis } from '../analysis/analysis.repository.js';
 import { appMode, installationToken, consumeReviewBudget } from './github.app.js';
 import { enqueueWebhookReview } from '../analysis/analysis.jobs.js';
+import { getReviewEngine } from '../ai/ai.agent.js';
 import { handleReviewCommand, getReviewControl } from './review.controls.js';
 
 const actions = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review']);
@@ -64,7 +65,7 @@ function createWebhookHandler({ analyze = analyzePullRequest, find = findAnalysi
       const revisionKey = commandResult ? `command:${commandResult.commentId}` : `${baseSha}:${headSha}`;
       const id = 'webhook-' + createHash('sha256').update(`${installationId ? installationId + ':' : ''}${eventRepository}#${payload.number}:${revisionKey}`).digest('hex');
       const url = `https://github.com/${eventRepository}/pull/${payload.number}`;
-      const options = { id, installationId, expectedRevision: { baseSha, headSha },
+      const options = { id, installationId, reviewEngine: getReviewEngine(), expectedRevision: { baseSha, headSha },
         trigger: { type: 'github_webhook', deliveryId, action: payload.action, repository: eventRepository, baseSha, headSha,
           ...(Number.isSafeInteger(pr.user?.id) && pr.user.id > 0 ? { actorId: String(pr.user.id) } : {}),
           ...(commandResult ? { command: commandResult.command, actorId: commandResult.actorId } : {}) } };

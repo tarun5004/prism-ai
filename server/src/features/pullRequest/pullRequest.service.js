@@ -169,7 +169,7 @@ async function fetchPullRequest(pullRequestUrl, { token = process.env.GITHUB_TOK
 }
 
 // Best-effort context enrichment. A missing source must not discard the saved diff.
-async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_GUIDANCE === 'lexical', token = process.env.GITHUB_TOKEN } = {}) {
+async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_GUIDANCE === 'lexical', token = process.env.GITHUB_TOKEN, relatedTests = false } = {}) {
   const result = { scope: 'bounded-js-ts-imports', snippets: [], omitted: [], requests: 0 };
   if (!pullRequest.headSha || !pullRequest.baseSha) {
     result.omitted.push({ reason: 'revision-unavailable' });
@@ -221,6 +221,27 @@ async function fetchReviewContext(pullRequest, { guidance = process.env.REVIEW_G
     } catch { result.omitted.push({ filePath: file.path, reason: 'source-unavailable-or-limited' }); }
   }
   for (const file of candidates.slice(5)) result.omitted.push({ filePath: file.path, reason: 'source-file-limit' });
+  // Two deterministic candidates total, sharing the existing eight-read budget.
+  // This finds nearby tests; it neither clones the repository nor executes tests.
+  if (relatedTests) {
+    let attempts = 0;
+    for (const file of candidates.slice(0, 5).filter(file => !/\.(test|spec)\.[^.]+$/.test(file.path))) {
+      const extension = posix.extname(file.path);
+      const stem = posix.basename(file.path, extension);
+      const oldSide = file.status === 'removed' || (file.additions === 0 && file.deletions > 0);
+      const sha = oldSide ? pullRequest.diffBaseSha || pullRequest.baseSha : pullRequest.headSha;
+      for (const path of [posix.join(posix.dirname(file.path), `${stem}.test${extension}`), `test/${stem}.test${extension}`]) {
+        if (attempts >= 2 || result.requests >= 8 || options.signal.aborted) break;
+        if (seen.has(`${sha}:${path}`)) continue;
+        seen.add(`${sha}:${path}`); attempts++;
+        try {
+          const code = await readSource(path, sha);
+          result.snippets.push({ filePath: path, lineSide: oldSide ? 'old' : 'new', startLine: 1,
+            code: code.split(/\r?\n/).slice(0, 60).join('\n'), role: 'related-test', relatedTo: [file.path] });
+        } catch { result.omitted.push({ filePath: path, reason: 'related-test-unavailable' }); }
+      }
+    }
+  }
   // Try at most three import paths. This is a heuristic, not a complete dependency graph.
   let importAttempts = 0;
   for (const item of imports) {

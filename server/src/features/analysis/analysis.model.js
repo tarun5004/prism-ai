@@ -7,6 +7,8 @@ const analysisSchema = new mongoose.Schema(
     githubFeedback: { status: { type: String, enum: ['posted', 'existing', 'unavailable', 'skipped'] }, errorCode: String },
     githubInline: { status: String, errorCode: String },
     githubStatus: { status: String, errorCode: String },
+    publication: { status: { type: String, enum: ['pending', 'publishing', 'published', 'rejected', 'unknown'] }, preview: String,
+      userId: String, owner: String, updatedAt: String, errorCode: String, commentId: Number },
     emailNotification: { status: { type: String, enum: ['sending', 'sent', 'unavailable', 'skipped'] }, errorCode: String },
     status: { type: String, required: true },
     createdAt: { type: String, required: true },
@@ -30,6 +32,7 @@ const analysisSchema = new mongoose.Schema(
     aiCoverage: { type: mongoose.Schema.Types.Mixed },
     aiReview: { type: mongoose.Schema.Types.Mixed },
     aiDiagnostics: {
+      agent: mongoose.Schema.Types.Mixed,
       pipeline: mongoose.Schema.Types.Mixed,
       tracing: mongoose.Schema.Types.Mixed,
       workflow: mongoose.Schema.Types.Mixed,

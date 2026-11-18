@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { randomUUID, createHash } from 'node:crypto';
 import { QueueClient } from '@azure/storage-queue';
 import { DefaultAzureCredential } from '@azure/identity';
-import { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob, findAnalysis } from './analysis.repository.js';
+import { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob, markReviewJobUnknown, findAnalysis } from './analysis.repository.js';
 import { analyzePullRequest } from './analysis.service.js';
 import { installationToken, consumeReviewBudget, githubRequest } from '../pullRequest/github.app.js';
 import { getReviewControl } from '../pullRequest/review.controls.js';
@@ -75,14 +75,16 @@ async function processNextReview({ queue, analyze = analyzePullRequest, getToken
         await finishReviewJob(id, owner, 'failed', 'REVIEW_LIMIT'); await remove(); return { status: 'failed', id };
       }
       const githubToken = options.installationId ? await getToken(options.installationId, options.trigger.repository) : undefined;
-      const result = await analyze(url, { ...options, id, githubToken, resume: Boolean(resumeId) });
+      const result = await analyze(url, { ...options, reviewEngine: options.reviewEngine || 'legacy', id, githubToken, resume: Boolean(resumeId) });
+      if (result.body?.errorCode === 'INTERRUPTED_MODEL_REQUEST') throw Object.assign(Error('Uncertain review.'), { code: 'INTERRUPTED_MODEL_REQUEST' });
       if (result.body?.status === 'skipped') { await finishReviewJob(id, owner, 'skipped'); await remove(); return { status: 'skipped', id }; }
       if (result.body?.status !== 'completed') throw Error('Review did not complete.');
     }
     await finishReviewJob(id, owner, 'completed');
-  } catch {
+  } catch (error) {
     // Retain an inspectable failure; queue replay must not repeat a model request.
-    await finishReviewJob(id, owner, 'failed', 'REVIEW_FAILED');
+    if (error.code === 'INTERRUPTED_MODEL_REQUEST') await markReviewJobUnknown(id, owner, error.code);
+    else await finishReviewJob(id, owner, 'failed', 'REVIEW_FAILED');
   }
   await remove();
   return { status: (await findReviewJob(id)).status, id };

@@ -107,6 +107,23 @@ test('uses the base revision and previous filename for deleted-only renamed code
   assert.equal(result.snippets[0].filePath, 'new.ts');
 });
 
+test('agent context reserves at most two shared reads for related tests at the exact revision', async () => {
+  const { fetchReviewContext } = await import('../src/features/pullRequest/pullRequest.service.js');
+  const original = global.fetch; const addresses = [];
+  global.fetch = async address => {
+    addresses.push(String(address));
+    return Response.json({ encoding: 'base64', size: 40, content: Buffer.from('expect(policy()).toBe(false);').toString('base64') });
+  };
+  try {
+    const result = await fetchReviewContext({ url: 'https://github.com/o/r/pull/1', headSha: 'head', baseSha: 'base',
+      changedFiles: [{ path: 'src/policy.js', patch: '@@ -1 +1 @@\n-old();\n+next();', additions: 1, deletions: 1 }] }, { relatedTests: true, guidance: false });
+    const tests = result.snippets.filter(source => source.role === 'related-test');
+    assert.ok(tests.length > 0 && tests.length <= 2);
+    assert.deepEqual(tests[0].relatedTo, ['src/policy.js']);
+    assert.ok(addresses.every(url => url.endsWith('ref=head'))); assert.ok(result.requests <= 8);
+  } finally { global.fetch = original; }
+});
+
 test('context retrieval reports unavailable content and bounds its requests', async () => {
   const request = mock.method(globalThis, 'fetch', async () => Response.json({ size: 999999, encoding: 'base64', content: '' }));
   const result = await fetchReviewContext({ url, baseSha: 'base', headSha: 'head', changedFiles: Array.from({ length: 10 }, (_, n) => ({ path: `src/file${n}.ts`, patch: '@@ -1 +1 @@\n-a\n+b' })) });

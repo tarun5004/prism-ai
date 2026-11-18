@@ -1,10 +1,13 @@
 import mongoose from 'mongoose';
 import Analysis, { ReviewJob } from './analysis.model.js';
+import { getReviewEngine } from '../ai/ai.agent.js';
 
 const analyses = new Map();
 const localJobs = new Map();
 
 async function enqueueReviewJob(job) {
+  job = { ...job, payload: { ...job.payload, options: { ...job.payload.options,
+    reviewEngine: getReviewEngine(job.payload.options?.reviewEngine) } } };
   if (mongoose.connection.readyState === 1) {
     let saved;
     try { saved = await ReviewJob.findOneAndUpdate({ id: job.id }, { $setOnInsert: { ...job, status: 'queued' } }, { upsert: true, new: true }).lean(); }
@@ -12,7 +15,7 @@ async function enqueueReviewJob(job) {
     // Queued/skipped jobs never crossed the model boundary. Preserve explicit manual intent.
     if (['queued', 'skipped'].includes(saved.status) && job.payload.options?.trigger?.type === 'manual') {
       return await ReviewJob.findOneAndUpdate({ id: job.id, status: { $in: ['queued', 'skipped'] } }, {
-        $set: { status: 'queued', payload: job.payload }, $unset: { errorCode: '', owner: '', leaseUntil: '' }
+        $set: { status: 'queued', payload: { ...job.payload, options: { ...job.payload.options, reviewEngine: saved.payload?.options?.reviewEngine || 'legacy' } } }, $unset: { errorCode: '', owner: '', leaseUntil: '' }
       }, { new: true }).lean() || ReviewJob.findOne({ id: job.id }).lean();
     }
     return saved;
@@ -21,7 +24,7 @@ async function enqueueReviewJob(job) {
   if (!localJobs.has(job.id)) localJobs.set(job.id, { ...job, status: 'queued', createdAt: new Date() });
   const saved = localJobs.get(job.id);
   if (['queued', 'skipped'].includes(saved.status) && job.payload.options?.trigger?.type === 'manual') {
-    Object.assign(saved, { status: 'queued', payload: job.payload });
+    Object.assign(saved, { status: 'queued', payload: { ...job.payload, options: { ...job.payload.options, reviewEngine: saved.payload?.options?.reviewEngine || 'legacy' } } });
     delete saved.errorCode; delete saved.owner; delete saved.leaseUntil;
   }
   return localJobs.get(job.id);
@@ -49,7 +52,7 @@ async function claimReviewJob(id, owner, leaseUntil = new Date(Date.now() + 9000
 }
 
 async function finishReviewJob(id, owner, status, errorCode) {
-  if (!['completed', 'failed', 'skipped'].includes(status)) throw Error('Invalid job result.');
+  if (!['completed', 'failed', 'skipped', 'unknown'].includes(status)) throw Error('Invalid job result.');
   if (mongoose.connection.readyState === 1) return ReviewJob.findOneAndUpdate({ id, owner, status: 'running' }, { $set: { status, ...(errorCode ? { errorCode } : {}) } }, { new: true }).lean();
   if (process.env.NODE_ENV === 'production') throw Error('Job storage unavailable.');
   const job = localJobs.get(id);
@@ -155,6 +158,7 @@ async function findPreviousAnalysis(pullRequest, installationId, { successfulOnl
 
 export { findAnalysis, listAnalyses, saveAnalysis, saveFindingFeedback, saveGitHubFeedback, findPreviousAnalysis };
 export { enqueueReviewJob, findReviewJob, claimReviewJob, finishReviewJob };
+export const markReviewJobUnknown = (id, owner, code) => finishReviewJob(id, owner, 'unknown', code);
 export { claimEmailNotification, saveEmailNotification };
 export { saveReviewDelivery };
 
@@ -165,3 +169,25 @@ async function findLatestAnalysis(key, installationId) {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
 }
 export { findLatestAnalysis };
+
+async function claimPublication(id, decision, userId, owner) {
+  const update = { 'publication.status': decision === 'approve' ? 'publishing' : 'rejected', 'publication.userId': userId,
+    'publication.owner': owner, 'publication.updatedAt': new Date().toISOString() };
+  if (mongoose.connection.readyState === 1) return Analysis.findOneAndUpdate({ id, 'publication.status': 'pending' }, { $set: update }, { new: true }).lean();
+  if (process.env.NODE_ENV === 'production') throw Error('Persistent publication storage unavailable.');
+  const report = analyses.get(id);
+  if (report?.publication?.status !== 'pending') return null;
+  Object.assign(report.publication, { status: update['publication.status'], userId, owner, updatedAt: update['publication.updatedAt'] });
+  return report;
+}
+
+async function finishPublication(id, owner, value) {
+  const fields = Object.fromEntries(Object.entries({ ...value, updatedAt: new Date().toISOString() }).map(([key, item]) => ['publication.' + key, item]));
+  if (mongoose.connection.readyState === 1) return Analysis.findOneAndUpdate({ id, 'publication.owner': owner, 'publication.status': { $in: ['publishing', 'unknown'] } }, { $set: fields }, { new: true }).lean();
+  if (process.env.NODE_ENV === 'production') throw Error('Persistent publication storage unavailable.');
+  const report = analyses.get(id);
+  if (report?.publication?.owner !== owner || !['publishing', 'unknown'].includes(report.publication.status)) return null;
+  Object.assign(report.publication, value, { updatedAt: new Date().toISOString() });
+  return report;
+}
+export { claimPublication, finishPublication };

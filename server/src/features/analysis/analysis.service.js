@@ -9,9 +9,13 @@ import { postReviewSummary, postInlineReview, postReviewStatus } from '../pullRe
 import { runRules } from './analysis.rules.js';
 import { sendReviewEmail } from './analysis.mail.js';
 import { retrieveSemanticContext } from '../ai/ai.retrieval.js';
+import { getReviewEngine, runAgentAnalysis } from '../ai/ai.agent.js';
+import { initializePublication } from './analysis.publication.js';
 
 // Shared by manual requests and verified GitHub events.
-async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = randomUUID(), trigger, expectedRevision, installationId, githubToken, notificationUserId, resume = false } = {}) {
+async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = randomUUID(), trigger, expectedRevision, installationId, githubToken, notificationUserId, resume = false, reviewEngine } = {}) {
+  // Old durable jobs have no engine field and must retain legacy semantics on resume.
+  const agentEngine = getReviewEngine(reviewEngine || (resume ? 'legacy' : undefined)) === 'python-agent';
   const pipeline = { startedAt: new Date().toISOString(), stages: [] };
   let statusReport;
   // This small wrapper records real stages; optional failures remain visible in the report.
@@ -53,7 +57,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
     }
     const ruleFindings = runRules(pullRequest);
     statusReport = { id, installationId, pullRequest };
-    const aiEnabled = Boolean(getAiConfiguration().apiKey) && prepareAiInput(pullRequest).files.length > 0;
+    const aiEnabled = (agentEngine || Boolean(getAiConfiguration().apiKey)) && prepareAiInput(pullRequest).files.length > 0;
     let reviewInput = pullRequest;
     const { runReviewWorkflow } = await import('./analysis.workflow.js');
     return await runReviewWorkflow({ id, repository: pullRequest.repository, baseSha: pullRequest.baseSha, headSha: pullRequest.headSha, installationId, resume,
@@ -63,8 +67,8 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
         // Source enrichment is transient; only validated review evidence reaches storage/API.
         reviewInput = aiEnabled
           ? { ...pullRequest, reviewContext: await measure('retrieval', async () => {
-            const context = await fetchReviewContext(pullRequest, { token: githubToken });
-            return retrieveSemanticContext({ ...pullRequest, reviewContext: context }, { installationId });
+            const context = await fetchReviewContext(pullRequest, { token: githubToken, relatedTests: agentEngine });
+            return agentEngine ? context : retrieveSemanticContext({ ...pullRequest, reviewContext: context }, { installationId });
           }) } : pullRequest;
         if (aiEnabled) {
           try { reviewInput.reviewMemory = buildReviewMemory(await measure('memory', () => findPreviousAnalysis(pullRequest, installationId)), pullRequest); }
@@ -72,8 +76,10 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
         }
       },
       review: async () => {
-        await postReviewStatus(statusReport, { pending: true });
-        return measure('model', () => runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') }));
+        if (!agentEngine) await postReviewStatus(statusReport, { pending: true });
+        return measure('model', () => agentEngine
+          ? runAgentAnalysis(reviewInput, { id, installationId, ruleFindings, onRequest: () => progress('reviewing') })
+          : runAiAnalysis(reviewInput, { onRequest: () => progress('reviewing') }));
       },
       save: async aiResult => {
         // The report may already exist if the process stopped after its insert.
@@ -95,17 +101,18 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
           ...(aiResult.review ? { aiReview: aiResult.review } : {}),
           ...(aiResult.error ? { aiError: aiResult.error } : {})
         };
+        if (agentEngine) analysis.publication = initializePublication(analysis);
         analysis.aiDiagnostics.tracing = await exportReviewTrace(analysis);
 
         progress('saving');
         const saved = await saveAnalysis(analysis);
-        if (installationId && (process.env.GITHUB_POST_INLINE === 'true' || process.env.GITHUB_POST_STATUS === 'true')) {
+        if (!agentEngine && installationId && (process.env.GITHUB_POST_INLINE === 'true' || process.env.GITHUB_POST_STATUS === 'true')) {
           saved.githubInline = await postInlineReview(saved);
           saved.githubStatus = await postReviewStatus(saved);
           try { await saveReviewDelivery(id, saved); } catch { /* Report remains usable even if delivery tracking is unavailable. */ }
         }
         saved.emailNotification = await sendReviewEmail(saved, notificationUserId || trigger?.actorId);
-        if (installationId && process.env.GITHUB_POST_REVIEW === 'true') {
+        if (!agentEngine && installationId && process.env.GITHUB_POST_REVIEW === 'true') {
           const feedback = await postReviewSummary(saved);
           try { return { status: 201, body: await saveGitHubFeedback(id, feedback) || saved }; }
           catch { return { status: 201, body: { ...saved, githubFeedback: { status: 'unavailable', errorCode: 'STATUS_SAVE_FAILED' } } }; }
@@ -114,7 +121,7 @@ async function analyzePullRequest(pullRequestUrl, { progress = () => {}, id = ra
       }
     });
   } catch (error) {
-    if (statusReport) await postReviewStatus(statusReport);
+    if (statusReport && !agentEngine) await postReviewStatus(statusReport);
     if (!(error instanceof PullRequestError)) {
       return { status: 500, body: { message: 'Analysis could not be saved or completed. Please try again.', ...(error.code === 'INTERRUPTED_MODEL_REQUEST' ? { errorCode: error.code } : {}) } };
     }
