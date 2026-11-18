@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "prism-agent-v1",
+  "reviewId": "webhook-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "scope": {
+    "installationId": 1,
+    "repository": "example/prism-demo",
+    "number": 7,
+    "baseSha": "1111111111111111111111111111111111111111",
+    "headSha": "2222222222222222222222222222222222222222",
+    "diffBaseSha": null
+  },
+  "intent": {"title": "Update automatic review policy", "description": "Draft PRs and paused reviews must be skipped."},
+  "files": [{"filePath": "src/policy.js", "lines": [{"lineNumber": 7, "change": "added", "code": "return !isDraft || !reviewsPaused;"}]}],
+  "sources": [
+    {"sourceId": "source-1", "filePath": "test/policy.test.js", "lineSide": "new", "startLine": 1, "revision": "2222222222222222222222222222222222222222", "code": "// Draft PRs must not run.\nexpect(shouldAutoReview({isDraft:true,reviewsPaused:false})).toBe(false);", "role": "related-test", "relatedTo": ["src/policy.js"]},
+    {"sourceId": "source-2", "filePath": "src/help.js", "lineSide": "new", "startLine": 1, "revision": "2222222222222222222222222222222222222222", "code": "export const help = 'Read the saved report';", "role": "direct-import", "relatedTo": []}
+  ],
+  "rules": [{"category": "test-gap", "severity": "low", "explanation": "Review relevant tests.", "affectedFiles": ["src/policy.js"]}],
+  "coverage": {"analyzedFiles": 1, "skippedFiles": [], "truncatedFiles": [], "contextOmissions": []},
+  "memory": null
+}

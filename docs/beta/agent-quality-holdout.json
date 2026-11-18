@@ -1,0 +1,217 @@
+{
+  "description": "Owned four-case additional regression, frozen before its first live inference. Separate from policy prompt development; explicit null/object contract. Labels never enter inference. No scripted model outputs.",
+  "cases": [
+    {
+      "id": "H01",
+      "purpose": "Reject requests missing an account",
+      "expectedIssues": [
+        "null-before-guard"
+      ],
+      "request": {
+        "schemaVersion": "prism-agent-v1",
+        "reviewId": "holdout-h01",
+        "scope": {
+          "installationId": 1,
+          "repository": "example/prism-demo",
+          "number": 7,
+          "baseSha": "1111111111111111111111111111111111111111",
+          "headSha": "2222222222222222222222222222222222222222",
+          "diffBaseSha": null
+        },
+        "intent": {
+          "title": "Reject requests missing an account",
+          "description": "account is either null or an object with a boolean active field. A null account must return false, not throw."
+        },
+        "files": [
+          {
+            "filePath": "src/guard.js",
+            "lines": [
+              {
+                "lineNumber": 1,
+                "change": "added",
+                "code": "export function canRead(account) {"
+              },
+              {
+                "lineNumber": 2,
+                "change": "added",
+                "code": "  return account.active && account !== null;"
+              },
+              {
+                "lineNumber": 3,
+                "change": "added",
+                "code": "}"
+              }
+            ]
+          }
+        ],
+        "sources": [],
+        "rules": [],
+        "coverage": {
+          "analyzedFiles": 1,
+          "skippedFiles": [],
+          "truncatedFiles": [],
+          "contextOmissions": []
+        },
+        "memory": null
+      }
+    },
+    {
+      "id": "H02",
+      "purpose": "Reject requests missing an account",
+      "expectedIssues": [],
+      "request": {
+        "schemaVersion": "prism-agent-v1",
+        "reviewId": "holdout-h02",
+        "scope": {
+          "installationId": 1,
+          "repository": "example/prism-demo",
+          "number": 7,
+          "baseSha": "1111111111111111111111111111111111111111",
+          "headSha": "2222222222222222222222222222222222222222",
+          "diffBaseSha": null
+        },
+        "intent": {
+          "title": "Reject requests missing an account",
+          "description": "account is either null or an object with a boolean active field. A null account must return false, not throw."
+        },
+        "files": [
+          {
+            "filePath": "src/guard.js",
+            "lines": [
+              {
+                "lineNumber": 1,
+                "change": "added",
+                "code": "export function canRead(account) {"
+              },
+              {
+                "lineNumber": 2,
+                "change": "added",
+                "code": "  return account !== null && account.active;"
+              },
+              {
+                "lineNumber": 3,
+                "change": "added",
+                "code": "}"
+              }
+            ]
+          }
+        ],
+        "sources": [],
+        "rules": [],
+        "coverage": {
+          "analyzedFiles": 1,
+          "skippedFiles": [],
+          "truncatedFiles": [],
+          "contextOmissions": []
+        },
+        "memory": null
+      }
+    },
+    {
+      "id": "H03",
+      "purpose": "Enforce session expiration",
+      "expectedIssues": [
+        "expiry-equality"
+      ],
+      "request": {
+        "schemaVersion": "prism-agent-v1",
+        "reviewId": "holdout-h03",
+        "scope": {
+          "installationId": 1,
+          "repository": "example/prism-demo",
+          "number": 7,
+          "baseSha": "1111111111111111111111111111111111111111",
+          "headSha": "2222222222222222222222222222222222222222",
+          "diffBaseSha": null
+        },
+        "intent": {
+          "title": "Enforce session expiration",
+          "description": "A session is expired when now is greater than or equal to expiresAt."
+        },
+        "files": [
+          {
+            "filePath": "src/guard.js",
+            "lines": [
+              {
+                "lineNumber": 1,
+                "change": "added",
+                "code": "export function expired(now, expiresAt) {"
+              },
+              {
+                "lineNumber": 2,
+                "change": "added",
+                "code": "  return now > expiresAt;"
+              },
+              {
+                "lineNumber": 3,
+                "change": "added",
+                "code": "}"
+              }
+            ]
+          }
+        ],
+        "sources": [],
+        "rules": [],
+        "coverage": {
+          "analyzedFiles": 1,
+          "skippedFiles": [],
+          "truncatedFiles": [],
+          "contextOmissions": []
+        },
+        "memory": null
+      }
+    },
+    {
+      "id": "H04",
+      "purpose": "Enforce session expiration",
+      "expectedIssues": [],
+      "request": {
+        "schemaVersion": "prism-agent-v1",
+        "reviewId": "holdout-h04",
+        "scope": {
+          "installationId": 1,
+          "repository": "example/prism-demo",
+          "number": 7,
+          "baseSha": "1111111111111111111111111111111111111111",
+          "headSha": "2222222222222222222222222222222222222222",
+          "diffBaseSha": null
+        },
+        "intent": {
+          "title": "Enforce session expiration",
+          "description": "A session is expired when now is greater than or equal to expiresAt."
+        },
+        "files": [
+          {
+            "filePath": "src/guard.js",
+            "lines": [
+              {
+                "lineNumber": 1,
+                "change": "added",
+                "code": "export function expired(now, expiresAt) {"
+              },
+              {
+                "lineNumber": 2,
+                "change": "added",
+                "code": "  return now >= expiresAt;"
+              },
+              {
+                "lineNumber": 3,
+                "change": "added",
+                "code": "}"
+              }
+            ]
+          }
+        ],
+        "sources": [],
+        "rules": [],
+        "coverage": {
+          "analyzedFiles": 1,
+          "skippedFiles": [],
+          "truncatedFiles": [],
+          "contextOmissions": []
+        },
+        "memory": null
+      }
+    }
+  ]
+}
