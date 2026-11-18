@@ -1,6 +1,6 @@
 # Bounded Python review agent
 
-This extension is **local and opt-in**. Existing jobs and the default deployment use `legacy` unless configured otherwise. A successful scripted demo proves wiring and guardrails; it does not prove live model quality or a cloud release.
+The Python agent is implemented and deployed privately in the current Azure demo. New hosted jobs select `python-agent`; existing jobs retain their pinned engine. Fresh installations still default to `legacy` unless explicitly configured. A scripted demo proves wiring and guardrails; cloud activation and actual provider results are recorded separately in [the verification ledger](FEATURE_ROADMAP.md).
 
 ## Architecture and responsibilities
 
@@ -186,10 +186,12 @@ Run `./scripts/verify-local.ps1`; optional `-Integration` requires local Mongo o
 | Human approval | Fixed summary, fresh permissions/revision, atomic claim | Real Mongo concurrency; GitHub writes mocked |
 | Evals/results | Frozen cases + strict exact-run human judgments | Repeated four-case live trials and four additional null/expiry cases; one uncertain case retained, independent human precision/recall still unknown |
 | Traces/logs/cost/latency | Safe metadata, per-attempt usage, dated optional estimates | Local records; no paid tracing requirement |
-| Docker/demo | Separate non-root Python image + real local HTTP demo | Local image and fixture; cloud activation separate |
+| Docker/demo | Separate non-root Python image, private Azure app and queue worker | Actual hosted changed-line regression identified with validated review; partial related-test coverage. See release ledger for earlier failures |
 | Diagram/README | This architecture, contracts and learning map | Documentation linked from root README |
 
 Current command results and release limitations are tracked in `docs/FEATURE_ROADMAP.md`. No commit, push or cloud activation is implied by local checks.
+
+For a hosted bug-discovery smoke test, use an owned test branch and change an actual logic line. A comment-only push creates a fresh revision but can produce an incremental diff containing only comments. A defect in unchanged context is then outside the allowed finding lines; rejecting that citation is intentional. A fresh revision alone does not guarantee a new AI finding, and a clean change may correctly return none.
 
 The complete live quality investigation, failed intermediate runs, reasoning trade-offs and model limits are documented in [Review quality](REVIEW_QUALITY.md).
 

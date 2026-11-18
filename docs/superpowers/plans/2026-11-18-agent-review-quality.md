@@ -33,7 +33,7 @@ Observed live output misclassified `!isDraft || !reviewsPaused` as correct despi
 
 ### 2. Repair the model adapter (TDD)
 
-Files: `agent-service/app/review/llm_client.py`, focused `prompts.py`, `config.py`; tests `test_llm_client.py` and new request-context tests.
+Files: `agent-service/app/review/llm_client.py`, focused `prompts.py`, `config.py`; tests `test_model.py` and new request-context tests.
 
 - [x] Write failing tests at the real SDK request boundary: final review uses configured effort, planner uses low; thoughts remain disabled; invalid reasoning setting fails before any request; selected source windows retain exact numbered lines and source IDs on the wire.
 - [x] Add a short review rubric: investigate changed behavior, requirements/test contradictions, input boundaries, auth/state/order failures; produce a concrete counterexample and consequence for each supported finding. Challenge each candidate, allow empty results, avoid broad correctness assurances. Exact single-line quotes and old/new coordinates stay required.

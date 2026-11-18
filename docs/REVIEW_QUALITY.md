@@ -4,7 +4,7 @@
 
 The same configured `gemini-3.1-flash-lite` model now identifies the owned Boolean-policy bug through the real Node HTTP client → private FastAPI → LangGraph → Gemini path. The final smoke returned **completed**, one supported finding, a valid review, one successful source read, three provider requests, **12,259 ms** agent duration and **4,101 provider-reported total tokens**. No alternate model/provider was purchased or silently selected.
 
-This establishes one working live review, not CodeRabbit parity or reliable detection of every bug. Earlier/intermediate failures are preserved below. The extension remains local/opt-in; the deployed default engine was not changed. The existing localhost:5055 example remains a **scripted** demo, not this live result.
+This establishes one working live review, not CodeRabbit parity or reliable detection of every bug. Earlier/intermediate failures are preserved below. This investigation ran locally; the later Azure rollout is recorded separately in [the release ledger](FEATURE_ROADMAP.md). The localhost:5055 example remains a **scripted** demo, not this live result.
 
 ## What was actually wrong
 
@@ -58,3 +58,11 @@ Payment is not a correctness guarantee. These samples demonstrate useful finding
 - [CR-Bench paper](https://arxiv.org/abs/2603.11078): bug discovery and spurious findings must be evaluated together; extra reflection can add noise. Adopted clean counterparts, missing-context cases, preserved failures and explicit limits on quality claims.
 
 These references informed the changes; their published results are not Prism AI's measured results.
+
+## Subsequent Azure release verification
+
+After the local investigation above, both runtimes were deployed into the existing Malaysia West environment. A real GitHub synchronize event on owned PR4, revision `74da527d95ca6a37f3e2711b0b41fac68df0d2c7`, passed through the durable queue and Node worker to the private FastAPI/LangGraph agent. Python and Node accepted the finding at changed line 7: the new `!isDraft && reviewsPaused` condition incorrectly requires reviews to be paused. The suggested fix is `!isDraft && !reviewsPaused`.
+
+A valid review and finding were saved; job status is completed, provenance is live-provider and publication remains pending human approval. Agent time was 13,598 ms, with 3 provider requests, 2 tool calls (`find_related_tests`, `read_source_window`) and 5,016 reported total tokens. AI status is **partial**, because the two deterministic nearby test candidates were unavailable. Thinking-token totals and complete monetary cost remain unknown. This is one owned regression, not a general benchmark.
+
+Preserved failures: the first hosted review ended unknown and was not replayed. A later comment-only revision returned INVALID_FINDINGS; its recorded incremental patch contained only comments, so the existing logic defect was outside the allowed finding lines. Raw rejected output was not retained, so the exact invalid reference/schema error cannot be reconstructed. The smoke was corrected to change an actual logic line; evidence validation was not relaxed. An independent repository-free connectivity decision used 269 reported tokens and completed in 3,048 ms. These are separate runs, not replacements for failed evidence.

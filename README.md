@@ -6,7 +6,7 @@ PRism connects a GitHub PR to a saved review: the actual diff, a change walkthro
 
 **[Open the live app](https://prism-demo-standard-web.icypebble-5f4a6cbb.malaysiawest.azurecontainerapps.io/)** · **[Read-only sample](https://prism-demo-standard-web.icypebble-5f4a6cbb.malaysiawest.azurecontainerapps.io/demo)** · [Setup](docs/SETUP.md) · [Feature status](docs/FEATURE_ROADMAP.md)
 
-> The public `/demo` is an owned synthetic PR with a captured, validated model response. Opening it makes no new model request. Live PR reviews require GitHub authorization, repository access and configured services. The existing Azure deployment uses the legacy engine; the new Python agent rollout is pending release verification.
+> The public `/demo` is an owned synthetic PR with a captured, validated model response. Opening it makes no new model request. Live PR reviews require GitHub authorization and repository access. Azure now selects the Python agent for new jobs; previously queued jobs retain their pinned engine. [Release evidence and limitations](docs/FEATURE_ROADMAP.md) distinguish deployed functionality from model-quality claims.
 
 ## Try it in a minute
 
@@ -137,10 +137,11 @@ Use `scripts/verify-local.ps1 -Integration` for isolated real MongoDB/Azurite ch
 | --- | --- |
 | Release checks | 40 Python tests, Ruff, 187 Node tests with 2 opt-in integration skips, 68 frontend tests, 7 scorer tests and client build; both opt-in real Mongo/Azurite integration suites passed separately |
 | Real Node HTTP → FastAPI → Gemini smoke | One correct Boolean-bug finding with a validated report: 12.259 seconds, 4,101 reported tokens |
+| Azure queue → private Python agent → saved report | Owned changed-line regression identified; valid review, 3 provider requests, 13.598 seconds agent time, 5,016 reported tokens. Partial coverage: two related-test candidates unavailable |
 | Owned evaluation cases | Regression coverage for bugs, correct code, injected instructions and missing context; not independent adjudication |
 | Public sample | Read-only rendering of captured output; no fresh inference |
 
-Independent finding precision/recall is **unknown**. One successful smoke is not a benchmark, latency promise or evidence of reliable detection across real repositories. Offline tests do not prove live GitHub delivery, SMTP inbox delivery, hosted CI or cloud activation of the Python agent. [Quality evidence and unresolved limits](docs/REVIEW_QUALITY.md) · [current verification ledger](docs/FEATURE_ROADMAP.md).
+Independent finding precision/recall is **unknown**. A successful smoke is not a benchmark, latency promise or evidence of reliable detection across real repositories. Hosted CI execution is currently unavailable; SMTP inbox delivery, a new user OAuth round trip and actual human-approved GitHub publication were not exercised in this release. [Quality evidence and unresolved limits](docs/REVIEW_QUALITY.md) · [current verification ledger](docs/FEATURE_ROADMAP.md).
 
 ## Source and learning map
 

@@ -88,7 +88,7 @@ Contract JSON uses existing camelCase report/source field names so Node can reus
 
 ### Task 6: Evaluation and per-attempt usage/cost
 
-**Files:** Create `agent-service/app/review/evaluation.py`, `agent-service/tests/test_evaluation.py`, owned agent evaluation cases/judgment template under `docs/beta/`; extend activity diagnostics and docs.
+**Files:** Create `agent-service/evaluations/run.py`, `agent-service/tests/test_evaluation.py`, owned agent evaluation cases/judgment template under `docs/beta/`; extend activity diagnostics and docs.
 **Produces:** offline runner/scorer that separates scripted transport results from human-adjudicated model quality; usage/cost estimates are dated/configured, never fabricated.
 
 - [x] Tests keep precision/recall null without judgments, reject stale/duplicate labels, preserve null usage/prices and count all attempts; compare same scoped cases. Observe RED.

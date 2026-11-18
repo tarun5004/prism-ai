@@ -31,5 +31,5 @@ Read current cloud names/configuration first. Reuse the existing private paramet
 - [x] Python naming/runtime boundary and tests verified.
 - [x] Agent integration/report UI committed in focused chunks.
 - [x] Homepage and README reflect actual agent flow.
-- [ ] Checks/images/security review complete; source pushed.
-- [ ] Private agent + API/worker deployed and live flow verified.
+- [x] Checks/images/security review complete; source pushed.
+- [x] Private agent + API/worker deployed and live flow verified.
