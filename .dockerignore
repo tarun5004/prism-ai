@@ -10,3 +10,10 @@ output/playwright
 client/dist
 server/test
 client/test
+agent-service
+tmp
+output
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache

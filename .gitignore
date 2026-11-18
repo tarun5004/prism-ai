@@ -6,3 +6,10 @@ server/.env
 infra/*.parameters.local.json
 .playwright-cli/
 output/playwright/
+# Local documents, previews and verification artifacts stay out of source history.
+output/
+tmp/
+agent-service/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
