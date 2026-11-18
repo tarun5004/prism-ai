@@ -56,7 +56,8 @@ def call(name, **arguments):
     return {"action": "tools", "calls": [{"name": name, "arguments": arguments}]}
 
 
-def test_agent_chooses_real_evidence_tool_then_finishes(request_data):
+def test_agent_chooses_real_evidence_tool_then_finishes(request_data, caplog):
+    caplog.set_level("INFO", logger="prism.agent")
     model = ScriptedModel([call("find_related_tests", filePath="src/policy.js"), {"action": "finish", "calls": []}])
     result = run(request_data, model)
     assert result["status"] == "completed"
@@ -67,6 +68,13 @@ def test_agent_chooses_real_evidence_tool_then_finishes(request_data):
     assert result["diagnostics"]["usage"]["totalTokens"] == 45
     assert "expect(" not in json.dumps(result["diagnostics"])
     assert result["diagnostics"]["provenance"] == "scripted-fixture"
+    attempts = [json.loads(record.message) for record in caplog.records
+                if record.name == "prism.agent" and '"event": "agent_attempt"' in record.message]
+    assert [entry["stage"] for entry in attempts] == ["decide", "decide", "draft"]
+    assert all(entry["reviewId"] == request_data["reviewId"] and entry["status"] == "completed"
+               and type(entry["durationMs"]) is int for entry in attempts)
+    assert "return !isDraft" not in caplog.text
+    assert "expect(" not in caplog.text
 
 
 def test_four_distinct_tools_share_two_rounds_then_final_is_reserved(request_data):

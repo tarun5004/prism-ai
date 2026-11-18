@@ -37,7 +37,8 @@ def test_adapter_uses_explicit_private_configuration_and_extracts_only_usage(mon
 
 
 @pytest.mark.parametrize("status", [429, 503])
-def test_real_sdk_issues_one_transport_request_and_classifies_rejections(monkeypatch, request_data, status):
+def test_real_sdk_issues_one_transport_request_and_classifies_rejections(monkeypatch, request_data, status, caplog):
+    import json
     from google.genai import errors
     from google.genai._api_client import BaseApiClient
     from app.config import Settings
@@ -58,6 +59,13 @@ def test_real_sdk_issues_one_transport_request_and_classifies_rejections(monkeyp
         model.decide(AgentRequest.model_validate(request_data), [], timeout=1)
     assert len(calls) == 1
     assert "private provider detail" not in str(caught.value)
+    failures = [json.loads(record.message) for record in caplog.records
+                if record.name == "prism.agent" and '"event": "agent_provider_error"' in record.message]
+    assert len(failures) == 1
+    assert failures[0]["stage"] == "decide"
+    assert failures[0]["httpStatus"] == status
+    assert failures[0]["errorType"] in {"ClientError", "ServerError", "GoogleAPIError"}
+    assert "private provider detail" not in caplog.text
 
 
 def test_actual_sdk_missing_provider_usage_stays_null_before_langchain_zero_fill(monkeypatch, request_data):

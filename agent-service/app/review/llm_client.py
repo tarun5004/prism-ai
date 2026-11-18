@@ -1,9 +1,12 @@
 """The only module allowed to call a provider. Never retain raw messages."""
 import json
+import logging
 from dataclasses import dataclass
 
 from app.review.schemas import AgentDecision, ModelOutput
 from app.review.prompts import SYSTEM, TOOLS_HELP, FINAL_HELP
+
+logger = logging.getLogger("prism.agent")
 
 
 class ModelRejected(Exception):
@@ -93,6 +96,10 @@ class GeminiModel:
                 if type(status) is int or error.__cause__ is None:
                     break
                 error = error.__cause__
+            # Log only classification, never SDK messages, URLs, prompts or responses.
+            logger.warning(json.dumps({"event": "agent_provider_error",
+                "stage": "decide" if schema is AgentDecision else "draft",
+                "errorType": type(error).__name__, "httpStatus": status if type(status) is int else None}))
             if type(status) is int and 400 <= status < 500:
                 retry_after = 0.25
                 try:

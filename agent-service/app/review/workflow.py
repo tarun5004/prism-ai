@@ -1,5 +1,6 @@
 """One small per-request graph. Durable outer recovery belongs to Node."""
 import json
+import logging
 import time
 from typing import TypedDict
 
@@ -13,6 +14,8 @@ from app.review.tools import execute_tool
 from app.review.validation import validate_output
 from app.review.metrics import estimate_cost, summarize_usage
 from app.review.prompts import PROMPT_VERSION
+
+logger = logging.getLogger("prism.agent")
 
 
 class AgentState(TypedDict):
@@ -69,6 +72,8 @@ def run_review(request, model, settings, *, clock=time.monotonic, sleep=time.sle
                 raise
             finally:
                 entry["durationMs"] = max(0, round((clock() - began) * 1000))
+                # Per-attempt metadata localizes cloud failures without retaining code or transcripts.
+                logger.info(json.dumps({"event": "agent_attempt", "reviewId": request.reviewId, **entry}))
 
     def observations(state):
         # Context occurs only once, not once per search/tool transcript.
