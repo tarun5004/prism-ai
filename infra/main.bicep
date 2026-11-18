@@ -20,6 +20,17 @@ param aiModel string
 @allowed([0, 1])
 @description('At most one transient provider retry, sharing the original request deadline.')
 param aiMaxRetries int = 1
+@allowed(['legacy', 'python-agent'])
+@description('Explicit opt-in. Existing queued jobs retain their recorded engine.')
+param reviewEngine string = 'legacy'
+@description('Immutable Python image reference; required when reviewEngine is python-agent.')
+param agentImage string = ''
+@description('Explicit Gemini model for the Python service; no provider fallback.')
+param agentModel string = ''
+@secure()
+param agentServiceToken string = ''
+@secure()
+param agentApiKey string = ''
 @secure()
 @description('Required keys: mongoUri, sessionEncryptionKey, githubPrivateKey, githubClientSecret, webhookSecret, aiApiKey. Never commit the parameter file.')
 param credentials object
@@ -97,6 +108,7 @@ var commonEnv = [
   { name: 'NODE_ENV', value: 'production' }
   { name: 'APP_ORIGIN', value: origin }
   { name: 'REVIEW_EXECUTION', value: 'queue' }
+  { name: 'REVIEW_ENGINE', value: reviewEngine }
   { name: 'AZURE_REVIEW_QUEUE_URL', value: '${storage.properties.primaryEndpoints.queue}${queue.name}' }
   { name: 'MONGODB_URI', secretRef: 'mongo' }
   { name: 'SESSION_ENCRYPTION_KEY', secretRef: 'session-key' }
@@ -162,6 +174,43 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = {
 
 var providerKeyNames = { gemini: 'GEMINI_API_KEY', groq: 'GROQ_API_KEY', mistral: 'MISTRAL_API_KEY', xai: 'XAI_API_KEY' }
 var providerModelNames = { gemini: 'GEMINI_MODEL', groq: 'GROQ_MODEL', mistral: 'MISTRAL_MODEL', xai: 'XAI_MODEL' }
+var enableAgent = reviewEngine == 'python-agent'
+var agentUrl = 'https://${name}-agent.internal.${environment.properties.defaultDomain}'
+
+// Private inference boundary: no Mongo/GitHub credentials or durable state.
+resource agent 'Microsoft.App/containerApps@2025-07-01' = if (enableAgent) {
+  name: '${name}-agent'
+  location: location
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: { external: false, targetPort: 8090, transport: 'http', allowInsecure: false }
+      secrets: [
+        { name: 'agent-token', value: agentServiceToken }
+        { name: 'gemini-key', value: agentApiKey }
+      ]
+    }
+    template: {
+      containers: [{
+        name: 'agent'
+        image: agentImage
+        resources: { cpu: json('0.5'), memory: '1Gi' }
+        env: [
+          { name: 'PRISM_AGENT_SERVICE_TOKEN', secretRef: 'agent-token' }
+          { name: 'GEMINI_API_KEY', secretRef: 'gemini-key' }
+          { name: 'PRISM_AGENT_MODEL', value: agentModel }
+        ]
+        probes: [
+          { type: 'Startup', httpGet: { path: '/health', port: 8090 }, periodSeconds: 2, failureThreshold: 60 }
+          { type: 'Readiness', httpGet: { path: '/health', port: 8090 }, periodSeconds: 5, failureThreshold: 3 }
+        ]
+      }]
+      scale: { minReplicas: 0, maxReplicas: 1, rules: [{ name: 'http', http: { metadata: { concurrentRequests: '1' } } }] }
+    }
+  }
+}
 
 resource worker 'Microsoft.App/jobs@2025-07-01' = {
   name: '${name}-worker'
@@ -177,7 +226,7 @@ resource worker 'Microsoft.App/jobs@2025-07-01' = {
       triggerType: 'Event'
       replicaTimeout: 600
       replicaRetryLimit: 0
-      secrets: concat(commonSecrets, [{ name: 'ai-key', value: credentials.aiApiKey }])
+      secrets: concat(commonSecrets, [{ name: 'ai-key', value: credentials.aiApiKey }], enableAgent ? [{ name: 'agent-token', value: agentServiceToken }] : [])
       eventTriggerConfig: {
         parallelism: 1
         replicaCompletionCount: 1
@@ -208,13 +257,18 @@ resource worker 'Microsoft.App/jobs@2025-07-01' = {
           { name: providerModelNames[aiProvider], value: aiModel }
           { name: 'AI_MAX_RETRIES', value: string(aiMaxRetries) }
           { name: 'GEMINI_TIMEOUT_MS', value: '120000' }
-        ])
+        ], enableAgent ? [
+          { name: 'PRISM_AGENT_URL', value: agentUrl }
+          { name: 'PRISM_AGENT_SERVICE_TOKEN', secretRef: 'agent-token' }
+        ] : [])
       }]
     }
   }
-  dependsOn: [workerProcessor, scalerReader]
+  // Provision the private inference boundary before a newly enabled worker can call it.
+  dependsOn: [workerProcessor, scalerReader, agent]
 }
 
 output appOrigin string = origin
 output apiName string = api.name
 output workerName string = worker.name
+output agentName string = enableAgent ? '${name}-agent' : ''

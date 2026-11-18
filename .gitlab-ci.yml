@@ -47,10 +47,19 @@ javascript_tests:
 
 python_checks:
   stage: test
-  image: python:3.12-slim-bookworm
+  image: ghcr.io/astral-sh/uv:0.13.7-python3.12-bookworm-slim
   cache: []
   script:
+    - uv sync --project agent-service --frozen
+    - mkdir -p reports
+    - uv run --project agent-service --frozen pytest agent-service/tests -q --junitxml=reports/agent.xml
+    - uv run --project agent-service --frozen ruff check agent-service/app agent-service/tests agent-service/evaluations
     - python -B -m unittest discover -s server/test -p evaluation_test.py
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: reports/agent.xml
 
 queue_integration:
   stage: test
@@ -72,7 +81,7 @@ queue_integration:
   script:
     - npm ci --prefix server
     - mkdir -p reports
-    - node --test --test-name-pattern="durable queue integration" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/integration.xml server/test/webhook.test.js
+    - node --test --test-name-pattern="durable queue integration|real Mongo persists engine" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/integration.xml server/test/webhook.test.js server/test/agent.integration.test.js
   artifacts:
     when: always
     expire_in: 7 days

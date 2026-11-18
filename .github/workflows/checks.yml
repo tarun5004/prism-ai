@@ -21,11 +21,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.13.7'
+          enable-cache: true
+      - run: uv sync --project agent-service --frozen
+      - run: uv run --project agent-service --frozen pytest agent-service/tests -q
+      - run: uv run --project agent-service --frozen ruff check agent-service/app agent-service/tests agent-service/evaluations
       - run: npm ci --prefix server
       - run: npm ci --prefix client
       - run: npm test --prefix server
       - run: python -B -m unittest discover -s server/test -p evaluation_test.py
-      - run: node --test client/test/analysis.api.test.js client/test/diff-viewer.test.js
+      - run: node --test client/test/*.test.js
       - run: npm run build --prefix client
   integration:
     runs-on: ubuntu-latest
@@ -45,10 +52,10 @@ jobs:
       - run: npm ci --prefix server
       - name: Start local Azure Queue emulator
         run: docker run --detach --name azurite -p 127.0.0.1:10001:10001 mcr.microsoft.com/azure-storage/azurite:latest azurite --queueHost 0.0.0.0 --skipApiVersionCheck
-      - name: Verify durable jobs and checkpoint recovery without model requests
+      - name: Verify durable jobs, agent persistence and checkpoint recovery without model requests
         env:
           INTEGRATION_TESTS: 'true'
-        run: node --test --test-name-pattern="durable queue integration" server/test/webhook.test.js
+        run: node --test --test-name-pattern="durable queue integration|real Mongo persists engine" server/test/webhook.test.js server/test/agent.integration.test.js
   container:
     needs: [verify, integration]
     runs-on: ubuntu-latest
@@ -57,11 +64,15 @@ jobs:
       packages: write
     env:
       IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+      AGENT_IMAGE: ghcr.io/${{ github.repository }}:agent-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - run: docker build --label org.opencontainers.image.source=https://github.com/${{ github.repository }} -t "$IMAGE" .
+      - run: docker build --label org.opencontainers.image.source=https://github.com/${{ github.repository }} -t "$AGENT_IMAGE" agent-service
+      - name: Verify agent runtime imports without network or provider credentials
+        run: docker run --rm --network none --entrypoint python "$AGENT_IMAGE" -c "from app.main import app; from app.review.workflow import run_review; from app.review.llm_client import GeminiModel; assert app.title == 'Prism private review agent'; assert callable(run_review); assert callable(GeminiModel)"
       - run: docker run --detach --name prism-ci -p 127.0.0.1:5000:5000 -e DEMO_ONLY=true "$IMAGE"
       - name: Verify the built image without GitHub or Gemini requests
         run: |
@@ -77,6 +88,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - run: docker push "$IMAGE"
         if: github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref == 'refs/heads/integration/v0-demo'
+      - run: docker push "$AGENT_IMAGE"
+        if: github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref == 'refs/heads/integration/v0-demo'
       - name: Stop verification container
         if: always()
         run: docker rm --force prism-ci
@@ -90,16 +103,23 @@ jobs:
       id-token: write
     env:
       IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+      AGENT_IMAGE: ghcr.io/${{ github.repository }}:agent-${{ github.sha }}
       RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       APP_NAME: ${{ vars.AZURE_APP_NAME }}
       WORKER_NAME: ${{ vars.AZURE_WORKER_JOB_NAME }}
+      AGENT_NAME: ${{ vars.AZURE_AGENT_APP_NAME }}
     steps:
       - uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Update existing web app and worker to the same tested image
+      - name: Update optional provisioned agent, then existing web app and worker
         run: |
+          # Provision private ingress/settings separately; this step only updates images.
+          if [ -n "$AGENT_NAME" ]; then
+            az containerapp show --resource-group "$RESOURCE_GROUP" --name "$AGENT_NAME" --query name --output none
+            az containerapp update --resource-group "$RESOURCE_GROUP" --name "$AGENT_NAME" --image "$AGENT_IMAGE" --output none
+          fi
           az containerapp update --resource-group "$RESOURCE_GROUP" --name "$APP_NAME" --image "$IMAGE" --output none
           az containerapp job update --resource-group "$RESOURCE_GROUP" --name "$WORKER_NAME" --image "$IMAGE" --output none
