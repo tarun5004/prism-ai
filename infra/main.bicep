@@ -118,7 +118,7 @@ var commonEnv = [
   { name: 'APP_ORIGIN', value: origin }
   { name: 'REVIEW_EXECUTION', value: 'queue' }
   { name: 'REVIEW_ENGINE', value: reviewEngine }
-  { name: 'EMAIL_ENABLED', value: string(emailEnabled) }
+  { name: 'EMAIL_ENABLED', value: emailEnabled ? 'true' : 'false' }
   { name: 'AZURE_REVIEW_QUEUE_URL', value: '${storage.properties.primaryEndpoints.queue}${queue.name}' }
   { name: 'MONGODB_URI', secretRef: 'mongo' }
   { name: 'SESSION_ENCRYPTION_KEY', secretRef: 'session-key' }
