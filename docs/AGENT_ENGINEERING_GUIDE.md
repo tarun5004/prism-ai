@@ -592,3 +592,12 @@ Yeh recorded implementation references hain, naya live source audit nahi. Provid
 | [Our verification ledger](FEATURE_ROADMAP.md) | Local vs integration vs cloud acceptance; unresolved failures preserved |
 
 References se patterns liye; unke published benchmarks apne results nahi banaye. Is documentation task mein application behavior change ya new inference/deployment nahi ki gayi.
+
+
+## 16. Live verification se teen aur lessons — 20 November
+
+1. **Local SMTP pass, Azure option disabled:** ARM ne boolean ko `True` string banaya; Node exact `true` check karta tha. Explicit lowercase Bicep value se fix hua, redeploy karke real API flag aur Azure SMTP send verify kiya. Sirf `.env` edit karna cloud configuration update nahi karta.
+2. **Smoke test ka baseline bhi check karo:** Latest commit se line change karna enough nahi. Incremental review kisi purane successful baseline se compare kar sakta hai. Hamara pehla cloud test baseline wali condition wapas le aaya, isliye effective diff mein only comments the. AI output reject hua; raw response retained nahi tha, so exact rejected field unknown hai. Agla test actual baseline se different condition par valid AI finding laaya. Saved failed/unknown requests ko blindly replay nahi kiya.
+3. **Transport vs user authorization:** Azure se Gmail SMTP authentication/send pass hua, lekin automatic review email ke liye fresh GitHub authorization, verified recipient, opt-in aur repository access bhi chahiye. Owner opt-in disabled tha, so notification correctly skipped. Kisi aur account ka fresh OAuth test abhi pending hai; owner ke webhook pass ko universal login proof mat bolo.
+
+Current provider limits60seconds/attempt aur120seconds/shared hain; Node private HTTP limit150seconds hai. Teen original30-second probes uncertain504 hue; larger budget ke baad local and cloud valid reviews aaye, par saare successful calls30seconds ke andar hi the. Isse provider outages permanently fixed prove nahi hote. Exact deployed revision, measured counts aur remaining gaps [verification ledger](FEATURE_ROADMAP.md#2026-11-20-deployed-smtponboarding-acceptance) mein hain.
