@@ -46,10 +46,12 @@ Register a GitHub App and configure these URLs using your actual application ori
 | Setting | Value |
 | --- | --- |
 | Authorization callback | `https://YOUR-HOST/api/github/callback` |
-| Post-install setup URL | `https://YOUR-HOST/` |
+| Post-install setup URL | `https://YOUR-HOST/api/github/setup` |
 | Webhook URL | `https://YOUR-HOST/api/webhooks/github` |
 
-Enable SSL verification, set a fresh webhook secret and enable user authorization during installation where offered. Install the App only on intended repositories.
+Enable SSL verification and set a fresh webhook secret. Leave **Request user authorization (OAuth) during installation** unchecked for this implementation: the setup endpoint starts our own browser-bound state/PKCE flow. GitHub's automatic installation authorization callback does not carry our saved state/verifier, so enabling that switch is not a substitute for this handoff. Install the App only on intended repositories. The old setup URL at `/` remains supported when GitHub supplies `installation_id`; it never grants access based on that query value.
+
+Installation grants repository access; **Connect GitHub** grants user authorization and creates the browser session. After authorization, users return to `/app`; the connection bar shows the accessible repository count. In GitHub settings, check **Authorized GitHub Apps**, not **Authorized OAuth Apps**: this integration is a GitHub App using the OAuth web flow, not a separately registered OAuth App. Permissions come from the GitHub App registration; requesting broad OAuth scopes or “full account access” is unnecessary.
 
 Permissions and events:
 
@@ -80,6 +82,8 @@ REVIEW_ENGINE=legacy
 Production also requires `NODE_ENV=production` and queue execution. Start the built application using `npm run build`, then `npm start --prefix server`.
 
 After installation/login, test a non-draft PR in a selected repository, reopen its saved report, then remove repository access and confirm denial. A second-account test, real webhook delivery and external writes each require their own live acceptance; mocked contracts do not establish them.
+
+Installing does not backfill PRs opened earlier. Submit an existing PR URL with **Analyze PR**, or trigger a new eligible PR event after installation. Use **Refresh history** to fetch newly saved webhook reports; queued/running jobs are not listed as completed reports. A user session is required to view private results, but automatic signed-webhook processing uses installation credentials and does not require that user to stay logged in.
 
 ### Webhook behavior
 
@@ -205,7 +209,11 @@ SMTP_PASS=your-smtp-password
 
 Supported ports are 587 with STARTTLS or 465 with TLS. Restart/recreate affected processes after changing their environment. Grant GitHub account **Email addresses: read**, reconnect, then explicitly enable **Review-ready emails**. The server derives a verified recipient from GitHub and rechecks repository access; request-supplied recipients are ignored.
 
+If `EMAIL_ENABLED` is absent/false, the control displays that delivery is not configured. This is independent of GitHub installation/authentication. GitHub email permission alone does not provide an SMTP service; do not enable the flag without configuring the sender/SMTP settings above. If GitHub denies email access, the preference endpoint now returns an actionable reconnect instruction instead of reporting a session-storage failure.
+
 Manual reviews notify the connected requester; webhook reviews notify an author only if connected and opted in. The message contains status and an access-controlled report link, not source. Session expiry/logout ends authorization; no background OAuth refresh is implemented. Mail failure preserves the report; uncertain SMTP outcomes are not automatically resent. SMTP authentication and inbox delivery need separate live verification.
+
+For the Azure Bicep deployment, set `emailEnabled`, `emailFrom`, `smtpHost`, `smtpPort`, `smtpUser` and secure `smtpPassword` in the ignored local parameter file. The API receives only the enabled flag for the opt-in control; SMTP settings/password are worker-only, with the password stored as an Azure secret reference. The private Python agent receives no SMTP credentials. Editing `server/.env` alone does not update Azure. These settings default to disabled and do not create a mail provider or sender account.
 
 ## 7. Optional legacy retrieval and local MCP
 

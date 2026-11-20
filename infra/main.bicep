@@ -31,6 +31,15 @@ param agentModel string = ''
 param agentServiceToken string = ''
 @secure()
 param agentApiKey string = ''
+@description('Opt-in review email. Configure a verified sender and SMTP credentials before enabling.')
+param emailEnabled bool = false
+param emailFrom string = ''
+param smtpHost string = ''
+@allowed([465, 587])
+param smtpPort int = 465
+param smtpUser string = ''
+@secure()
+param smtpPassword string = ''
 @secure()
 @description('Required keys: mongoUri, sessionEncryptionKey, githubPrivateKey, githubClientSecret, webhookSecret, aiApiKey. Never commit the parameter file.')
 param credentials object
@@ -109,6 +118,7 @@ var commonEnv = [
   { name: 'APP_ORIGIN', value: origin }
   { name: 'REVIEW_EXECUTION', value: 'queue' }
   { name: 'REVIEW_ENGINE', value: reviewEngine }
+  { name: 'EMAIL_ENABLED', value: string(emailEnabled) }
   { name: 'AZURE_REVIEW_QUEUE_URL', value: '${storage.properties.primaryEndpoints.queue}${queue.name}' }
   { name: 'MONGODB_URI', secretRef: 'mongo' }
   { name: 'SESSION_ENCRYPTION_KEY', secretRef: 'session-key' }
@@ -226,7 +236,7 @@ resource worker 'Microsoft.App/jobs@2025-07-01' = {
       triggerType: 'Event'
       replicaTimeout: 600
       replicaRetryLimit: 0
-      secrets: concat(commonSecrets, [{ name: 'ai-key', value: credentials.aiApiKey }], enableAgent ? [{ name: 'agent-token', value: agentServiceToken }] : [])
+      secrets: concat(commonSecrets, [{ name: 'ai-key', value: credentials.aiApiKey }], enableAgent ? [{ name: 'agent-token', value: agentServiceToken }] : [], emailEnabled ? [{ name: 'smtp-password', value: smtpPassword }] : [])
       eventTriggerConfig: {
         parallelism: 1
         replicaCompletionCount: 1
@@ -260,6 +270,12 @@ resource worker 'Microsoft.App/jobs@2025-07-01' = {
         ], enableAgent ? [
           { name: 'PRISM_AGENT_URL', value: agentUrl }
           { name: 'PRISM_AGENT_SERVICE_TOKEN', secretRef: 'agent-token' }
+        ] : [], emailEnabled ? [
+          { name: 'EMAIL_FROM', value: emailFrom }
+          { name: 'SMTP_HOST', value: smtpHost }
+          { name: 'SMTP_PORT', value: string(smtpPort) }
+          { name: 'SMTP_USER', value: smtpUser }
+          { name: 'SMTP_PASS', secretRef: 'smtp-password' }
         ] : [])
       }]
     }
