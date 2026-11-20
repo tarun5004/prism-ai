@@ -132,7 +132,7 @@ def test_uncertain_model_call_is_never_replayed(request_data):
 
 
 def test_total_deadline_stops_before_another_request(request_data):
-    ticks = iter([0, 91, 91, 91, 91, 91])
+    ticks = iter([0, 121, 121, 121, 121, 121])
     model = ScriptedModel([])
     result = run(request_data, model, clock=lambda: next(ticks))
     assert model.requests == []
@@ -182,3 +182,28 @@ def test_truncated_output_is_identified_without_retry_or_becoming_a_clean_review
     assert result["diagnostics"]["stopReason"] == "output_limit"
     assert result["diagnostics"]["requests"][-1]["finishReason"] == "MAX_TOKENS"
     assert model.requests == (["decide"] if stage == "decide" else ["decide", "draft"])
+
+
+def test_slow_provider_calls_get_headroom_but_final_call_shares_total_deadline(request_data):
+    from app.review.llm_client import ModelUncertain
+
+    now = [0.0]
+    timeouts = []
+
+    class SlowModel(ScriptedModel):
+        def decide(self, request, observations, *, timeout):
+            timeouts.append(timeout)
+            if timeout < 45:
+                raise ModelUncertain()
+            now[0] += 45
+            return super().decide(request, observations, timeout=timeout)
+
+        def draft(self, request, selected, observations, *, timeout):
+            timeouts.append(timeout)
+            return super().draft(request, selected, observations, timeout=timeout)
+
+    model = SlowModel([call("find_related_tests", filePath="src/policy.js"), {"action": "finish", "calls": []}])
+    result = run(request_data, model, clock=lambda: now[0])
+    assert result["status"] == "completed"
+    assert timeouts == [60, 60, 30]
+    assert model.requests == ["decide", "decide", "draft"]

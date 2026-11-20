@@ -68,7 +68,7 @@ The agent can choose among these five tools; it cannot use arbitrary shell, file
 | `search_review_context` | Rank approved chunks with lexical keyword matching |
 | `run_review_rules` | Inspect Node's supplied deterministic rule signals |
 
-Default budgets are **3 provider requests including retries, 2 decision rounds and 4 tool executions**, with one request reserved for the final review. The shared agent deadline is 90 seconds; each provider attempt gets at most 30 seconds or the remaining time. For supported Gemini 3 models, planning uses **low** thinking and the final review defaults to **medium**. Output and source-context limits remain finite.
+Default budgets are **3 provider requests including retries, 2 decision rounds and 4 tool executions**, with one request reserved for the final review. The shared agent deadline is 120 seconds; each provider attempt gets at most 60 seconds or the remaining time. For supported Gemini 3 models, planning uses **low** thinking and the final review defaults to **medium**. Output and source-context limits remain finite.
 
 The agent uses **lexical retrieval**, without embeddings or a vector database. Optional Chroma semantic retrieval belongs to the legacy path and is disabled unless configured. Neither path is a complete repository index.
 

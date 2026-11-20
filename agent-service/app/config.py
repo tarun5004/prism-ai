@@ -9,8 +9,8 @@ class Settings:
     api_key: str = field(default="", repr=False)
     model: str = ""
     thinking_level: str = "medium"
-    deadline_seconds: float = 90
-    attempt_seconds: float = 30
+    deadline_seconds: float = 120
+    attempt_seconds: float = 60
     max_requests: int = 3
     max_rounds: int = 2
     max_tools: int = 4
