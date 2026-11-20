@@ -601,3 +601,10 @@ References se patterns liye; unke published benchmarks apne results nahi banaye.
 3. **Transport vs user authorization:** Azure se Gmail SMTP authentication/send pass hua, lekin automatic review email ke liye fresh GitHub authorization, verified recipient, opt-in aur repository access bhi chahiye. Owner opt-in disabled tha, so notification correctly skipped. Kisi aur account ka fresh OAuth test abhi pending hai; owner ke webhook pass ko universal login proof mat bolo.
 
 Current provider limits60seconds/attempt aur120seconds/shared hain; Node private HTTP limit150seconds hai. Teen original30-second probes uncertain504 hue; larger budget ke baad local and cloud valid reviews aaye, par saare successful calls30seconds ke andar hi the. Isse provider outages permanently fixed prove nahi hote. Exact deployed revision, measured counts aur remaining gaps [verification ledger](FEATURE_ROADMAP.md#2026-11-20-deployed-smtponboarding-acceptance) mein hain.
+
+
+### Follow-up: selected repositories aur real email
+
+Browser mein login aur email checkbox reload ke baad bhi theek rahe. Empty history ka reason code bug nahi tha: GitHub installation mein sirf Flash_Sale_Engine aur labsheet-ML selected the; purana prism-ai test repo selected nahi tha. Owner ne usko add karne se mana kiya, so access change save nahi ki. Existing selected repo ke isolated PR#2 par test kiya; main branch untouched rahi.
+
+Pehla real selected-repo attempt504 se unknown hua, bina replay ke record preserve kiya. Ek new revision par actual Gemini review completed hua, Python condition bug detect hui aur real review notification `sent` persist hui. Iska matlab email authorization + queue + review + SMTP path exercise hua. Isse har future call reliable prove nahi hoti;504 reproduce hua hai. Owner ki Azure transport-test inbox receipt confirmed hai; automatic review-email inbox confirmation alag acceptance step hai. Current facts [verification ledger](FEATURE_ROADMAP.md#2026-11-20-authenticated-browser-and-selected-repository-notification-acceptance) mein hain.
