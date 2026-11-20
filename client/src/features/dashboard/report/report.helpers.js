@@ -93,4 +93,12 @@ function getFailureMessage(analysis) {
     : 'This analysis did not complete. Check backend connectivity and GitHub access before trying again.';
 }
 
-export { getAiStatusDetails, formatDate, getFailureMessage };
+// Job completion is separate from AI completion, in both history and report headers.
+function getReportTone(report) {
+  if (report.status !== 'completed') return 'failed';
+  if (report.aiStatus === 'completed') return 'completed';
+  if (report.aiStatus === 'partial') return 'partial';
+  return 'rules-only';
+}
+
+export { getAiStatusDetails, formatDate, getFailureMessage, getReportTone };

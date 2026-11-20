@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowUpRight, GitPullRequest, LoaderCircle, Sparkles } from 'lucide-react';
 import RouteLink from '../../../shared/RouteLink.jsx';
-import { formatDate } from '../report/report.helpers.js';
+import { formatDate, getReportTone } from '../report/report.helpers.js';
 
 export default function AnalysesPage({ reports = [], status = 'loading', error, onReload, onNavigate }) {
   return (
@@ -11,6 +11,7 @@ export default function AnalysesPage({ reports = [], status = 'loading', error, 
           <h2>Recent analyses</h2>
         </div>
         <span className="history-count">{reports.length} shown</span>
+        <button className="text-button" type="button" disabled={status === 'loading'} onClick={onReload}>Refresh history</button>
       </div>
       {status === 'loading' && (
         <p className="muted-text" role="status">
@@ -28,6 +29,7 @@ export default function AnalysesPage({ reports = [], status = 'loading', error, 
       {status === 'ready' && reports.length === 0 && (
         <div className="empty-state">
           <p className="muted-text">No saved reports yet.</p>
+          <p className="muted-text">PRs opened before installing PRism need to be submitted with Analyze PR. A new eligible PR event is required for automatic review. Queued work appears here after its report is saved.</p>
           <RouteLink className="text-button" to="/app" onNavigate={onNavigate}>
             Start your first review
           </RouteLink>
@@ -49,7 +51,7 @@ export default function AnalysesPage({ reports = [], status = 'loading', error, 
                 {item.pullRequest?.headSha && ` · ${item.pullRequest.headSha.slice(0, 8)}`}
               </small>
             </span>
-            <span className={`history-status ${item.status}`}>
+            <span className={`history-status ${getReportTone(item)}`}>
               {item.status === 'failed'
                 ? 'Failed'
                 : item.aiStatus === 'completed'

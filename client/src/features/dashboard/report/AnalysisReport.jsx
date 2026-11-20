@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
 import DiffViewer from '../DiffViewer.jsx';
-import { formatDate, getFailureMessage } from './report.helpers.js';
+import { formatDate, getFailureMessage, getReportTone } from './report.helpers.js';
 import AiStatusPanel from './AiStatusPanel.jsx';
 import ReviewOverview from './ReviewOverview.jsx';
 import FindingsPanel from './FindingsPanel.jsx';
@@ -12,15 +12,20 @@ export default function AnalysisReport({ analysis, userId = 'local' }) {
   const [activeView, setActiveView] = useState(analysis.sample ? 'findings' : 'overview');
   const [focusLocation, setFocusLocation] = useState(null);
   const findings = analysis.findings || [];
+  const aiFindingCount = findings.filter((finding) => finding.source === 'ai').length;
+  const ruleSignalCount = findings.filter((finding) => finding.source === 'rule').length;
   const files = analysis.pullRequest?.changedFiles || [];
   const pr = analysis.pullRequest || {};
   const successful = analysis.status === 'completed';
   const statusLabel = successful
     ? analysis.aiStatus === 'completed'
       ? 'Analysis completed'
-      : 'Rule-based analysis completed'
+      : analysis.aiStatus === 'partial'
+        ? 'AI review partial'
+        : 'Rule-based analysis completed'
     : 'Analysis failed';
-  const ReportIcon = successful ? CheckCircle2 : AlertTriangle;
+  const reportTone = getReportTone(analysis);
+  const ReportIcon = reportTone === 'completed' ? CheckCircle2 : AlertTriangle;
   const review =
     successful && ['completed', 'partial'].includes(analysis.aiStatus) ? analysis.aiReview : null;
 
@@ -42,7 +47,7 @@ export default function AnalysisReport({ analysis, userId = 'local' }) {
               {pr.author && ` · opened by ${pr.author}`}
             </p>
           </div>
-          <span className={`report-status ${analysis.status}`}>
+          <span className={`report-status ${reportTone}`}>
             <ReportIcon size={15} />
             {statusLabel}
           </span>
@@ -108,6 +113,7 @@ export default function AnalysisReport({ analysis, userId = 'local' }) {
           <div>
             <span className="summary-number">{findings.length}</span>
             <span className="summary-label">findings</span>
+            <small>{aiFindingCount} AI {aiFindingCount === 1 ? 'finding' : 'findings'} · {ruleSignalCount} rule {ruleSignalCount === 1 ? 'signal' : 'signals'}</small>
           </div>
           <div>
             <span className="summary-number high">

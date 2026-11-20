@@ -51,6 +51,38 @@ test('email opt-in is explicit and unavailable delivery disables the control', (
   assert.match(html, /Review-ready emails/);
   assert.match(html, /disabled/);
   assert.ok(!html.includes('checked=""'));
+  assert.match(html, />Email delivery is not configured on this demo\./);
+});
+
+test('partial live AI reviews are labelled as AI and separate model findings from rules', () => {
+  const html = renderToStaticMarkup(createElement(dashboard.AnalysisReport, { analysis: {
+    id: 'partial-live-review', status: 'completed', aiStatus: 'partial', pullRequest: {}, findings: [
+      { source: 'ai', title: 'Reversed guard', severity: 'high' },
+      { source: 'rule', title: 'Test gap', severity: 'low' }
+    ]
+  } }));
+  assert.match(html, /AI review partial/);
+  assert.match(html, /class="report-status partial"/);
+  assert.match(html, /1 AI finding/);
+  assert.match(html, /1 rule signal/);
+  assert.ok(!html.includes('Rule-based analysis completed'));
+});
+
+test('new workspace explains pre-install PRs and history can refresh without reloading the page', () => {
+  const overview = renderToStaticMarkup(createElement(dashboard.OverviewPage));
+  assert.match(overview, /before installing/i);
+  assert.match(overview, /Analyze PR/);
+  const history = renderToStaticMarkup(createElement(dashboard.AnalysesPage, { status: 'ready', reports: [] }));
+  assert.match(history, /Refresh history/);
+  assert.match(history, /before installing/i);
+});
+
+test('home distinguishes connected account from a missing repository installation', () => {
+  const html = renderToStaticMarkup(createElement(app.LandingPage, {
+    session: { enabled: true, authenticated: true, login: 'second-user', repositoryCount: 0, installUrl: 'https://github.com/apps/prism/installations/new' }
+  }));
+  assert.match(html, /No accessible repositories/i);
+  assert.match(html, /Retry connection/);
 });
 
 test('public sample keeps evidence visible and removes all feedback writes', () => {

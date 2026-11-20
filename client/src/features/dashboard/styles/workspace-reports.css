@@ -8,6 +8,17 @@
   line-height: 1.4;
 }
 
+.workspace-theme :is(.report-status, .history-status).partial {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.workspace-theme :is(.report-status, .history-status).rules-only {
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
 .workspace-theme .risk-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
