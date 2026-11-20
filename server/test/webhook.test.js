@@ -114,6 +114,30 @@ function response() {
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('signed App PR events queue other installations without a browser login; installation alone does not backfill PRs', async () => {
+  const keys = ['GITHUB_APP_ID', 'REVIEW_EXECUTION']; const old = keys.map(key => process.env[key]);
+  process.env.GITHUB_APP_ID = '7'; process.env.REVIEW_EXECUTION = 'queue';
+  const queued = [];
+  const handler = createWebhookHandler({ enqueue: async job => queued.push(job), analyze() { assert.fail('Must queue, not run inline'); } });
+  try {
+    for (const installationId of [71, 99]) {
+      const res = response();
+      await handler(delivery({ ...payload, repository: { full_name: 'another-user/selected-repo' }, installation: { id: installationId } }), res);
+      assert.equal(res.code, 202);
+      assert.equal(queued.at(-1).payload.options.installationId, installationId);
+      assert.equal(queued.at(-1).payload.url, 'https://github.com/another-user/selected-repo/pull/1');
+    }
+    assert.notEqual(queued[0].id, queued[1].id);
+    const installed = response();
+    await handler(delivery({ action: 'created', installation: { id: 99 } }, 'installation'), installed);
+    assert.equal(installed.code, 200);
+    assert.equal(installed.body.status, 'ignored');
+    assert.equal(queued.length, 2, 'Installing alone must not trigger paid reviews for existing PRs');
+  } finally {
+    keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; });
+  }
+});
+
 test('durable queue integration: real Mongo, Azurite duplicates and process restart recovery', { skip: process.env.INTEGRATION_TESTS !== 'true', timeout: 30000 }, async () => {
   const mongoose = (await import('mongoose')).default;
   const { randomUUID } = await import('node:crypto');

@@ -347,7 +347,7 @@ test('OAuth binds state to a browser, sends PKCE, hides tokens and blocks cross-
     assert.equal((await fetch(callbackUrl)).status, 400);
     const callback = await fetch(callbackUrl, { redirect: 'manual', headers: { Cookie: 'prism_state=' + state + '; prism_session=previous-browser-session' } });
     assert.equal(callback.status, 302);
-    assert.equal(callback.headers.get('location'), process.env.APP_ORIGIN + '/');
+    assert.equal(callback.headers.get('location'), process.env.APP_ORIGIN + '/app');
     assert.equal(await readAuthRecord('session', 'previous-browser-session'), null);
     assert.equal(await readAuthRecord('mail-token', '85'), null, 'replacing a browser session revokes its derived email authorization');
     assert.equal((await readAuthRecord('email-preference', '85')).enabled, true, 're-login preserves the saved opt-in preference');
@@ -358,6 +358,107 @@ test('OAuth binds state to a browser, sends PKCE, hides tokens and blocks cross-
     assert.ok(!sessionCookie.includes('private-provider-token'));
     assert.equal((await fetch(callbackUrl, { headers: { Cookie: 'prism_state=' + state } })).status, 400);
     assert.equal((await fetch(base + '/protected', { method: 'POST', headers: { Cookie: sessionCookie.split(';')[0], Origin: 'https://evil.test' } })).status, 403);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; });
+  }
+});
+
+test('post-install setup starts browser-bound OAuth without trusting installation IDs or redirect targets', async () => {
+  const keys = ['GITHUB_APP_ID', 'GITHUB_APP_SLUG', 'GITHUB_APP_CLIENT_ID', 'GITHUB_APP_CLIENT_SECRET', 'APP_ORIGIN'];
+  const old = keys.map(key => process.env[key]);
+  keys.forEach((key, index) => { process.env[key] = ['7', 'prism', 'client', 'secret', 'http://localhost:5173'][index]; });
+  const { readAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    for (const query of ['installation_id=999999&setup_action=install', 'installation_id=999999']) {
+      const legacy = await fetch(base + '/?' + query, { redirect: 'manual' });
+      assert.equal(legacy.status, 302);
+      assert.equal(legacy.headers.get('location'), '/api/github/setup');
+    }
+    const setup = await fetch(base + '/api/github/setup?installation_id=999999&returnTo=https://evil.example', { redirect: 'manual' });
+    assert.equal(setup.status, 302);
+    assert.equal(setup.headers.get('location'), '/api/github/login');
+    for (const target of ['/analyses/report-1', 'https://evil.example', '//evil.example', '/api/github/logout']) {
+      const login = await fetch(base + '/api/github/login?returnTo=' + encodeURIComponent(target), { redirect: 'manual' });
+      const destination = new URL(login.headers.get('location'));
+      assert.equal(destination.origin, 'https://github.com');
+      assert.equal(destination.searchParams.get('code_challenge_method'), 'S256');
+      const state = destination.searchParams.get('state');
+      const stored = await readAuthRecord('oauth', state);
+      assert.equal(stored.returnTo, target === '/analyses/report-1' ? target : '/app');
+      assert.equal(stored.installationId, undefined, 'Query parameters must not grant repository access');
+    }
+    assert.equal((await fetch(base + '/api/github/callback?code=unsolicited-install-code', { redirect: 'manual' })).status, 400);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; });
+  }
+});
+
+test('session separates account connection, accessible repositories and unavailable email delivery', async () => {
+  const { writeAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
+  const keys = ['GITHUB_APP_ID', 'GITHUB_APP_SLUG', 'EMAIL_ENABLED']; const old = keys.map(key => process.env[key]);
+  process.env.GITHUB_APP_ID = '7'; process.env.GITHUB_APP_SLUG = 'prism'; delete process.env.EMAIL_ENABLED;
+  await writeAuthRecord('session', 'setup-session', { userId: '1004', login: 'second-user', token: 'fixture-second-user' }, Date.now() + 60000);
+  const realFetch = globalThis.fetch; let revoked = false;
+  mock.method(globalThis, 'fetch', async (url, options) => {
+    if (String(url).startsWith('http://127.0.0.1')) return realFetch(url, options);
+    assert.equal(options.headers.Authorization, 'Bearer fixture-second-user');
+    return Response.json(String(url).includes('/repositories?') ? { repositories: [{ full_name: 'second/repo' }] }
+      : { installations: revoked ? [] : [{ id: 1004, app_id: 7 }] });
+  });
+  const service = express(); service.use('/github', github.createGitHubRoutes());
+  const server = service.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/github/session`;
+  try {
+    const guest = await (await fetch(url)).json();
+    assert.equal(guest.repositoryCount, null);
+    const connected = await (await fetch(url, { headers: { Cookie: 'prism_session=setup-session' } })).json();
+    assert.equal(connected.authenticated, true);
+    assert.equal(connected.repositoryCount, 1);
+    assert.equal(connected.emailAvailable, false);
+    assert.match(connected.emailUnavailableReason, /not configured/i);
+    assert.equal(connected.installUrl, 'https://github.com/apps/prism/installations/new');
+    assert.ok(!JSON.stringify(connected).includes('fixture-second-user'));
+    revoked = true;
+    const missing = await (await fetch(url, { headers: { Cookie: 'prism_session=setup-session' } })).json();
+    assert.equal(missing.repositoryCount, 0);
+    assert.equal(missing.authenticated, true, 'Account authorization and App installation are separate');
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; });
+  }
+});
+
+test('email permission denial explains reauthorization rather than blaming session storage', async () => {
+  const { writeAuthRecord } = await import('../src/features/pullRequest/github.repository.js');
+  const keys = ['GITHUB_APP_ID', 'APP_ORIGIN', 'EMAIL_ENABLED']; const old = keys.map(key => process.env[key]);
+  process.env.GITHUB_APP_ID = '7'; process.env.APP_ORIGIN = 'http://localhost:5173'; process.env.EMAIL_ENABLED = 'true';
+  await writeAuthRecord('session', 'email-denied-session', { userId: '1005', token: 'fixture-email-denied' }, Date.now() + 60000);
+  const realFetch = globalThis.fetch; let emailStatus = 403; let emailRateLimited = false;
+  mock.method(globalThis, 'fetch', async (url, options) => {
+    if (String(url).startsWith('http://127.0.0.1')) return realFetch(url, options);
+    if (String(url).includes('/user/emails')) return Response.json({ message: 'private upstream body' }, { status: emailStatus, headers: emailRateLimited ? { 'x-ratelimit-remaining': '0' } : {} });
+    return Response.json({ installations: [] });
+  });
+  const service = express(); service.use(express.json()); service.use('/github', github.createGitHubRoutes());
+  const server = service.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  try {
+    for (const [status, limited] of [[403, false], [429, false], [503, false], [401, false], [403, true]]) {
+      emailStatus = status; emailRateLimited = limited;
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/github/notifications/email`, { method: 'PUT',
+        headers: { Cookie: 'prism_session=email-denied-session', Origin: process.env.APP_ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }) });
+      const permissionDenied = status === 403 && !limited;
+      assert.equal(res.status, permissionDenied ? 403 : status === 401 ? 401 : 502);
+      const body = await res.json();
+      if (permissionDenied) assert.equal(body.errorCode, 'EMAIL_PERMISSION_REQUIRED');
+      else assert.notEqual(body.errorCode, 'EMAIL_PERMISSION_REQUIRED');
+      assert.match(body.message, permissionDenied || status === 401 ? /reconnect/i : /temporarily unavailable/i);
+      assert.ok(!JSON.stringify(body).includes('private upstream'));
+    }
   } finally {
     await new Promise(resolve => server.close(resolve));
     keys.forEach((key, index) => { if (old[index] === undefined) delete process.env[key]; else process.env[key] = old[index]; });

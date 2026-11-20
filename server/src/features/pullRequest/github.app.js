@@ -11,6 +11,8 @@ const failure = (statusCode, message) => Object.assign(new Error(message), { sta
 const cookie = (request, name) => request.headers.cookie?.split(';').map(value => value.trim()).find(value => value.startsWith(name + '='))?.slice(name.length + 1);
 const secure = () => process.env.NODE_ENV === 'production' ? '; Secure' : '';
 const setCookie = (response, name, value, seconds) => response.append('Set-Cookie', `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${seconds}${secure()}`);
+// Only local workspace routes can be restored after OAuth; never trust a redirect URL.
+const loginDestination = value => typeof value === 'string' && /^\/(?:app|analyses(?:\/[a-z\d_-]{1,128})?)$/i.test(value) ? value : '/app';
 async function consumeReviewBudget(key) {
   if (!appMode()) return true;
   const now = new Date();
@@ -32,7 +34,10 @@ async function githubRequest(path, token, body) {
       ...(body ? { body: JSON.stringify(body) } : {})
     });
   } catch { throw failure(502, 'GitHub access verification is unavailable.'); }
-  if (!response.ok) throw failure(response.status === 401 ? 401 : 403, 'GitHub access could not be verified. Reconnect your account.');
+  if (!response.ok) throw Object.assign(failure(response.status === 401 ? 401 : 403, 'GitHub access could not be verified. Reconnect your account.'), {
+    upstreamStatus: response.status,
+    rateLimited: response.status === 429 || (response.status === 403 && (response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after')))
+  });
   try { return await response.json(); }
   catch { throw failure(502, 'GitHub access verification returned an invalid response.'); }
 }
@@ -214,11 +219,33 @@ async function postReviewSummary(report, { getToken = installationToken } = {}) 
 function createGitHubRoutes() {
   const router = Router();
   router.get('/session', async (request, response) => {
-    const session = process.env.DEMO_ONLY === 'true' ? null : await readAuthRecord('session', cookie(request, 'prism_session'));
+    let session = process.env.DEMO_ONLY === 'true' ? null : await readAuthRecord('session', cookie(request, 'prism_session'));
+    let repositoryCount = null; let repositoryAccessError = null;
+    if (session) {
+      try { repositoryCount = (await userRepositories(session.token)).length; }
+      catch (error) {
+        if (error.statusCode === 401) {
+          await deleteAuthRecord('mail-token', session.userId);
+          await deleteAuthRecord('session', cookie(request, 'prism_session'));
+          setCookie(response, 'prism_session', '', 0);
+          session = null;
+        }
+        repositoryAccessError = 'GitHub access could not be verified. Reconnect GitHub or retry connection.';
+      }
+    }
     const emailPreference = session ? await readAuthRecord('email-preference', session.userId) : null;
     const slug = process.env.GITHUB_APP_SLUG;
     const demoOnly = process.env.DEMO_ONLY === 'true';
-    response.set('Cache-Control', 'no-store').json({ demoOnly, enabled: !demoOnly && (appMode() || process.env.NODE_ENV === 'production'), authenticated: !demoOnly && Boolean(session), userId: !demoOnly ? session?.userId || null : null, login: !demoOnly ? session?.login || null : null, emailAvailable: process.env.EMAIL_ENABLED === 'true', emailNotifications: Boolean(emailPreference?.enabled), installUrl: !demoOnly && /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
+    const emailAvailable = process.env.EMAIL_ENABLED === 'true';
+    response.set('Cache-Control', 'no-store').json({ demoOnly, enabled: !demoOnly && (appMode() || process.env.NODE_ENV === 'production'), authenticated: !demoOnly && Boolean(session), userId: !demoOnly ? session?.userId || null : null, login: !demoOnly ? session?.login || null : null,
+      repositoryCount, repositoryAccessError, emailAvailable,
+      emailUnavailableReason: emailAvailable ? null : 'Email delivery is not configured on this demo.',
+      emailNotifications: Boolean(emailPreference?.enabled), installUrl: !demoOnly && /^[\w-]+$/.test(slug || '') ? `https://github.com/apps/${slug}/installations/new` : null });
+  });
+  router.get('/setup', (request, response) => {
+    if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
+    // Installation IDs are untrusted. Our own OAuth flow verifies actual user access.
+    response.redirect('/api/github/login');
   });
   router.get('/login', async (request, response) => {
     if (process.env.DEMO_ONLY === 'true') return response.status(503).json({ message: 'This deployment serves a read-only demo.' });
@@ -226,7 +253,7 @@ function createGitHubRoutes() {
     if (!await incrementReviewCounter('login:' + new Date().toISOString().slice(0, 13), 100, Date.now() + 3600000)) return response.status(429).json({ message: 'Login allowance reached. Try again later.' });
     const state = randomBytes(32).toString('hex');
     const verifier = randomBytes(32).toString('base64url');
-    await writeAuthRecord('oauth', state, { verifier }, Date.now() + 600000);
+    await writeAuthRecord('oauth', state, { verifier, returnTo: loginDestination(request.query.returnTo) }, Date.now() + 600000);
     setCookie(response, 'prism_state', state, 600);
     const params = new URLSearchParams({ client_id: process.env.GITHUB_APP_CLIENT_ID, redirect_uri: process.env.APP_ORIGIN + '/api/github/callback', state, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' });
     response.redirect('https://github.com/login/oauth/authorize?' + params);
@@ -255,7 +282,7 @@ function createGitHubRoutes() {
       const preference = await readAuthRecord('email-preference', String(user.id));
       if (preference?.enabled) await writeAuthRecord('mail-token', String(user.id), { token: data.access_token }, Date.now() + seconds * 1000);
       setCookie(response, 'prism_session', id, seconds);
-      response.redirect(process.env.APP_ORIGIN + '/');
+      response.redirect(process.env.APP_ORIGIN + loginDestination(entry.returnTo));
     } catch { response.status(502).json({ message: 'GitHub login failed. Start again.' }); }
   });
   router.post('/logout', async (request, response) => {
@@ -271,8 +298,16 @@ function createGitHubRoutes() {
     const enabled = request.body?.enabled;
     if (typeof enabled !== 'boolean') return response.status(400).json({ message: 'Specify whether review emails are enabled.' });
     if (enabled) {
-      if (process.env.EMAIL_ENABLED !== 'true') return response.status(503).json({ message: 'Email delivery is not configured.' });
-      if (!await verifiedEmail(request.auth.token)) return response.status(400).json({ message: 'Add a verified email to GitHub before enabling notifications.' });
+      if (process.env.EMAIL_ENABLED !== 'true') return response.status(503).json({ errorCode: 'EMAIL_NOT_CONFIGURED', message: 'Email delivery is not configured on this demo.' });
+      let email;
+      try { email = await verifiedEmail(request.auth.token); }
+      catch (error) {
+        if (error.rateLimited || error.upstreamStatus >= 500) return response.status(502).json({ message: 'GitHub email verification is temporarily unavailable. Try again later.' });
+        if (error.statusCode === 403) return response.status(403).json({ errorCode: 'EMAIL_PERMISSION_REQUIRED', message: 'Reconnect GitHub after granting the App Email addresses: read permission.' });
+        if (error.statusCode === 401) return response.status(401).json({ message: 'Reconnect GitHub before enabling email notifications.' });
+        return response.status(502).json({ message: 'GitHub email verification is temporarily unavailable. Try again later.' });
+      }
+      if (!email) return response.status(400).json({ message: 'Add a verified email to GitHub before enabling notifications.' });
       // A derived authorization must never outlive the session that granted it.
       await writeAuthRecord('mail-token', request.auth.userId, { token: request.auth.token }, request.auth.expiresAt);
     } else await deleteAuthRecord('mail-token', request.auth.userId);

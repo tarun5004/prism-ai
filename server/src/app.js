@@ -31,6 +31,13 @@ app.use('/api/analyses', requireSession, (request, response, next) => {
 }, analysisRoutes);
 app.use('/api', (request, response) => response.status(404).json({ message: 'API endpoint not found.' }));
 const clientDirectory = fileURLToPath(new URL('../../client/dist/', import.meta.url));
+// Backward compatibility for the original GitHub setup URL, without trusting its ID.
+app.get('/', (request, response, next) => {
+  if (typeof request.query.installation_id === 'string' && /^\d{1,20}$/.test(request.query.installation_id)) {
+    return response.set('Cache-Control', 'no-store').redirect('/api/github/setup');
+  }
+  next();
+});
 app.use(express.static(clientDirectory));
 app.get(/^(?!\/api(?:\/|$)).*/, (request, response, next) => {
   response.sendFile('index.html', { root: clientDirectory }, error => {
