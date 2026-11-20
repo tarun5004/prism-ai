@@ -169,6 +169,9 @@ async function setEmailNotifications(enabled) {
     if (!response.ok) {
       const data = await response.json().catch(() => null);
       if (response.status === 400) throw new Error(data?.message || 'Verify your GitHub email first.');
+      if (response.status === 401) throw new Error('Reconnect GitHub before enabling email notifications.');
+      if (response.status === 403 && data?.errorCode === 'EMAIL_PERMISSION_REQUIRED') throw new Error('Reconnect GitHub after granting the App Email addresses: read permission.');
+      if (response.status === 503 && data?.errorCode === 'EMAIL_NOT_CONFIGURED') throw new Error('Email delivery is not configured on this demo.');
       throw new Error();
     }
     const result = await response.json();

@@ -19,6 +19,12 @@ import { loadAnalysis, loadRecentAnalyses, loadSampleAnalysis, createAnalysis, s
 
 afterEach(() => mock.restoreAll());
 
+test('email permission failures keep the safe reconnect instruction visible', async () => {
+  const { setEmailNotifications } = await import('../src/features/dashboard/analysis.api.js');
+  mock.method(globalThis, 'fetch', async () => Response.json({ errorCode: 'EMAIL_PERMISSION_REQUIRED', message: 'Reconnect GitHub to grant email access.' }, { status: 403 }));
+  await assert.rejects(setEmailNotifications(true), /Reconnect GitHub/);
+});
+
 test('publication sends only a human decision with credentials and does not retry writes', async () => {
   const { decidePublication } = await import('../src/features/dashboard/analysis.api.js');
   let calls = 0;

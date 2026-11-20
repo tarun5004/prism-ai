@@ -26,6 +26,7 @@ export default function OverviewPage({
             <h2 id="submit-title">Open a pull request</h2>
           </div>
         </div>
+        <p className="muted-text">PRs opened before installing PRism are not queued automatically. Paste an existing PR below and choose Analyze PR. New eligible PR events are reviewed automatically after installation.</p>
         <form className="submit-form" onSubmit={onSubmit} aria-busy={isSubmitting}>
           <label htmlFor="pull-request-url">GitHub Pull Request URL</label>
           <div className="input-row">

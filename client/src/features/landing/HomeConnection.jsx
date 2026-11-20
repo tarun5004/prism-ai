@@ -1,5 +1,6 @@
 import RouteLink from '../../shared/RouteLink.jsx';
 import EmailPreference from '../../shared/EmailPreference.jsx';
+import RepositoryAccessNotice from '../connection/RepositoryAccessNotice.jsx';
 import { githubLoginUrl } from '../dashboard/analysis.api.js';
 
 export default function HomeConnection({
@@ -25,6 +26,7 @@ export default function HomeConnection({
         </p>
       </div>
       <div className="home-workspace-actions">
+        <RepositoryAccessNotice session={session} busy={connectionBusy} onRetry={onRetry} />
         {session?.enabled && !session.authenticated && (
           <a className="landing-cta" href={githubLoginUrl}>
             Connect GitHub ↗
@@ -57,6 +59,7 @@ export default function HomeConnection({
         {connectionError && (
           <>
             <p role="alert">{connectionError}</p>
+            {session?.authenticated && <a href={githubLoginUrl}>Reconnect GitHub</a>}
             <button type="button" disabled={connectionBusy} onClick={onRetry}>
               Retry connection
             </button>

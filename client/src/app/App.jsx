@@ -5,6 +5,7 @@ import LandingPage from '../features/landing/LandingPage.jsx';
 import RouteLink from '../shared/RouteLink.jsx';
 import EmailPreference from '../shared/EmailPreference.jsx';
 import useGitHubConnection from '../features/connection/useGitHubConnection.js';
+import RepositoryAccessNotice from '../features/connection/RepositoryAccessNotice.jsx';
 import { githubLoginUrl } from '../features/dashboard/analysis.api.js';
 import { resolveRoute } from './routes.js';
 
@@ -63,6 +64,7 @@ function App() {
               : 'Connect GitHub to review your installed repositories.'}
           </span>
           {session?.installUrl && <a href={session.installUrl}>Install on GitHub ↗</a>}
+          <RepositoryAccessNotice session={session} busy={connectionBusy} onRetry={refreshSession} />
           {session?.authenticated ? (
             <button type="button" disabled={connectionBusy} onClick={signOut}>
               Sign out
@@ -76,6 +78,7 @@ function App() {
           {connectionError && (
             <>
               <span role="alert">{connectionError}</span>
+              {session?.authenticated && <a href={githubLoginUrl}>Reconnect GitHub</a>}
               <button type="button" disabled={connectionBusy} onClick={refreshSession}>
                 Retry connection
               </button>

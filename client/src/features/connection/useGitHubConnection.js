@@ -9,7 +9,9 @@ export default function useGitHubConnection() {
     setConnectionBusy(true);
     setConnectionError('');
     try {
-      setSession(await loadGitHubSession());
+      const result = await loadGitHubSession();
+      setSession(result);
+      setConnectionError(result.repositoryAccessError || '');
     } catch (error) {
       setConnectionError(error.message);
     } finally {
